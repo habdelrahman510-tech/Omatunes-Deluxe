@@ -18,7 +18,10 @@ build() {
 
 check() {
   cd "Omatunes-Deluxe-$pkgver"
-  cargo test --frozen --release
+  # --lib: the unit tests all live in the library. Without it cargo also builds
+  # every [[bin]] target (test_opus_read, test_scan_full, ...) just to run the
+  # same fifteen tests, which doubles the package build time for nothing.
+  cargo test --frozen --release --lib
 }
 
 package() {
