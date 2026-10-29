@@ -267,7 +267,7 @@ OmaTUNES includes both a standalone **Quickshell Player Module** and a native **
 ### Installation
 
 ```bash
-git clone https://github.com/Balthazzahr/omatunes.git
+git clone https://github.com/habdelrahman510-tech/Omatunes-Deluxe.git
 cd omatunes
 bash scripts/quickshell/install.sh
 ```

@@ -6,7 +6,19 @@
 
 omaTUNES is a native Wayland music player and library manager built in Rust for Hyprland and Omarchy systems. omaTUNES is built to be as lightweight as possible while matching Omarchy's opinionated UI style — it picks up your system theme automatically, so your player always matches the rest of your desktop. omaTUNES is 100% offline, has wide support for most popular music codecs, and is designed to manage very large libraries with robust playlist and library management tools.
 
-`omatunes` is a customized fork of [sheep-farm/lavanda](https://github.com/sheep-farm/lavanda) by [Balthazzahr](https://github.com/Balthazzahr).
+Built and maintained by [prof.dog](https://github.com/habdelrahman510-tech). `omatunes` is a fork of
+[sheep-farm/lavanda](https://github.com/sheep-farm/lavanda) by Flavio de Vasconcellos, carried forward by
+[Balthazzahr](https://github.com/Balthazzahr) — this build adds the equalizer, Arabic/RTL shaping and the
+lyrics fixes described below. The original MIT notices are retained in [LICENSE](LICENSE).
+
+## Why "Deluxe"
+
+This build carries upstream omaTUNES 1.2.1 and adds three things:
+
+- **A real DSP equalizer** — ten ISO bands of RBJ peaking biquads running inside the audio callback, sixteen presets, automatic headroom, and click-free bit-exact bypass.
+- **Proper Arabic and right-to-left support** — Noto Sans Arabic bundled, advanced shaping so letters join correctly, and a per-line direction guard, so Arabic metadata and lyrics read properly instead of scrambling.
+- **Lyrics fixes** — unsynchronized lyrics wrap at the panel width, and every RTL line keeps the correct margin, not just the first.
+
 
 <p align="center">
   <img src="assets/Main UI.png" alt="OmaTUNES Main UI Screenshot" width="800">
@@ -24,6 +36,8 @@ omaTUNES is a native Wayland music player and library manager built in Rust for 
 - **Synced Lyrics.** Synced LRC lyrics scroll and highlight in time with the track, and you can click any line to jump straight to that moment in the song.
 - **Listening Statistics & Leaderboards.** Complete rewrite of listening stats — a toolbar button opens a dashboard modal with Day, Week, Month, and All-Time tabs. View three-column leaderboards (Artists, Albums, Genres) ranking your top 10 by minutes played, complete with gold, silver, and bronze highlights and custom tier icons. Drill down into any leaderboard item to open a sub-window displaying the top 100 songs by play count, and receive persistent milestone toasts for daily listening counts (25/50/100 tracks), artist plays (50/100/500/1000), and genre milestones.
 - **Audio Visualizer 2.0 & Motion Trails.** Real-time FFT spectrum analysis with 9 visually distinct canvas rendering modes (Mirrored Spectrograph with gravity-bouncing peak limiters, Radial Pulse, Liquid Ribbon, Particle Constellation web, Hyperdrive Depth Tunnel flight, Rolling Plains, Kaleidoscope Mirror, Cosmic Aurora plasma curtains, and Retro Synthwave Horizon). Features customizable visualizer background modes (Theme Default, Custom RGB with interactive sliders, Muted Reactive Pulse), mode-specific customization settings, random mode dice selector button (`\ue270`), decaying ghost motion trails, audio sensitivity, and spectrum color shifting via Settings.
+- **10-Band Parametric Equalizer.** A real DSP engine inside the playback callback — ten ISO bands (31.5 Hz – 16 kHz, one octave each) built from RBJ peaking biquads with independent per-channel state. Gains ramp over 20 ms and bypass crossfades dry/wet, so nothing clicks; bypass is bit-exact when the EQ is off or flat. Includes 16 built-in presets (Flat, Loudness, Bass boost, Vocal, Rock, Jazz, Night and more), a −12…0 dB preamp with automatic headroom, a soft-clip knee so boosts stay clean, and a live frequency-response curve. Runs *before* the volume slider, and the visualizer taps what you actually hear.
+- **Arabic & Full RTL Support.** Arabic, Hebrew, Syriac and other right-to-left scripts are shaped correctly everywhere in the UI — artist, album, title, genre and playlist names, not just lyrics. Ships Noto Sans Arabic (regular + bold), shapes with `Shaping::Advanced` so letters join properly, and applies a per-line direction guard so mixed Arabic/English text keeps the correct margin and reading order.
 - **Theming System.** Follow your Omarchy system theme live, pick from built-in presets (Nord, Catppuccin, Dracula, Gruvbox, Everforest, Monokai), or build your own — omaTUNES derives the supporting shades automatically using proper WCAG contrast math, so your custom theme never ends up with unreadable text.
 - **Bulk Metadata Editing.** Select a stack of tracks, check only the fields you want to change, and apply edits across an entire album in one go — with autocomplete pulled straight from your existing library tags.
 - **Desktop & Quickshell Integration.** Full MPRIS2 D-Bus support, a ready-to-go Waybar module, and a native **Quickshell Player Module** featuring an interactive mini-player pop-up window with live timeline scrubbing, volume controls, liked status tracking, and active shuffle/repeat highlights.
@@ -56,13 +70,13 @@ The [USER_MANUAL.md](USER_MANUAL.md) covers everything in detail — every keybi
 **Easiest: grab a pre-built release.**
 ```bash
 mkdir -p ~/.local/bin
-curl -L -o ~/.local/bin/omatunes https://github.com/Balthazzahr/omatunes/releases/latest/download/omatunes
+curl -L -o ~/.local/bin/omatunes https://github.com/habdelrahman510-tech/Omatunes-Deluxe/releases/latest/download/omatunes
 chmod +x ~/.local/bin/omatunes
 ```
 
 **Prefer to build it yourself?**
 ```bash
-git clone https://github.com/Balthazzahr/omatunes
+git clone https://github.com/habdelrahman510-tech/Omatunes-Deluxe
 cd omatunes
 cargo build --release
 mkdir -p ~/.local/bin
@@ -89,7 +103,7 @@ If you use **Quickshell** or **Omarchy v4**, run the automated installer script 
 
 ```bash
 # Clone or navigate to the repository
-git clone https://github.com/Balthazzahr/omatunes.git
+git clone https://github.com/habdelrahman510-tech/Omatunes-Deluxe.git
 cd omatunes
 bash scripts/quickshell/install.sh
 ```
@@ -108,8 +122,8 @@ cp scripts/omatunes.desktop ~/.local/share/applications/omatunes.desktop
 cp assets/omatunes.png ~/.local/share/icons/hicolor/256x256/apps/omatunes.png
 
 # Or straight from GitHub, if you installed the pre-built binary
-curl -L -o ~/.local/share/applications/omatunes.desktop https://raw.githubusercontent.com/Balthazzahr/omatunes/master/scripts/omatunes.desktop
-curl -L -o ~/.local/share/icons/hicolor/256x256/apps/omatunes.png https://raw.githubusercontent.com/Balthazzahr/omatunes/master/assets/omatunes.png
+curl -L -o ~/.local/share/applications/omatunes.desktop https://raw.githubusercontent.com/prof.dog/omatunes/master/scripts/omatunes.desktop
+curl -L -o ~/.local/share/icons/hicolor/256x256/apps/omatunes.png https://raw.githubusercontent.com/prof.dog/omatunes/master/assets/omatunes.png
 ```
 
 If the entry doesn't appear right away, log out and back in — some launchers only rescan `applications/` at session start.
@@ -163,7 +177,7 @@ omaTUNES includes a native **Quickshell Player Module** and an **Omarchy v4 Bar 
 
 ```bash
 # Clone or navigate to the repository
-git clone https://github.com/Balthazzahr/omatunes.git
+git clone https://github.com/habdelrahman510-tech/Omatunes-Deluxe.git
 cd omatunes
 
 # Run the automated installer for Quickshell & Omarchy v4
@@ -236,4 +250,8 @@ The full list — including focus navigation and dialog shortcuts — is in the 
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
+
+Copyright (c) 2026 prof.dog
+Copyright (c) 2026 Balthazzahr and omaTUNES contributors
+Copyright (c) 2026 Flavio de Vasconcellos

@@ -1,9 +1,12 @@
 # Ignore build artifacts from Cargo
 target/
 
+# Release artifacts are published on GitHub, not committed
+*.tar.gz
+*.sha256
+
 # Private development docs — keep local only, not on public GitHub
 AGENTS.md
 ARCHITECTURE.md
-CHANGELOG.md
 PROJECT_SPEC.md
 ROADMAP.md
