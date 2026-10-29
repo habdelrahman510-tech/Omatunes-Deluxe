@@ -4,6 +4,15 @@ All notable changes to this build of Omatunes. This fork is maintained by
 [prof.dog](https://github.com/habdelrahman510-tech); the projects it descends from are
 credited in [README.md](README.md).
 
+## [1.3.1] — 2026-10-29
+
+### Fixed
+
+- `library::scanner::tests::test_scan_media_dir` no longer fails a release
+  build. It is a smoke test that scans `$HOME/Music`; in a clean build
+  directory, chroot or CI there is no library to scan, so it now skips with a
+  message instead of panicking. Reported by our own AUR `check()`.
+
 ## [1.3.0] — 2026-10-29
 
 First release under this maintainer. Everything below is new relative to

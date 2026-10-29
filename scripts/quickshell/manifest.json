@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "omatunes",
   "name": "OmaTUNES Player",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "author": "prof.dog",
   "description": "Native OmaTUNES Wayland media player bar widget and popup controls",
   "kinds": [
