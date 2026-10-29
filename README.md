@@ -114,12 +114,19 @@ Full Waybar config below, and CSS styling details in the [User Manual](USER_MANU
 
 ### 3. Install the Quickshell widget (optional)
 
-If you use **Quickshell** or **Omarchy v4**, run the automated installer script to copy the widget and pop-up card files into place:
+On **Omarchy**, the bar widget ships as its own plugin repository, so the shell manages it:
 
 ```bash
-# Clone or navigate to the repository
+omarchy plugin add https://github.com/habdelrahman510-tech/omarchy-omatunes --enable --yes
+```
+
+It installs as plugin id `omatunes` and keeps updating with `omarchy plugin update omatunes`.
+
+If you use **standalone Quickshell**, run the bundled installer script to copy the widget and pop-up card files into place:
+
+```bash
 git clone https://github.com/habdelrahman510-tech/Omatunes-Deluxe.git
-cd omatunes
+cd Omatunes-Deluxe
 bash scripts/quickshell/install.sh
 ```
 
