@@ -1,0 +1,26 @@
+# Maintainer: prof.dog <prof.dog@users.noreply.github.com>
+pkgname=omatunes-deluxe-bin
+pkgver=1.3.0
+pkgrel=1
+pkgdesc="Native Wayland music player for Omarchy, with a 10-band parametric equalizer and Arabic/RTL support (prebuilt)"
+arch=('x86_64')
+url="https://github.com/habdelrahman510-tech/Omatunes-Deluxe"
+license=('MIT')
+depends=('glibc' 'gcc-libs' 'alsa-lib' 'opus' 'wayland' 'libxkbcommon' 'fontconfig' 'freetype2' 'vulkan-icd-loader' 'hicolor-icon-theme')
+provides=('omatunes')
+conflicts=('omatunes' 'omatunes-deluxe')
+source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/omatunes-$pkgver-x86_64-linux.tar.gz"
+        "omatunes.desktop::$url/raw/v$pkgver/scripts/omatunes.desktop"
+        "omatunes.png::$url/raw/v$pkgver/assets/omatunes.png"
+        "LICENSE::$url/raw/v$pkgver/LICENSE")
+sha256sums=('6854b079e892ab59366336f4251b8ad5c9936510191627f2169f019b56fcd59a'
+            'e1146018bc2ec54f19e255c6f544011c990919c2bdbdcee72a678a722be05993'
+            '8964207f19cfafe91f3efbbc8ce03d52134f0c0852769828c3596fdde5e71e7c'
+            '1b774561a50f18862b7468a340fe96e29604e7e169b88e7b54fd46779280fc48')
+
+package() {
+  install -Dm755 "$srcdir/omatunes" "$pkgdir/usr/bin/omatunes"
+  install -Dm644 "$srcdir/omatunes.desktop" "$pkgdir/usr/share/applications/omatunes.desktop"
+  install -Dm644 "$srcdir/omatunes.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/omatunes.png"
+  install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

@@ -65,6 +65,21 @@ The [USER_MANUAL.md](USER_MANUAL.md) covers everything in detail — every keybi
 
 ## Install Instructions
 
+### Arch Linux (PKGBUILD)
+
+Two packages ship in [`packaging/`](packaging/):
+
+```bash
+git clone https://github.com/habdelrahman510-tech/Omatunes-Deluxe
+cd Omatunes-Deluxe/packaging/omatunes-deluxe-bin   # prebuilt, fast
+# or: cd Omatunes-Deluxe/packaging/omatunes-deluxe  # builds from source, runs tests
+makepkg -si
+```
+
+`omatunes-deluxe-bin` installs the release binary; `omatunes-deluxe` compiles it locally and runs the test suite. Both install `/usr/bin/omatunes`, the desktop entry, the icon and the licence, and both declare `provides=omatunes`.
+
+An AUR submission is being prepared but not yet published — new AUR account registration is currently paused, so the packages live here until that reopens.
+
 ### 1. Install the binary
 
 **Easiest: grab a pre-built release.**
