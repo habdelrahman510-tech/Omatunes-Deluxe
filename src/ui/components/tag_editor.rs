@@ -1,5 +1,6 @@
-use iced::widget::{button, column, container, row, text, text_input, Space, checkbox, stack};
+use iced::widget::{button, column, container, row, text_input, Space, checkbox, stack};
 use iced::{Alignment, Element, Length};
+use crate::ui::txt::text;
 
 use crate::app::{Message, TagEditorState};
 use crate::ui::theme;
@@ -269,7 +270,7 @@ pub fn view<'a>(
                         text("Title").size(12).color(theme::subtext()),
                         title_input
                     ].width(Length::Fill),
-                    if title_saved { iced::Element::from(iced::widget::text::Text::<iced::Theme>::new(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
+                    if title_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
                 ].align_y(Alignment::Center).spacing(6)
             )
             .push(Space::with_height(2))
@@ -290,7 +291,7 @@ pub fn view<'a>(
                             iced::Element::from(Space::with_height(0))
                         }
                     ].width(Length::Fill),
-                    if artist_saved { iced::Element::from(iced::widget::text::Text::<iced::Theme>::new(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
+                    if artist_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
                 ].align_y(Alignment::Center).spacing(6)
             )
             .push(Space::with_height(2))
@@ -311,7 +312,7 @@ pub fn view<'a>(
                             iced::Element::from(Space::with_height(0))
                         }
                     ].width(Length::Fill),
-                    if album_saved { iced::Element::from(iced::widget::text::Text::<iced::Theme>::new(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
+                    if album_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
                 ].align_y(Alignment::Center).spacing(6)
             )
             .push(Space::with_height(4));
@@ -418,7 +419,7 @@ pub fn view<'a>(
                     iced::Element::from(Space::with_width(0))
                 };
                 let tick: Element<'_, Message, iced::Theme> = if genre_saved {
-                    iced::Element::from(iced::widget::text::Text::<iced::Theme>::new(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green()))
+                    iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green()))
                 } else {
                     iced::Element::from(Space::with_width(0))
                 };
@@ -446,7 +447,7 @@ pub fn view<'a>(
                             text("Track #").size(12).color(theme::subtext()),
                             track_num_input
                         ].width(Length::Fill),
-                        if track_saved { iced::Element::from(iced::widget::text::Text::<iced::Theme>::new(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
+                        if track_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
                     ].align_y(Alignment::Center).spacing(6).width(Length::FillPortion(1)),
                     Space::with_width(12),
                     row![
@@ -457,7 +458,7 @@ pub fn view<'a>(
                             text("Disc #").size(12).color(theme::subtext()),
                             disc_num_input
                         ].width(Length::Fill),
-                        if disc_saved { iced::Element::from(iced::widget::text::Text::<iced::Theme>::new(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
+                        if disc_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
                     ].align_y(Alignment::Center).spacing(6).width(Length::FillPortion(1)),
                     Space::with_width(12),
                     row![
@@ -468,7 +469,7 @@ pub fn view<'a>(
                             text("Year").size(12).color(theme::subtext()),
                             year_input
                         ].width(Length::Fill),
-                        if year_saved { iced::Element::from(iced::widget::text::Text::<iced::Theme>::new(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
+                        if year_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
                     ].align_y(Alignment::Center).spacing(8).width(Length::FillPortion(1)),
                 ]
             )
@@ -482,7 +483,7 @@ pub fn view<'a>(
                         text("Cover Path").size(12).color(theme::subtext()),
                         cover_input
                     ].width(Length::Fill),
-                    if cover_saved { iced::Element::from(iced::widget::text::Text::<iced::Theme>::new(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
+                    if cover_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
                 ].align_y(Alignment::Center).spacing(6)
             );
     } else {
@@ -517,7 +518,7 @@ pub fn view<'a>(
                             .on_press(Message::SearchLyricsOnline)
                             .style(theme::secondary_button)
                             .padding([2, 6]),
-                        if lyrics_saved { iced::Element::from(iced::widget::text::Text::<iced::Theme>::new(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
+                        if lyrics_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
                     ].align_y(Alignment::Center),
                     Space::with_height(4),
                     container(

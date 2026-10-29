@@ -1,7 +1,8 @@
 use std::time::Duration;
 
-use iced::widget::{row, slider, text};
+use iced::widget::{row, slider};
 use iced::{Alignment, Element, Length};
+use crate::ui::txt::text;
 
 use crate::app::Message;
 use crate::ui::theme;

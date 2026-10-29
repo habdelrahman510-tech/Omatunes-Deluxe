@@ -47,6 +47,7 @@ pub const ICON_COPY:       &str = "\u{f0c5}";  //
 pub const ICON_PODIUM:     &str = "\u{f0d25}"; //
 pub const ICON_VISUALIZER: &str = "\u{f147d}"; // waveform
 pub const ICON_LYRICS:     &str = "\u{f0370}"; // nf-md-microphone_variant
+pub const ICON_EQUALIZER:  &str = "\u{f0ea2}"; // nf-md-equalizer
 pub const ICON_STATS:      &str = "\u{f0126}"; // nf-md-chart-bar
 pub const ICON_CALENDAR_TODAY: &str = "\u{f00ea}"; // nf-md-calendar-today
 pub const ICON_CALENDAR_MONTH: &str = "\u{f0e17}"; // nf-md-calendar-month

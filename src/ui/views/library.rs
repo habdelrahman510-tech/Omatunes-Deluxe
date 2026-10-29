@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use iced::widget::{button, column, container, mouse_area, row, scrollable, text, Space, checkbox, text_input, stack, tooltip};
+use iced::widget::{button, column, container, mouse_area, row, scrollable, Space, checkbox, text_input, stack, tooltip};
 use iced::{Alignment, Element, Length};
+use crate::ui::txt::text;
 
 use crate::app::{AppState, Message, ViewMode, SortColumn, PlaylistDialogMode};
 use crate::ui::theme;
@@ -1972,7 +1973,7 @@ fn render_track_row(
                     .color(theme::subtext())
                     .size(13)
                     .width(width)
-                    .wrapping(text::Wrapping::None)
+                    .wrapping(iced::widget::text::Wrapping::None)
                     .into()
             }
             crate::db::TableColumn::Year => {

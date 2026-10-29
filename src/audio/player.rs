@@ -17,6 +17,8 @@ use symphonia::core::probe::Hint;
 use symphonia::core::units::Time as SymphoniaTime;
 use tokio::sync::mpsc;
 
+use crate::audio::eq::{EqHandle, EqProcessor, EqSettings};
+
 const OUTPUT_RATE: u32 = 48000;
 const OUTPUT_CHANNELS: u16 = 2;
 
@@ -80,6 +82,7 @@ pub struct AudioPlayer {
     pub cmd_tx: mpsc::UnboundedSender<AudioCommand>,
     pub event_rx: mpsc::UnboundedReceiver<AudioEvent>,
     pub sample_buffer: Arc<Mutex<VecDeque<f32>>>,
+    pub eq: EqHandle,
 }
 
 impl AudioPlayer {
@@ -89,10 +92,12 @@ impl AudioPlayer {
         let sample_buffer: Arc<Mutex<VecDeque<f32>>> =
             Arc::new(Mutex::new(VecDeque::with_capacity(8192)));
 
+        let eq = EqHandle::new(EqSettings::default());
+        let eq_thread = eq.clone();
         let buf_clone = sample_buffer.clone();
-        std::thread::spawn(move || audio_thread(cmd_rx, event_tx, buf_clone));
+        std::thread::spawn(move || audio_thread(cmd_rx, event_tx, buf_clone, eq_thread));
 
-        AudioPlayer { cmd_tx, event_rx, sample_buffer }
+        AudioPlayer { cmd_tx, event_rx, sample_buffer, eq }
     }
 
     pub fn send(&self, cmd: AudioCommand) {
@@ -106,6 +111,7 @@ fn audio_thread(
     mut cmd_rx: mpsc::UnboundedReceiver<AudioCommand>,
     event_tx: mpsc::UnboundedSender<AudioEvent>,
     sample_buffer: Arc<Mutex<VecDeque<f32>>>,
+    eq_handle: EqHandle,
 ) {
     let host   = cpal::default_host();
     let device = match host.default_output_device() {
@@ -140,29 +146,36 @@ fn audio_thread(
     let vis_cb     = sample_buffer.clone();
     let err_fn     = |e| eprintln!("Erro stream: {e}");
 
+    let eq = EqProcessor::new(eq_handle, OUTPUT_RATE as f32);
+
     let stream = match sample_format {
         SampleFormat::I16 => {
             let pcm2     = pcm.clone();
             let paused2  = paused.clone();
             let vol2     = shared_vol.clone();
             let vis2     = sample_buffer.clone();
+            let mut eq2  = eq;
+            let mut scratch: Vec<f32> = Vec::new();
             device.build_output_stream(
                 &stream_config,
                 move |data: &mut [i16], _| {
-                    let mut tmp = vec![0f32; data.len()];
-                    fill_output(&mut tmp, &pcm2, &paused2, &vol2, &vis2);
-                    for (d, s) in data.iter_mut().zip(tmp.iter()) {
+                    scratch.resize(data.len(), 0.0);
+                    fill_output(&mut scratch, &pcm2, &paused2, &vol2, &vis2, &mut eq2);
+                    for (d, s) in data.iter_mut().zip(scratch.iter()) {
                         *d = cpal::Sample::from_sample(*s);
                     }
                 },
                 err_fn, None,
             )
         }
-        _ => device.build_output_stream(
-            &stream_config,
-            move |data: &mut [f32], _| fill_output(data, &pcm_cb, &paused_cb, &vol_cb, &vis_cb),
-            err_fn, None,
-        ),
+        _ => {
+            let mut eq2 = eq;
+            device.build_output_stream(
+                &stream_config,
+                move |data: &mut [f32], _| fill_output(data, &pcm_cb, &paused_cb, &vol_cb, &vis_cb, &mut eq2),
+                err_fn, None,
+            )
+        }
     };
 
     let stream = match stream {
@@ -281,6 +294,7 @@ fn fill_output(
     paused: &Arc<AtomicBool>,
     volume: &Arc<Mutex<f32>>,
     vis_buffer: &Arc<Mutex<VecDeque<f32>>>,
+    eq: &mut EqProcessor,
 ) {
     if paused.load(Ordering::SeqCst) {
         for s in output.iter_mut() { *s = 0.0; }
@@ -289,10 +303,19 @@ fn fill_output(
     let vol = *volume.lock().unwrap();
     let mut buf = pcm.lock().unwrap();
     let mut vis = vis_buffer.lock().unwrap();
+
+    // Pull the raw PCM out first so the equalizer sees the untouched signal.
     for sample in output.iter_mut() {
-        let s = buf.pop_front().unwrap_or(0.0) * vol;
-        *sample = s;
-        vis.push_back(s);
+        *sample = buf.pop_front().unwrap_or(0.0);
+    }
+
+    // Filter before the volume stage: EQ gain stays independent of the volume
+    // slider, and the visualizer taps what is actually being heard.
+    eq.process_in_place(output);
+
+    for sample in output.iter_mut() {
+        *sample *= vol;
+        vis.push_back(*sample);
         if vis.len() > 8192 {
             vis.pop_front();
         }

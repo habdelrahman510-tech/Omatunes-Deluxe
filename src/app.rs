@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use iced::widget::{button, container, column, row, text, Space, stack, scrollable, mouse_area};
+use iced::widget::{button, container, column, row, Space, stack, scrollable, mouse_area};
 use iced::{Alignment, Element, Length, Subscription, Task, Theme};
+
+use crate::ui::txt::text;
 use mpris_server::{LoopStatus, PlaybackStatus};
 
 use serde::{Serialize, Deserialize};
@@ -54,6 +56,7 @@ pub enum ViewMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RightPanelTab {
     Visualizer,
+    Equalizer,
     Statistics,
     Lyrics,
 }
@@ -280,6 +283,13 @@ pub enum Message {
     ContextColumnDragEnd,
     SelectPlaylistTab(PlaylistTab),
     ToggleRightPanelTab(RightPanelTab),
+
+    // Equalizer
+    EqToggled(bool),
+    EqBandChanged(usize, f32),
+    EqPreampChanged(f32),
+    EqPresetSelected(String),
+    EqReset,
     SelectVisualizerMode(usize),
     SelectRandomVisualizerMode,
     ToggleSongSearch,
@@ -643,6 +653,7 @@ pub struct AppState {
 
     pub playlist_tab: PlaylistTab,
     pub right_panel_tab: Option<RightPanelTab>,
+    pub equalizer: crate::audio::eq::EqSettings,
     pub visualizer_mode: usize,
     pub visualizer_sensitivity: f32,
     pub ghost_trail_length: usize,
@@ -925,13 +936,17 @@ impl AppState {
         let loaded_theme_name = crate::ui::theme::read_current_theme_name();
         let iced_theme = build_iced_theme();
 
-        let (db_sidebar_width, db_playlist_height, db_right_panel_width, db_right_panel_tab, db_player_height) = crate::db::get(|db| (
+        let (db_sidebar_width, db_playlist_height, db_right_panel_width, db_right_panel_tab, db_player_height, db_equalizer) = crate::db::get(|db| (
             db.sidebar_width,
             db.playlist_height,
             db.right_panel_width,
             db.right_panel_tab,
             db.player_height,
+            db.equalizer,
         ));
+
+        // Hand the persisted curve to the audio thread before it starts playing.
+        audio.eq.update(db_equalizer);
         
         crate::db::write(|db| {
             if db.playlist_order.is_empty() && !db.playlists.is_empty() {
@@ -1056,6 +1071,7 @@ impl AppState {
             hidden_artists_albums: crate::db::get(|db| db.hidden_artists_albums.clone()),
             playlist_tab: PlaylistTab::Playlists,
             right_panel_tab: db_right_panel_tab.and_then(|t| if t == RightPanelTab::Statistics { None } else { Some(t) }),
+            equalizer: db_equalizer,
             visualizer_mode: cfg.visualizer_mode,
             visualizer_sensitivity: cfg.visualizer_sensitivity,
             ghost_trail_length: cfg.ghost_trail_length,
@@ -1694,6 +1710,12 @@ impl AppState {
         }
     }
 
+
+    /// Publish the current curve to the audio thread and persist it.
+    fn commit_equalizer(&mut self) {
+        self.audio.eq.update(self.equalizer);
+        crate::db::write(|db| db.equalizer = self.equalizer);
+    }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
@@ -4845,6 +4867,45 @@ impl AppState {
                 Task::none()
             }
 
+            Message::EqToggled(enabled) => {
+                self.equalizer.enabled = enabled;
+                self.commit_equalizer();
+                Task::none()
+            }
+
+            Message::EqBandChanged(band, gain) => {
+                if let Some(slot) = self.equalizer.bands_db.get_mut(band) {
+                    *slot = gain.clamp(
+                        crate::audio::eq::GAIN_MIN,
+                        crate::audio::eq::GAIN_MAX,
+                    );
+                }
+                self.commit_equalizer();
+                Task::none()
+            }
+
+            Message::EqPreampChanged(preamp) => {
+                self.equalizer.preamp_db = preamp.clamp(
+                    crate::audio::eq::PREAMP_MIN,
+                    crate::audio::eq::PREAMP_MAX,
+                );
+                self.commit_equalizer();
+                Task::none()
+            }
+
+            Message::EqPresetSelected(name) => {
+                crate::audio::eq::apply_preset(&mut self.equalizer, &name);
+                self.commit_equalizer();
+                Task::none()
+            }
+
+            Message::EqReset => {
+                self.equalizer.bands_db = [0.0; crate::audio::eq::BAND_COUNT];
+                self.equalizer.preamp_db = 0.0;
+                self.commit_equalizer();
+                Task::none()
+            }
+
             Message::SelectVisualizerMode(mode) => {
                 self.visualizer_mode = mode % 9;
                 let mut cfg = crate::config::get();
@@ -6891,7 +6952,8 @@ impl AppState {
     }
 
     fn queue_popover_view(&self) -> Element<'_, Message> {
-        use iced::widget::{button, column, container, mouse_area, row, scrollable, text, Space, stack};
+        use iced::widget::{button, column, container, mouse_area, row, scrollable, Space, stack};
+        use crate::ui::txt::text;
         use iced::{Alignment, Length};
         use crate::ui::theme;
 
@@ -7716,6 +7778,8 @@ pub fn run() -> iced::Result {
     iced::application("omatunes", AppState::update, AppState::view)
         .subscription(AppState::subscription)
         .font(include_bytes!("../assets/JetBrainsMonoNerdFontMono-Regular.ttf"))
+        .font(include_bytes!("../assets/NotoSansArabic-Regular.ttf"))
+        .font(include_bytes!("../assets/NotoSansArabic-Bold.ttf"))
         .default_font(iced::Font {
             family: iced::font::Family::Name("JetBrainsMono Nerd Font Mono"),
             weight: iced::font::Weight::Normal,

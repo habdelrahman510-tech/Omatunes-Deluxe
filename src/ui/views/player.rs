@@ -1,6 +1,7 @@
 use std::collections::HashMap;
-use iced::widget::{column, container, image, row, text, Space, button, slider, mouse_area, stack, scrollable, tooltip, text_input};
+use iced::widget::{column, container, image, row, Space, button, slider, mouse_area, stack, scrollable, tooltip, text_input};
 use iced::{Alignment, Element, Length};
+use crate::ui::txt::{guard_lines, text};
 
 use crate::app::{AppState, Message, MIN_VOLUME_SLIDER_WIDTH, MAX_VOLUME_SLIDER_WIDTH, PLAYER_FIXED_WIDTH};
 use crate::audio::PlaybackState;
@@ -318,6 +319,7 @@ pub fn tab_strip(state: &AppState) -> Element<'_, Message> {
     container(
         column![
             tab_btn(crate::app::RightPanelTab::Visualizer, crate::ui::icons::ICON_VISUALIZER, "Visualizer"),
+            tab_btn(crate::app::RightPanelTab::Equalizer, crate::ui::icons::ICON_EQUALIZER, "Equalizer"),
             tab_btn(crate::app::RightPanelTab::Lyrics, crate::ui::icons::ICON_LYRICS, "Lyrics"),
         ]
         .width(Length::Fill)
@@ -546,6 +548,8 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                 .height(Length::Fill)
                 .into()
         }
+        crate::app::RightPanelTab::Equalizer => crate::ui::views::eq::view(state),
+
         crate::app::RightPanelTab::Lyrics => {
             let display_track = if !matches!(state.playback_state, crate::audio::PlaybackState::Stopped) {
                 state.current_track.as_ref()
@@ -652,10 +656,13 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                         .height(Length::Fill)
                         .into()
                     } else {
-                        // Unsynchronized lyrics: plain scrollable text
+                        // Unsynchronized lyrics: plain scrollable text. Guard
+                        // every line (not just the first) so RTL lines lay out
+                        // left-to-right and share the block's left margin with
+                        // the LTR lines; long lines wrap at the panel width.
                         scrollable(
                             container(
-                                text(track.lyrics.clone())
+                                text(guard_lines(&track.lyrics))
                                     .color(theme::text())
                                     .size(17)
                             )

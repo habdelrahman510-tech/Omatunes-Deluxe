@@ -122,6 +122,8 @@ pub struct OmatunesDb {
     #[serde(default)]
     pub right_panel_tab: Option<crate::app::RightPanelTab>,
     #[serde(default)]
+    pub equalizer: crate::audio::eq::EqSettings,
+    #[serde(default)]
     pub player_height: Option<f32>,
     #[serde(default)]
     pub last_view_mode: Option<crate::app::ViewMode>,
@@ -172,6 +174,7 @@ impl Default for OmatunesDb {
             playlist_height: None,
             right_panel_width: None,
             right_panel_tab: None,
+            equalizer: crate::audio::eq::EqSettings::default(),
             player_height: None,
             last_view_mode: None,
             last_selected_playlist: None,

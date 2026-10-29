@@ -1,5 +1,6 @@
-use iced::widget::{button, column, container, row, text, text_input, Space, checkbox, pick_list, scrollable};
+use iced::widget::{button, column, container, row, text_input, Space, checkbox, pick_list, scrollable};
 use iced::{Alignment, Element, Length};
+use crate::ui::txt::text;
 use crate::app::{Message, SmartPlaylistBuilderEvent};
 use crate::ui::theme;
 use crate::library::smart_playlist::{RuleField, RuleOperator, DateUnit, SmartPlaylistOrder, SmartPlaylistRule, SmartPlaylist};

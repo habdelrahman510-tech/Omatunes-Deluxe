@@ -1,5 +1,6 @@
-use iced::widget::{button, container, row, text, tooltip};
+use iced::widget::{button, container, row, tooltip};
 use iced::{Alignment, Border, Element};
+use crate::ui::txt::text;
 
 use crate::app::Message;
 use crate::audio::PlaybackState;

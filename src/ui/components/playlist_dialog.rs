@@ -1,5 +1,6 @@
-use iced::widget::{button, column, container, row, text, text_input, Space, pick_list};
+use iced::widget::{button, column, container, row, text_input, Space, pick_list};
 use iced::{Alignment, Element, Length};
+use crate::ui::txt::text;
 
 use crate::app::{Message, PlaylistDialogState, PlaylistDialogMode};
 use crate::ui::{icons, theme};

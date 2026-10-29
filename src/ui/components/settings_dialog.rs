@@ -1,5 +1,6 @@
-use iced::widget::{button, checkbox, column, container, pick_list, radio, row, scrollable, slider, text, text_input, Space};
+use iced::widget::{button, checkbox, column, container, pick_list, radio, row, scrollable, slider, text_input, Space};
 use iced::{Alignment, Element, Length};
+use crate::ui::txt::text;
 
 use crate::app::{Message, SettingsState, SettingsTab};
 use crate::ui::theme;
