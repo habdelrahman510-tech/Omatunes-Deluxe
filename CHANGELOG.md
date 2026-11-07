@@ -4,6 +4,49 @@ All notable changes to this build of Omatunes. This fork is maintained by
 [prof.dog](https://github.com/habdelrahman510-tech); the projects it descends from are
 credited in [README.md](README.md).
 
+## [1.2.2] — 2026-11-07
+
+### Added
+
+- **Open with omaTUNES.** Double-clicking a song in a file manager now plays
+  *that* song instead of resuming whatever was last playing.
+  - New `play <absolute path>` verb on the local control socket
+    (UDP `127.0.0.1:18888`).
+  - The `omatunes-open` helper is installed as the `audio/*` handler: it hands
+    the file to a running player, or starts the player with the file as its
+    argument.
+  - Files outside `music_dir` play too — their tags are read on demand, so the
+    title, artist and album still show.
+  - `omatunes /path/to/song.mp3` does the same from a terminal.
+
+### Fixed
+
+- **No more launching on a stray artist.** The saved browsing state is restored
+  as it was saved. When nothing was saved the track list opens on everything
+  rather than auto-selecting the first artist in the library.
+- **The browsing view survives a restart.** The selected playlist (including
+  smart playlists), the playlist tab and the folder are persisted when you
+  change them, not only when a track happens to start.
+- **Keyboard shortcuts no longer jam.** A focused text field consumed `Escape`
+  while reporting nothing to the app, so the song search and the tag editor
+  could not be dismissed from the keyboard and every shortcut afterwards
+  appeared dead until you pressed `Escape` a second time (or restarted).
+  `Escape` is now handled at the window level, so it always closes the thing you
+  are looking at. Clicking a track, artist, album, genre or playlist also hands
+  the keyboard back, so a search box can no longer keep it hostage.
+- **`/` actually opens the song search.** It used to focus a widget that was
+  not on screen until the search row was open, so the key did nothing at all.
+  The same was true of the song-search step in the `Tab` cycle, and the first
+  `Tab` on a fresh launch now starts at the sidebar search instead of doing
+  nothing.
+- **Character shortcuts respect modifiers.** `Ctrl+C` no longer opens the
+  new-playlist dialog, `Ctrl+E` the tag editor or `Ctrl+F` "liked"; chords are
+  left to the focused widget or the system.
+- **Clicking an album switches to the album view**, like clicking an artist or
+  a genre already did.
+- Queue "move down" no longer risks an out-of-bounds panic when the queue is
+  empty.
+
 ## [1.3.1] — 2026-10-29
 
 ### Fixed

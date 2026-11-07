@@ -1,0 +1,95 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (must already exist)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  BINARY: omatunes
+
+jobs:
+  build:
+    # 22.04 keeps the glibc floor at 2.35, so the binary runs on more distros
+    # than one built on the current Ubuntu runner.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config \
+            libasound2-dev libopus-dev \
+            libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libfontconfig1-dev libfreetype-dev \
+            libvulkan-dev libudev-dev \
+            libgl1-mesa-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release
+
+      - name: Test
+        run: cargo test --release --frozen
+
+      - name: Build
+        run: cargo build --release --frozen
+
+      - name: Package
+        id: pkg
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_TAG:-}" ]; then
+            version="${INPUT_TAG#v}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          mkdir -p dist
+          cp "target/release/$BINARY" "dist/$BINARY"
+          strip "dist/$BINARY"
+          tar -czf "dist/$BINARY-$version-x86_64-linux.tar.gz" -C dist "$BINARY"
+          ( cd dist && sha256sum "$BINARY-$version-x86_64-linux.tar.gz" "$BINARY" > SHA256SUMS )
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          ls -lh dist
+
+      - name: Smoke test
+        run: |
+          # No display here; the point is that it links and starts rather than
+          # dying on a missing shared library (which exits 127).
+          code=0
+          timeout 5 "./dist/$BINARY" || code=$?
+          echo "exit: $code"
+          if [ "$code" = 127 ]; then echo "binary failed to load"; exit 1; fi
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Omatunes Deluxe ${{ steps.pkg.outputs.version }}" \
+            --generate-notes \
+            dist/$BINARY \
+            "dist/$BINARY-${{ steps.pkg.outputs.version }}-x86_64-linux.tar.gz" \
+            dist/SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omatunes-${{ steps.pkg.outputs.version }}-x86_64-linux
+          path: dist/

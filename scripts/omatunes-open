@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# omatunes-open <file...> — hand a file to omaTUNES and play *that* file.
+#
+# A file manager launching omaTUNES directly cannot say which track it meant:
+# the player is single-instance and resumes whatever was last playing
+# (`db.last_track_path`). So this is installed as the `audio/*` handler instead.
+#
+#   player running  → send `play <path>` over the control socket; that track
+#                     starts and replaces the resumed one.
+#   player stopped  → start it with the path as its argument, which
+#                     `omatunes` itself plays once the library scan lands.
+set -uo pipefail
+
+PORT=18888
+ADDR=127.0.0.1
+
+[ "$#" -ge 1 ] || exit 0
+
+# The player has exactly one "now playing", so only the first real file matters.
+target=""
+for arg in "$@"; do
+  case "$arg" in
+    file://*)
+      p="${arg#file://}"
+      # Percent-decode: file:///Music/A%20B.mp3 -> /Music/A B.mp3
+      p="$(printf '%b' "${p//%/\\x}")"
+      ;;
+    *) p="$arg" ;;
+  esac
+  if [ -f "$p" ]; then
+    target="$(readlink -f -- "$p")"
+    break
+  fi
+done
+
+[ -n "$target" ] || exit 0
+
+# The receive buffer is 1024 bytes; refuse rather than hand over a path that
+# would be truncated and silently ignored.
+if [ "${#target}" -gt 900 ]; then
+  echo "omatunes-open: path too long to hand over" >&2
+  exit 1
+fi
+
+if pgrep -x omatunes >/dev/null 2>&1; then
+  printf 'play %s' "$target" > "/dev/udp/$ADDR/$PORT" 2>/dev/null
+  exit 0
+fi
+
+setsid omatunes "$target" >/dev/null 2>&1 </dev/null &
+disown 2>/dev/null || true
+exit 0

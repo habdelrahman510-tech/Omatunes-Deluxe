@@ -21,7 +21,8 @@ If you just want to get playing, the short version is: point `music_dir` in your
 14. [Theming](#theming)
 15. [Waybar Integration](#waybar-integration)
 16. [Quickshell Integration](#Quickshell-Player-Module) 
-17. [Keybinding Reference](#keybinding-reference)
+17. [Opening Files from a File Manager](#opening-files-from-a-file-manager)
+18. [Keybinding Reference](#keybinding-reference)
 
 ---
 
@@ -401,6 +402,50 @@ OmatunesWidget {}
 
 ---
 
+## Opening Files from a File Manager
+
+Double-clicking a song should play that song, and nothing else. omaTUNES ships a
+small helper, `omatunes-open`, to make that true. Point your file manager's
+`audio/*` handler at `omatunes.desktop` (the package installs it with
+`Exec=omatunes-open %F`, so usually there is nothing to do) and:
+
+- if omaTUNES is running, the helper sends `play <absolute path>` to its local
+  control socket and the clicked track starts;
+- if it is not running, the helper starts omaTUNES with the path as an argument,
+  and the player starts that file once its library scan finishes.
+
+Either way the file you clicked wins over whatever was playing last, including
+files outside your `music_dir` — their tags are read on the spot so they still
+show a title, artist and album.
+
+The same works from a terminal:
+
+```sh
+omatunes /path/to/song.mp3
+```
+
+`omatunes-open` accepts several files but only plays the first one; the player
+has a single "now playing".
+
+### The control socket
+
+The helper is a thin wrapper over a plain-text UDP socket the player listens on
+at `127.0.0.1:18888`. Scripts, widgets and keybinds can speak it directly:
+
+| Message | Effect |
+|---|---|
+| `play <absolute path>` | Play that file, replacing the current track |
+| `play-pause` | Toggle play/pause |
+| `next` / `prev` | Next / previous track |
+| `like` | Toggle like on the current track |
+| `shuffle` / `repeat` | Toggle shuffle / repeat |
+| `seek <seconds>` | Seek to an absolute position |
+
+Messages are single datagrams, so keep them under 1024 bytes — a path longer
+than that is rejected by `omatunes-open` rather than silently truncated.
+
+---
+
 ## Keybinding Reference
 
 | Key | Context | Action |
@@ -421,7 +466,7 @@ OmatunesWidget {}
 | `a` / `A` | Track List | Open Add to Playlist for selected track |
 | `/` | Player | Focus and clear the track search box |
 | `F5` | Player | Rescan your music library folder |
-| `Tab` | Player | Cycle focus: sidebar search → sidebar list → track list → song search → back to sidebar search |
+| `Tab` | Player | Cycle focus: the first press focuses the sidebar search, then sidebar list → track list → song search → back to the track list |
 | `Enter` | Dialog / Editor | Submit / save (or double-click to play a track) |
 | `Escape` | Dialog / Editor | Close whatever's open |
 | `]` | Player | Increase UI font scale |

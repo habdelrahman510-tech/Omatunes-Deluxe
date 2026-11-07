@@ -13,11 +13,12 @@ lyrics fixes described below. The original MIT notices are retained in [LICENSE]
 
 ## Why "Deluxe"
 
-This build carries upstream omaTUNES 1.2.1 and adds three things:
+This build carries upstream omaTUNES 1.2.1 and adds four things:
 
 - **A real DSP equalizer** — ten ISO bands of RBJ peaking biquads running inside the audio callback, sixteen presets, automatic headroom, and click-free bit-exact bypass.
 - **Proper Arabic and right-to-left support** — Noto Sans Arabic bundled, advanced shaping so letters join correctly, and a per-line direction guard, so Arabic metadata and lyrics read properly instead of scrambling.
 - **Lyrics fixes** — unsynchronized lyrics wrap at the panel width, and every RTL line keeps the correct margin, not just the first.
+- **Open with omaTUNES** — double-click a song in your file manager and *that* song plays. The old behaviour resumed whatever was last playing, which made picking a track from outside the player useless. Ships `omatunes-open` as the `audio/*` handler, plays files from outside your library too, and adds a `play <path>` verb to the local control socket.
 
 
 <p align="center">
@@ -42,6 +43,7 @@ This build carries upstream omaTUNES 1.2.1 and adds three things:
 - **Bulk Metadata Editing.** Select a stack of tracks, check only the fields you want to change, and apply edits across an entire album in one go — with autocomplete pulled straight from your existing library tags.
 - **Desktop & Quickshell Integration.** Full MPRIS2 D-Bus support, a ready-to-go Waybar module, and a native **Quickshell Player Module** featuring an interactive mini-player pop-up window with live timeline scrubbing, volume controls, liked status tracking, and active shuffle/repeat highlights.
 - **Non-Destructive Library Handling.** No forced re-organization, no renaming your folders, no importing into some walled-off library format. omaTUNES reads your music exactly where it already lives.
+- **It Opens What You Clicked.** Install `omatunes-open` as your `audio/*` handler and a double-click in your file manager starts *that* track — not the one that was last playing. Files from outside your library work too (their tags are read on the spot), `omatunes /path/to/song.mp3` does the same from a terminal, and the local control socket gained a `play <path>` verb for scripts and widgets.
 
 ---
 

@@ -138,6 +138,8 @@ pub struct OmatunesDb {
     #[serde(default)]
     pub last_selected_genre: Option<String>,
     #[serde(default)]
+    pub last_playlist_tab: Option<crate::app::PlaylistTab>,
+    #[serde(default)]
     pub last_track_path: Option<PathBuf>,
     #[serde(default)]
     pub last_queue_paths: Vec<PathBuf>,
@@ -182,6 +184,7 @@ impl Default for OmatunesDb {
             last_selected_artist: None,
             last_selected_album: None,
             last_selected_genre: None,
+            last_playlist_tab: None,
             last_track_path: None,
             last_queue_paths: Vec::default(),
             last_position_secs: 0,

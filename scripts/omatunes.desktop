@@ -4,10 +4,14 @@ Type=Application
 Name=omaTUNES
 GenericName=Music Player
 Comment=Native Wayland music player and library manager
-Exec=omatunes
+# %F (local files) rather than %U: the control socket wants filesystem paths.
+# omatunes-open plays the clicked file instead of resuming the last one.
+Exec=omatunes-open %F
+TryExec=omatunes-open
 Icon=omatunes
 Terminal=false
 StartupNotify=true
 StartupWMClass=omatunes
 Categories=AudioVideo;Audio;Player;
 Keywords=music;player;audio;library;playlist;mpris;omatunes;
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/opus;audio/x-vorbis+ogg;audio/x-flac;audio/x-wav;audio/wav;audio/vnd.wave;audio/x-m4a;audio/mp4;audio/aac;audio/x-aac;audio/aiff;audio/x-aiff;audio/webm;audio/x-matroska;audio/x-ms-wma;

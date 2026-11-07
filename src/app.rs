@@ -120,6 +120,57 @@ pub struct PlaylistDialogState {
     pub add_album: bool,
 }
 
+/// A file named on the command line, planted by `main()` before the app starts.
+/// It cannot be played immediately: `PlayPath` resolves against the library, and
+/// the library is still being scanned at that point. `AppState::new` takes it and
+/// the scan-complete arm fires it.
+static STARTUP_PATH: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+/// Ask for `path` to be playing once the library is loaded.
+pub fn set_startup_path(path: PathBuf) {
+    if let Ok(mut slot) = STARTUP_PATH.lock() {
+        *slot = Some(path);
+    }
+}
+
+fn take_startup_path() -> Option<PathBuf> {
+    STARTUP_PATH.lock().ok().and_then(|mut slot| slot.take())
+}
+
+/// A widget operation that strips keyboard focus from every focusable widget.
+///
+/// iced's `text_input` only blurs itself when it receives `Escape` or an
+/// explicit unfocus task; clicking somewhere else in the window does not
+/// release it. That is how a search box ends up swallowing every shortcut
+/// until the next `Escape`. Navigation clicks run [`blur_focus`] so the
+/// keyboard goes back to the window.
+struct BlurFocus;
+
+impl<T: Send + 'static> iced::advanced::widget::Operation<T> for BlurFocus {
+    fn container(
+        &mut self,
+        _id: Option<&iced::advanced::widget::Id>,
+        _bounds: iced::Rectangle,
+        operate_on_children: &mut dyn FnMut(&mut dyn iced::advanced::widget::Operation<T>),
+    ) {
+        operate_on_children(self);
+    }
+
+    fn focusable(
+        &mut self,
+        state: &mut dyn iced::advanced::widget::operation::Focusable,
+        _id: Option<&iced::advanced::widget::Id>,
+    ) {
+        if state.is_focused() {
+            state.unfocus();
+        }
+    }
+}
+
+fn blur_focus() -> Task<Message> {
+    iced::advanced::widget::operate(BlurFocus)
+}
+
 #[derive(Debug, Clone)]
 pub enum Message {
     SelectFolder(PathBuf),
@@ -127,6 +178,10 @@ pub enum Message {
 
     PlayTrack(Track),
     PlayTracks(Vec<Track>),
+    /// A path handed in from outside the app (file manager, `omatunes-open`).
+    /// Resolved against the library; if it is not in the library the file's own
+    /// tags are read so any audio file can be played on click.
+    PlayPath(std::path::PathBuf),
     PlayAlbum(String),
     ToggleAlbumPlayPause(String),
     PlayPause,
@@ -245,6 +300,8 @@ pub enum Message {
     OpenShortcuts,
     CloseShortcuts,
     KeyPressed(iced::keyboard::Key),
+    /// `Escape` observed at the window level, even when a widget captured it.
+    EscapePressed,
 
     DoubleClickTrack(Track),
     DoubleClickArtist(String),
@@ -471,7 +528,7 @@ pub enum SmartPlaylistBuilderEvent {
     Cancel,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlaylistTab {
     Playlists,
     Autoplaylists,
@@ -597,6 +654,8 @@ pub struct AppState {
 
     // Omatunes feature additions
     pub all_tracks: Arc<Vec<Track>>,
+    /// File requested on the command line, played when the first scan lands.
+    pending_play_path: Option<PathBuf>,
     pub search_query: String,
     pub filter_title: bool,
     pub filter_artist: bool,
@@ -1014,6 +1073,7 @@ impl AppState {
             loaded_theme_name,
             strings: crate::locale::get(),
             all_tracks: initial_all_tracks,
+            pending_play_path: take_startup_path(),
             search_query: String::new(),
             filter_title: true,
             filter_artist: true,
@@ -1150,12 +1210,13 @@ impl AppState {
                     db.last_selected_artist.clone(),
                     db.last_selected_album.clone(),
                     db.last_selected_genre.clone(),
+                    db.last_playlist_tab,
                     db.last_track_path.clone(),
                     db.last_queue_paths.clone(),
                     db.last_position_secs,
                 ));
 
-                if let (Some(vm), sel_playlist, sel_folder, sel_artist, sel_album, sel_genre, last_track, last_queue, last_pos) = saved {
+                if let (Some(vm), sel_playlist, sel_folder, sel_artist, sel_album, sel_genre, sel_tab, last_track, last_queue, last_pos) = saved {
                     let restore_vm = if vm == ViewMode::NowPlaying { ViewMode::Artists } else { vm };
                     state.view_mode = restore_vm;
                     state.last_browsing_view = restore_vm;
@@ -1164,13 +1225,13 @@ impl AppState {
                     state.selected_artist = sel_artist;
                     state.selected_album = sel_album;
                     state.selected_genre = sel_genre;
+                    state.playlist_tab = sel_tab.unwrap_or(PlaylistTab::Playlists);
 
-                    if state.selected_artist.is_none() {
-                        let artists_list = state.artists();
-                        if !artists_list.is_empty() {
-                            state.selected_artist = Some(artists_list[0].clone());
-                        }
-                    }
+                    // No auto-selection here. An empty saved selection means the
+                    // user was looking at all songs, not at the first artist in
+                    // the alphabet; inventing one is what made every launch
+                    // start on a stray artist.
+                    state.sanitize_browse_selection();
 
                     state.update_filtered_tracks();
 
@@ -1444,6 +1505,76 @@ impl AppState {
             pending_offset: 0.0,
             just_saved: HashSet::new(),
             removed_genres: Vec::new(),
+        });
+    }
+
+    /// Drops a restored selection that no longer exists (a deleted playlist, an
+    /// artist/album/genre that left with its files) so the track list falls back
+    /// to everything instead of restoring as an empty view.
+    fn sanitize_browse_selection(&mut self) {
+        if let Some(name) = self.selected_playlist.clone() {
+            let known = matches!(
+                name.as_str(),
+                "Liked Songs" | "Most Played" | "Recently Played" | "New Music"
+            ) || crate::db::get(|db| {
+                db.playlists.contains_key(&name) || db.smart_playlists.contains_key(&name)
+            });
+            if !known {
+                self.selected_playlist = None;
+            }
+        }
+
+        if let Some(artist) = self.selected_artist.clone() {
+            let exists = self.all_tracks.iter().any(|t| {
+                let a = if t.artist.trim().is_empty() { "Unknown Artist" } else { t.artist.as_str() };
+                a == artist
+            });
+            if !exists {
+                self.selected_artist = None;
+            }
+        }
+
+        if let Some(album) = self.selected_album.clone() {
+            let exists = self.all_tracks.iter().any(|t| {
+                let al = if t.album.trim().is_empty() { "Unknown Album" } else { t.album.as_str() };
+                al == album
+            });
+            if !exists {
+                self.selected_album = None;
+            }
+        }
+
+        if let Some(genre) = self.selected_genre.clone() {
+            let exists = self.all_tracks.iter().any(|t| {
+                t.genres().iter().any(|g| {
+                    let clean = if g.trim().is_empty() { "Unknown Genre" } else { g.trim() };
+                    clean == genre.as_str()
+                })
+            });
+            if !exists {
+                self.selected_genre = None;
+            }
+        }
+    }
+
+    /// Saves the browsing position immediately, so a restart lands where the
+    /// user left off even if no track was played in between.
+    fn persist_browse_state(&self) {
+        let vm = self.view_mode;
+        let tab = self.playlist_tab;
+        let playlist = self.selected_playlist.clone();
+        let folder = self.selected_folder.clone();
+        let artist = self.selected_artist.clone();
+        let album = self.selected_album.clone();
+        let genre = self.selected_genre.clone();
+        crate::db::write(|db| {
+            db.last_view_mode = Some(vm);
+            db.last_playlist_tab = Some(tab);
+            db.last_selected_playlist = playlist;
+            db.last_selected_folder = folder;
+            db.last_selected_artist = artist;
+            db.last_selected_album = album;
+            db.last_selected_genre = genre;
         });
     }
 
@@ -1724,7 +1855,8 @@ impl AppState {
                 self.selected_playlist = None;
                 self.search_query.clear();
                 self.update_filtered_tracks();
-                Task::none()
+                self.persist_browse_state();
+                blur_focus()
             }
 
             Message::FolderScanned(_, _) => {
@@ -1736,7 +1868,31 @@ impl AppState {
                 let anchor = Some(track.id);
                 self.maybe_shuffle_queue(anchor);
                 self.set_playing_context_from_current_view();
-                self.play_track_internal(track)
+                Task::batch([blur_focus(), self.play_track_internal(track)])
+            }
+
+            Message::PlayPath(path) => {
+                // Prefer the library copy: it carries the persisted like state and
+                // play counts. Fall back to reading the file's tags so a track from
+                // outside music_dir still starts instead of silently doing nothing.
+                let known = self.all_tracks.iter().find(|t| t.path == path).cloned();
+                let track = known.or_else(|| {
+                    let dir = path.parent()?;
+                    crate::library::scanner::scan_folder(dir)
+                        .into_iter()
+                        .find(|t| t.path == path)
+                });
+
+                match track {
+                    Some(track) => {
+                        self.queue = self.all_tracks.to_vec();
+                        let anchor = Some(track.id);
+                        self.maybe_shuffle_queue(anchor);
+                        self.set_playing_context_from_current_view();
+                        self.play_track_internal(track)
+                    }
+                    None => Task::none(),
+                }
             }
 
             Message::PlayTracks(tracks) => {
@@ -2606,7 +2762,8 @@ impl AppState {
                     }
                 }
                 self.update_filtered_tracks();
-                Task::none()
+                self.persist_browse_state();
+                blur_focus()
             }
 
             Message::SelectPlaylist(name) => {
@@ -2630,7 +2787,8 @@ impl AppState {
                 self.active_focus = Some(ActiveFocus::SidebarList);
                 self.search_query.clear();
                 self.update_filtered_tracks();
-                Task::none()
+                self.persist_browse_state();
+                blur_focus()
             }
 
             Message::OpenTagEditor(tracks) => {
@@ -3536,12 +3694,13 @@ impl AppState {
                         db.last_selected_artist.clone(),
                         db.last_selected_album.clone(),
                         db.last_selected_genre.clone(),
+                        db.last_playlist_tab,
                         db.last_track_path.clone(),
                         db.last_queue_paths.clone(),
                         db.last_position_secs,
                     ));
 
-                    if let (Some(vm), sel_playlist, sel_folder, sel_artist, sel_album, sel_genre, last_track, last_queue, last_pos) = saved {
+                    if let (Some(vm), sel_playlist, sel_folder, sel_artist, sel_album, sel_genre, sel_tab, last_track, last_queue, last_pos) = saved {
                         let restore_vm = if vm == ViewMode::NowPlaying { ViewMode::Artists } else { vm };
                         self.view_mode = restore_vm;
                         self.last_browsing_view = restore_vm;
@@ -3550,13 +3709,10 @@ impl AppState {
                         self.selected_artist = sel_artist;
                         self.selected_album = sel_album;
                         self.selected_genre = sel_genre;
+                        self.playlist_tab = sel_tab.unwrap_or(PlaylistTab::Playlists);
 
-                        if self.selected_artist.is_none() {
-                            let artists_list = self.artists();
-                            if !artists_list.is_empty() {
-                                self.selected_artist = Some(artists_list[0].clone());
-                            }
-                        }
+                        // See `AppState::new`: never invent a browsing selection.
+                        self.sanitize_browse_selection();
 
                         self.update_filtered_tracks();
 
@@ -3592,7 +3748,13 @@ impl AppState {
                     }
                 }
 
-                Task::none()
+                // A file named on the command line plays now that the library is
+                // loaded. Deliberately after the resume block above: the file the
+                // user asked for wins over whatever was last playing.
+                match self.pending_play_path.take() {
+                    Some(path) => Task::done(Message::PlayPath(path)),
+                    None => Task::none(),
+                }
             }
 
             Message::RescanLibrary => {
@@ -3675,8 +3837,9 @@ impl AppState {
                     Arc::make_mut(&mut self.selected_tracks).clear();
                     self.search_query.clear();
                     self.update_filtered_tracks();
+                    self.persist_browse_state();
                 }
-                Task::none()
+                blur_focus()
             }
 
             Message::ToggleQueuePopover => {
@@ -3755,7 +3918,8 @@ impl AppState {
                 self.active_focus = Some(ActiveFocus::SidebarList);
                 self.search_query.clear();
                 self.update_filtered_tracks();
-                Task::none()
+                self.persist_browse_state();
+                blur_focus()
             }
 
             Message::SelectAlbum(album) => {
@@ -3768,13 +3932,15 @@ impl AppState {
                 }
                 self.last_click_album = Some((album.clone(), now));
                 self.selected_album = Some(album);
+                self.view_mode = ViewMode::Albums;
                 self.selected_playlist = None;
                 self.selected_folder = None;
                 self.selected_artist = None;
                 self.active_focus = Some(ActiveFocus::SidebarList);
                 self.search_query.clear();
                 self.update_filtered_tracks();
-                Task::none()
+                self.persist_browse_state();
+                blur_focus()
             }
 
             Message::SortBy(col) => {
@@ -4223,7 +4389,7 @@ impl AppState {
 
                 let path = track.path.clone();
                 let track_id = track.id;
-                Task::perform(
+                Task::batch([blur_focus(), Task::perform(
                     async move {
                         tokio::task::spawn_blocking(move || {
                             crate::library::scanner::load_cover(&path)
@@ -4232,7 +4398,7 @@ impl AppState {
                         .unwrap_or(None)
                     },
                     move |cover| Message::CoverLoaded(track_id, cover),
-                )
+                )])
             }
 
             Message::CoverLoaded(track_id, cover_data) => {
@@ -4322,27 +4488,11 @@ impl AppState {
                             }
                         }
                     }
-                    Key::Named(Named::Escape) => {
-                        if self.show_period_breakdown.is_some() {
-                            return Task::done(Message::ClosePeriodBreakdown);
-                        } else if has_shortcuts {
-                            return Task::done(Message::CloseShortcuts);
-                        } else if has_playlist_dialog {
-                            return Task::done(Message::ClosePlaylistDialog);
-                        } else if has_tag_editor {
-                            return Task::done(Message::CloseTagEditor);
-                        } else if has_context_menu {
-                            return Task::done(Message::ToggleContextMenu(None));
-                        } else if self.show_settings.is_some() {
-                            return Task::done(Message::CloseSettings);
-                        } else if self.show_queue_popover {
-                            return Task::done(Message::CloseQueuePopover);
-                        } else if self.show_song_search {
-                            return Task::done(Message::ToggleSongSearch);
-                        } else if self.show_sidebar_search || !self.sidebar_search.is_empty() {
-                            return Task::done(Message::ToggleSidebarSearch);
-                        }
-                    }
+                    // `Escape` never reaches this handler while a text field has
+                    // focus: `text_input` captures the key and blurs itself
+                    // without telling the app. It is handled at window level by
+                    // `Message::EscapePressed` instead.
+                    Key::Named(Named::Escape) => {}
                     Key::Named(Named::Tab) => {
                         if has_tag_editor {
                             if let Some(ref mut state) = self.show_tag_editor {
@@ -4389,7 +4539,12 @@ impl AppState {
                                 return iced::widget::text_input::focus(iced::widget::text_input::Id::new(fields[next].clone()));
                             }
                         } else if !has_playlist_dialog && !has_shortcuts && !has_context_menu {
-                            if self.active_focus == Some(ActiveFocus::SidebarSearch) {
+                            if self.active_focus.is_none() {
+                                // Nothing has been clicked yet (fresh launch): the
+                                // documented cycle starts at the sidebar search.
+                                self.active_focus = Some(ActiveFocus::SidebarSearch);
+                                return iced::widget::text_input::focus(iced::widget::text_input::Id::new("sidebar_search_input"));
+                            } else if self.active_focus == Some(ActiveFocus::SidebarSearch) {
                                 self.active_focus = Some(ActiveFocus::SidebarList);
                                 match self.view_mode {
                                     ViewMode::Artists => {
@@ -4445,6 +4600,9 @@ impl AppState {
                                 return Task::none();
                             } else if self.active_focus == Some(ActiveFocus::Tracklist) {
                                 self.active_focus = Some(ActiveFocus::SongSearch);
+                                // Focusing a widget that is not mounted does
+                                // nothing; the search row has to be open.
+                                self.show_song_search = true;
                                 return iced::widget::text_input::focus(iced::widget::text_input::Id::new("song_search_input"));
                             }
                         }
@@ -4463,6 +4621,12 @@ impl AppState {
                         if has_tag_editor && (self.modifiers.control() || self.modifiers.command()) && c.to_lowercase() == "v" {
                             return Task::done(Message::PasteCoverImage);
                         }
+                        // Character shortcuts are plain-key shortcuts. Without
+                        // this guard Ctrl+C opens the new-playlist dialog,
+                        // Ctrl+E the tag editor, Ctrl+F "liked", and so on.
+                        if self.modifiers.control() || self.modifiers.command() || self.modifiers.alt() {
+                            return Task::none();
+                        }
                         if !has_playlist_dialog && !has_tag_editor {
                             match c.as_str() {
                                 "n" | "N" => return Task::done(Message::NextTrack),
@@ -4474,6 +4638,10 @@ impl AppState {
                                 "+" | "=" => return Task::done(Message::VolumeStep(vol)),
                                 "-"       => return Task::done(Message::VolumeStep(-vol)),
                                 "/" => {
+                                    // The input only exists while the search row
+                                    // is open, so focusing it without opening
+                                    // the row did precisely nothing.
+                                    self.show_song_search = true;
                                     self.active_focus = Some(ActiveFocus::SongSearch);
                                     self.search_query.clear();
                                     self.update_filtered_tracks();
@@ -4492,12 +4660,43 @@ impl AppState {
                 Task::none()
             }
 
+            Message::EscapePressed => {
+                // Handled here rather than in `KeyPressed` because a focused
+                // `text_input` captures `Escape`, blurs itself and reports
+                // nothing at all. Listening at window level means one press
+                // always closes whatever is open, and the keyboard is released
+                // instead of staying stuck inside an invisible field.
+                let close = if self.show_period_breakdown.is_some() {
+                    Task::done(Message::ClosePeriodBreakdown)
+                } else if self.show_shortcuts {
+                    Task::done(Message::CloseShortcuts)
+                } else if self.playlist_dialog.is_some() {
+                    Task::done(Message::ClosePlaylistDialog)
+                } else if self.show_tag_editor.is_some() {
+                    Task::done(Message::CloseTagEditor)
+                } else if self.show_context_menu.is_some() {
+                    Task::done(Message::ToggleContextMenu(None))
+                } else if self.show_settings.is_some() {
+                    Task::done(Message::CloseSettings)
+                } else if self.show_queue_popover {
+                    Task::done(Message::CloseQueuePopover)
+                } else if self.show_song_search {
+                    Task::done(Message::ToggleSongSearch)
+                } else {
+                    // The sidebar search bar is always mounted, so it can hold
+                    // focus without anything visibly open. Escape is meant to
+                    // hand the keyboard back to the window.
+                    Task::none()
+                };
+                Task::batch([close, blur_focus()])
+            }
+
             Message::DoubleClickTrack(track) => {
                 self.selected_track = Some(track.clone());
                 self.queue = (*self.tracks).clone();
                 self.maybe_shuffle_queue(Some(track.id));
                 self.set_playing_context_from_current_view();
-                self.play_track_internal(track)
+                Task::batch([blur_focus(), self.play_track_internal(track)])
             }
 
             Message::DoubleClickArtist(artist_name) => {
@@ -4669,7 +4868,8 @@ impl AppState {
                 self.active_focus = Some(ActiveFocus::SidebarList);
                 self.search_query.clear();
                 self.update_filtered_tracks();
-                Task::none()
+                self.persist_browse_state();
+                blur_focus()
             }
 
             Message::DoubleClickGenre(genre_name) => {
@@ -5943,7 +6143,7 @@ impl AppState {
             }
 
             Message::MoveQueueTrackDown(index) => {
-                if index < self.queue.len() - 1 {
+                if index + 1 < self.queue.len() {
                     self.queue.swap(index, index + 1);
                     let queue_paths: Vec<PathBuf> = self.queue.iter().map(|t| t.path.clone()).collect();
                     crate::db::write(|db| {
@@ -7300,6 +7500,16 @@ impl AppState {
             iced::keyboard::on_key_press(|key, _mods| {
                 Some(Message::KeyPressed(key))
             }),
+            // `on_key_press` only sees events no widget captured, and a focused
+            // text_input captures `Escape` for itself. Watch it at window level
+            // so the first press always closes the panel the user is looking at.
+            iced::event::listen_with(|event, _, _| match event {
+                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                    ..
+                }) => Some(Message::EscapePressed),
+                _ => None,
+            }),
             iced::event::listen_with(|event, _, _| {
                 match event {
                     iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(mods)) => {
@@ -7420,6 +7630,18 @@ impl AppState {
                             if msg_str.starts_with("seek ") {
                                 if let Ok(secs) = msg_str[5..].trim().parse::<u64>() {
                                     return Some((Message::Seek(std::time::Duration::from_secs(secs)), Some(s)));
+                                }
+                            }
+                            // `play <absolute path>` — used by omatunes-open so a file
+                            // picked in the file manager plays *that* file rather than
+                            // resuming whatever was last playing.
+                            if let Some(rest) = msg_str.strip_prefix("play ") {
+                                let p = rest.trim();
+                                if !p.is_empty() {
+                                    return Some((
+                                        Message::PlayPath(std::path::PathBuf::from(p)),
+                                        Some(s),
+                                    ));
                                 }
                             }
                             match msg_str {
@@ -7639,6 +7861,7 @@ impl AppState {
             db.last_selected_artist = self.selected_artist.clone();
             db.last_selected_album = self.selected_album.clone();
             db.last_selected_genre = self.selected_genre.clone();
+            db.last_playlist_tab = Some(self.playlist_tab);
         });
 
         crate::db::add_to_recently_played(track.path.clone());
