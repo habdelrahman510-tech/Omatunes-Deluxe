@@ -9,11 +9,11 @@ license=('MIT')
 depends=('glibc' 'gcc-libs' 'alsa-lib' 'opus' 'wayland' 'libxkbcommon' 'fontconfig' 'freetype2' 'vulkan-icd-loader' 'hicolor-icon-theme')
 makedepends=('cargo' 'rust' 'pkgconf')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('483dee1c81e23f9c4e5b73ceb1662f6336913cf8604b1b9158a6f9fd95102ab5')
+sha256sums=('52d076da6a5d98ccd1cff68b2ded56623960a6cf6fbca3d19e76367df1bb0fc3')
 
 build() {
   cd "Omatunes-Deluxe-$pkgver"
-  cargo build --frozen --release
+  cargo build --locked --release
 }
 
 check() {
@@ -21,7 +21,7 @@ check() {
   # --lib: the unit tests all live in the library. Without it cargo also builds
   # every [[bin]] target (test_opus_read, test_scan_full, ...) just to run the
   # same fifteen tests, which doubles the package build time for nothing.
-  cargo test --frozen --release --lib
+  cargo test --locked --release --lib
 }
 
 package() {
