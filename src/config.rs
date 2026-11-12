@@ -148,6 +148,11 @@ pub struct Config {
     pub depth_warp_speed: f32,
     #[serde(default = "default_kaleidoscope_axes")]
     pub kaleidoscope_axes: usize,
+    /// Crossfade length on automatic track changes; zero means gapless.
+    #[serde(default)]
+    pub crossfade_secs: f32,
+    #[serde(default)]
+    pub replaygain: crate::audio::ReplayGainMode,
 }
 
 impl Default for Config {
@@ -177,6 +182,8 @@ impl Default for Config {
             aurora_preset: 0,
             depth_warp_speed: 1.0,
             kaleidoscope_axes: 8,
+            crossfade_secs: 0.0,
+            replaygain: crate::audio::ReplayGainMode::Off,
         }
     }
 }

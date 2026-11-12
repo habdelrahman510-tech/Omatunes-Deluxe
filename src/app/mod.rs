@@ -413,6 +413,8 @@ pub enum Message {
     SettingsAuroraPresetChanged(usize),
     SettingsDepthWarpSpeedChanged(f32),
     SettingsKaleidoscopeAxesChanged(usize),
+    SettingsCrossfadeChanged(f32),
+    SettingsReplayGainChanged(crate::audio::ReplayGainMode),
     PickMusicFolder,
     MusicFolderPicked(Option<std::path::PathBuf>),
     PickCoverImage,
@@ -496,6 +498,8 @@ pub struct SettingsState {
     pub aurora_preset: usize,
     pub depth_warp_speed: f32,
     pub kaleidoscope_axes: usize,
+    pub crossfade_secs: f32,
+    pub replaygain: crate::audio::ReplayGainMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -723,6 +727,11 @@ pub struct AppState {
     pub playlist_tab: PlaylistTab,
     pub right_panel_tab: Option<RightPanelTab>,
     pub equalizer: crate::audio::eq::EqSettings,
+    pub crossfade_secs: f32,
+    pub replaygain: crate::audio::ReplayGainMode,
+    /// Path already handed to the engine as the next deck, so we don't
+    /// re-issue the same preload on every progress tick.
+    preloaded_path: Option<PathBuf>,
     pub visualizer_mode: usize,
     pub visualizer_sensitivity: f32,
     pub ghost_trail_length: usize,
@@ -867,6 +876,8 @@ impl AppState {
 
         // Hand the persisted curve to the audio thread before it starts playing.
         audio.eq.update(db_equalizer);
+        audio.send(AudioCommand::SetCrossfade(cfg.crossfade_secs));
+        audio.send(AudioCommand::SetReplayGain(cfg.replaygain));
 
         crate::db::write(|db| {
             if db.playlist_order.is_empty() && !db.playlists.is_empty() {
@@ -1010,6 +1021,9 @@ impl AppState {
                 }
             }),
             equalizer: db_equalizer,
+            crossfade_secs: cfg.crossfade_secs,
+            replaygain: cfg.replaygain,
+            preloaded_path: None,
             visualizer_mode: cfg.visualizer_mode,
             visualizer_sensitivity: cfg.visualizer_sensitivity,
             ghost_trail_length: cfg.ghost_trail_length,
@@ -1582,6 +1596,10 @@ impl AppState {
                             self.position = position;
                             self.duration = duration;
                             self.send_mpris(MprisUpdate::Position(position));
+                            // Keep the idle deck fed. The engine ignores a
+                            // repeat, and we skip if the target is unchanged,
+                            // so this is safe to call every tick.
+                            self.preload_next();
 
                             let current_secs = position.as_secs();
                             let old_secs = crate::db::get(|db| db.last_position_secs);
@@ -1880,6 +1898,9 @@ impl AppState {
                             }
                         }
                         AudioEvent::Error(e) => eprintln!("Audio error: {e}"),
+                        AudioEvent::Spliced { path } => {
+                            tasks.push(self.on_spliced(path));
+                        }
                         AudioEvent::Playing { .. } => {
                             self.playback_state = PlaybackState::Playing;
                         }
@@ -4224,6 +4245,8 @@ impl AppState {
                     aurora_preset: cfg.aurora_preset,
                     depth_warp_speed: cfg.depth_warp_speed,
                     kaleidoscope_axes: cfg.kaleidoscope_axes,
+                    crossfade_secs: cfg.crossfade_secs,
+                    replaygain: cfg.replaygain,
                 });
                 self.show_shortcuts = false;
                 Task::none()
@@ -5292,6 +5315,8 @@ impl AppState {
                     aurora_preset: cfg.aurora_preset,
                     depth_warp_speed: cfg.depth_warp_speed,
                     kaleidoscope_axes: cfg.kaleidoscope_axes,
+                    crossfade_secs: cfg.crossfade_secs,
+                    replaygain: cfg.replaygain,
                 });
                 Task::none()
             }
@@ -5397,6 +5422,8 @@ impl AppState {
                     cfg.aurora_preset = state.aurora_preset;
                     cfg.depth_warp_speed = state.depth_warp_speed;
                     cfg.kaleidoscope_axes = state.kaleidoscope_axes;
+                    cfg.crossfade_secs = state.crossfade_secs;
+                    cfg.replaygain = state.replaygain;
 
                     self.visualizer_sensitivity = state.visualizer_sensitivity;
                     self.ghost_trail_length = state.ghost_trail_length;
@@ -5820,6 +5847,25 @@ impl AppState {
                 if let Some(ref mut state) = self.show_settings {
                     state.kaleidoscope_axes = val;
                 }
+                Task::none()
+            }
+
+            Message::SettingsCrossfadeChanged(val) => {
+                let clamped = val.clamp(0.0, 12.0);
+                if let Some(ref mut state) = self.show_settings {
+                    state.crossfade_secs = clamped;
+                }
+                self.crossfade_secs = clamped;
+                self.audio.send(AudioCommand::SetCrossfade(clamped));
+                Task::none()
+            }
+
+            Message::SettingsReplayGainChanged(mode) => {
+                if let Some(ref mut state) = self.show_settings {
+                    state.replaygain = mode;
+                }
+                self.replaygain = mode;
+                self.audio.send(AudioCommand::SetReplayGain(mode));
                 Task::none()
             }
 

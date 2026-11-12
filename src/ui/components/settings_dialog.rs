@@ -383,6 +383,69 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                     ].align_y(Alignment::Center),
                     Space::with_height(6),
                     row![vol_slider, Space::with_width(12), vol_label].align_y(Alignment::Center),
+                    Space::with_height(20),
+                    section_header("Transitions"),
+                    Space::with_height(8),
+                    row![
+                        text(ICON_SLIDERS)
+                            .font(NERD_FONT_MONO)
+                            .size(14)
+                            .color(theme::overlay0()),
+                        Space::with_width(6),
+                        field_label("Crossfade"),
+                    ]
+                    .align_y(Alignment::Center),
+                    Space::with_height(6),
+                    row![
+                        slider(0.0..=12.0f32, state.crossfade_secs, Message::SettingsCrossfadeChanged)
+                            .step(0.5),
+                        Space::with_width(12),
+                        text(if state.crossfade_secs < 0.05 {
+                            "Gapless".to_string()
+                        } else {
+                            format!("{:.1}s", state.crossfade_secs)
+                        })
+                        .size(12)
+                        .color(theme::text()),
+                    ]
+                    .align_y(Alignment::Center),
+                    Space::with_height(6),
+                    text("Zero overlaps tracks sample-exactly. Above zero, automatic changes fade out and in.")
+                        .size(11)
+                        .color(theme::overlay0()),
+                    Space::with_height(20),
+                    section_header("Loudness"),
+                    Space::with_height(8),
+                    field_label("ReplayGain"),
+                    Space::with_height(6),
+                    column![
+                        radio(
+                            "Off",
+                            crate::audio::ReplayGainMode::Off,
+                            Some(state.replaygain),
+                            Message::SettingsReplayGainChanged
+                        )
+                        .spacing(8),
+                        radio(
+                            "Track",
+                            crate::audio::ReplayGainMode::Track,
+                            Some(state.replaygain),
+                            Message::SettingsReplayGainChanged
+                        )
+                        .spacing(8),
+                        radio(
+                            "Album",
+                            crate::audio::ReplayGainMode::Album,
+                            Some(state.replaygain),
+                            Message::SettingsReplayGainChanged
+                        )
+                        .spacing(8),
+                    ]
+                    .spacing(4),
+                    Space::with_height(6),
+                    text("Uses ReplayGain tags when present, otherwise omaTUNES measures the file once and caches the result.")
+                        .size(11)
+                        .color(theme::overlay0()),
                     Space::with_height(16),
                     section_header("Per-Context Defaults"),
                     Space::with_height(6),

@@ -1,6 +1,19 @@
+//! Audio output engine.
+//!
+//! Two decks ("current" and "next") feed one cpal callback. The app decides
+//! what comes next and issues [`AudioCommand::Preload`]; the engine splices or
+//! crossfades into it at the sample boundary, so a track change no longer goes
+//! through a stop/start cycle and no longer truncates the tail of the previous
+//! track.
+//!
+//! Everything the callback needs lives behind one mutex: the decks, the fade
+//! position, the volume and the paused flag. Decoders write into per-deck ring
+//! buffers that the callback drains; nothing in the callback allocates or
+//! blocks.
+
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -18,9 +31,17 @@ use symphonia::core::units::Time as SymphoniaTime;
 use tokio::sync::mpsc;
 
 use crate::audio::eq::{EqHandle, EqProcessor, EqSettings};
+use crate::audio::loudness::{self, ReplayGainMode};
 
 const OUTPUT_RATE: u32 = 48000;
 const OUTPUT_CHANNELS: u16 = 2;
+/// One second of stereo audio, the most a decoder may run ahead of playback.
+const BUFFER_SAMPLES: usize = OUTPUT_RATE as usize * 2;
+/// How often the mixer reports position to the UI.
+const PROGRESS_FRAMES: u64 = OUTPUT_RATE as u64 / 10;
+/// Short fade applied when a track is started or seeked by hand, so a manual
+/// jump never clicks.
+const FADE_IN_FRAMES: u64 = OUTPUT_RATE as u64 * 60 / 1000;
 
 fn sync_system_volume(volume: f32) {
     let vol_pct = format!("{}%", (volume * 100.0).round() as u32);
@@ -63,13 +84,16 @@ pub enum PlaybackState {
 #[derive(Debug)]
 pub enum AudioCommand {
     Play(PathBuf),
+    /// Queue the next track. The engine starts it at the sample boundary
+    /// (gapless) or fades into it when a crossfade is configured.
+    Preload(Option<PathBuf>),
     Pause,
     Resume,
     Stop,
     Seek(Duration),
     SetVolume(f32),
-    Next,
-    Previous,
+    SetCrossfade(f32),
+    SetReplayGain(ReplayGainMode),
 }
 
 #[derive(Debug, Clone)]
@@ -84,7 +108,13 @@ pub enum AudioEvent {
         duration: Duration,
     },
     Error(String),
+    /// The engine ran out of audio with nothing preloaded.
     TrackEnded,
+    /// Gapless/crossfade advance: the app should update its idea of the
+    /// current track without issuing a new Play.
+    Spliced {
+        path: PathBuf,
+    },
 }
 
 pub struct AudioPlayer {
@@ -119,7 +149,186 @@ impl AudioPlayer {
     }
 }
 
-// ── Audio thread ───────────────────────────────────────────────────────────────
+// ── Sources ───────────────────────────────────────────────────────────────────
+
+/// One playable stream: a path, a ring buffer fed by a decoder thread, and the
+/// bookkeeping the mixer needs to know where it is.
+#[derive(Clone)]
+struct Source {
+    path: PathBuf,
+    buf: Arc<Mutex<VecDeque<f32>>>,
+    done: Arc<AtomicBool>,
+    cancel: Arc<AtomicBool>,
+    total_frames: Arc<AtomicU64>,
+    gain: f32,
+    /// Frames already handed to the callback.
+    played: u64,
+    /// Frame offset this source started at (non-zero after a seek).
+    start_frame: u64,
+    /// Frames at the last Progress event.
+    reported: u64,
+    ended: bool,
+}
+
+impl Source {
+    fn new(path: PathBuf, gain: f32, start_frame: u64) -> Self {
+        Self {
+            path,
+            buf: Arc::new(Mutex::new(VecDeque::with_capacity(BUFFER_SAMPLES))),
+            done: Arc::new(AtomicBool::new(false)),
+            cancel: Arc::new(AtomicBool::new(false)),
+            total_frames: Arc::new(AtomicU64::new(0)),
+            gain,
+            played: 0,
+            start_frame,
+            reported: 0,
+            ended: false,
+        }
+    }
+
+    fn stop(&self) {
+        self.cancel.store(true, Ordering::SeqCst);
+    }
+
+    /// Pop one stereo frame. Missing samples read as silence.
+    #[inline]
+    fn pop_frame(&self) -> (f32, f32) {
+        let mut buf = self.buf.lock().unwrap();
+        let l = buf.pop_front().unwrap_or(0.0);
+        let r = buf.pop_front().unwrap_or(0.0);
+        drop(buf);
+        (l * self.gain, r * self.gain)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.buf.lock().unwrap().is_empty()
+    }
+
+    fn frames_done(&self) -> bool {
+        self.done.load(Ordering::SeqCst) && self.is_empty()
+    }
+
+    fn position(&self) -> Duration {
+        Duration::from_secs_f64((self.start_frame + self.played) as f64 / OUTPUT_RATE as f64)
+    }
+
+    fn duration(&self) -> Duration {
+        let total = self.total_frames.load(Ordering::SeqCst);
+        if total > 0 {
+            Duration::from_secs_f64(total as f64 / OUTPUT_RATE as f64)
+        } else {
+            // Unknown length (Opus/OGG): mirror position so the UI stays sane.
+            self.position()
+        }
+    }
+}
+
+// ── Mixer ────────────────────────────────────────────────────────────────────
+
+struct Mixer {
+    current: Option<Source>,
+    next: Option<Source>,
+    crossfade_frames: u64,
+    fade_frames: u64,
+    fading: bool,
+    paused: bool,
+    volume: f32,
+    /// Frames left in the short anti-click ramp started by a manual jump.
+    fade_in_left: u64,
+    fade_in_total: u64,
+    tx: mpsc::UnboundedSender<AudioEvent>,
+    /// Events produced during a callback, sent once the lock is released.
+    pending: Vec<AudioEvent>,
+}
+
+impl Mixer {
+    fn emit(&mut self, event: AudioEvent) {
+        self.pending.push(event);
+    }
+
+    fn flush_events(&mut self) {
+        for event in self.pending.drain(..) {
+            let _ = self.tx.send(event);
+        }
+    }
+
+    fn start_fade_if_due(&mut self) {
+        if self.fading || self.crossfade_frames == 0 {
+            return;
+        }
+        let Some(current) = self.current.as_ref() else {
+            return;
+        };
+        // Do not start a fade into a deck that has not produced audio yet:
+        // the decoder may still be opening the file.
+        let ready = self
+            .next
+            .as_ref()
+            .is_some_and(|next| !next.is_empty() && !next.frames_done());
+        if !ready {
+            return;
+        }
+        let total = current.total_frames.load(Ordering::SeqCst);
+        if total == 0 {
+            return;
+        }
+        let fade_from = total.saturating_sub(self.crossfade_frames);
+        if current.played >= fade_from {
+            self.fading = true;
+            self.fade_frames = 0;
+        }
+    }
+
+    #[inline]
+    fn fade_gains(&self) -> (f32, f32) {
+        let progress = if self.crossfade_frames == 0 {
+            1.0
+        } else {
+            (self.fade_frames as f32 / self.crossfade_frames as f32).clamp(0.0, 1.0)
+        };
+        // Equal power, so the sum never dips in the middle of the fade.
+        let angle = progress * std::f32::consts::FRAC_PI_2;
+        (angle.cos(), angle.sin())
+    }
+
+    #[inline]
+    fn take_fade_in(&mut self) -> f32 {
+        if self.fade_in_left == 0 {
+            return 1.0;
+        }
+        let remaining = self.fade_in_left as f32 / self.fade_in_total.max(1) as f32;
+        let progress = 1.0 - remaining;
+        // Smoothstep, so the ramp has no corners at either end.
+        let gain = progress * progress * (3.0 - 2.0 * progress);
+        self.fade_in_left -= 1;
+        gain
+    }
+
+    fn arm_fade_in(&mut self) {
+        self.fade_in_total = FADE_IN_FRAMES;
+        self.fade_in_left = FADE_IN_FRAMES;
+    }
+
+    /// Swap decks. `announce` tells the app that the change came from the
+    /// engine rather than from a `Play` it issued itself.
+    fn promote_next(&mut self, announce: bool) {
+        let Some(next) = self.next.take() else {
+            return;
+        };
+        if let Some(old) = self.current.take() {
+            old.stop();
+        }
+        self.fading = false;
+        self.fade_frames = 0;
+        let path = next.path.clone();
+        self.current = Some(next);
+        if announce {
+            self.emit(AudioEvent::Spliced { path });
+        }
+    }
+}
+
+// ── Audio thread ─────────────────────────────────────────────────────────────
 
 fn audio_thread(
     mut cmd_rx: mpsc::UnboundedReceiver<AudioCommand>,
@@ -147,35 +356,34 @@ fn audio_thread(
         buffer_size: cpal::BufferSize::Default,
     };
 
-    let pcm: Arc<Mutex<VecDeque<f32>>> = Arc::new(Mutex::new(VecDeque::with_capacity(
-        OUTPUT_RATE as usize * 2,
-    )));
+    let mixer = Arc::new(Mutex::new(Mixer {
+        current: None,
+        next: None,
+        crossfade_frames: 0,
+        fade_frames: 0,
+        fading: false,
+        paused: false,
+        volume: 0.8,
+        fade_in_left: 0,
+        fade_in_total: 0,
+        tx: event_tx.clone(),
+        pending: Vec::new(),
+    }));
 
-    // Shared between fill_output and the command loop
-    let paused: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-    let shared_vol: Arc<Mutex<f32>> = Arc::new(Mutex::new(0.8));
-
-    let pcm_cb = pcm.clone();
-    let paused_cb = paused.clone();
-    let vol_cb = shared_vol.clone();
-    let vis_cb = sample_buffer.clone();
     let err_fn = |e| eprintln!("Erro stream: {e}");
-
     let eq = EqProcessor::new(eq_handle, OUTPUT_RATE as f32);
 
     let stream = match sample_format {
         SampleFormat::I16 => {
-            let pcm2 = pcm.clone();
-            let paused2 = paused.clone();
-            let vol2 = shared_vol.clone();
-            let vis2 = sample_buffer.clone();
-            let mut eq2 = eq;
+            let mixer_cb = mixer.clone();
+            let vis = sample_buffer.clone();
+            let mut eq = eq;
             let mut scratch: Vec<f32> = Vec::new();
             device.build_output_stream(
                 &stream_config,
                 move |data: &mut [i16], _| {
                     scratch.resize(data.len(), 0.0);
-                    fill_output(&mut scratch, &pcm2, &paused2, &vol2, &vis2, &mut eq2);
+                    fill_output(&mut scratch, &mixer_cb, &vis, &mut eq);
                     for (d, s) in data.iter_mut().zip(scratch.iter()) {
                         *d = cpal::Sample::from_sample(*s);
                     }
@@ -185,12 +393,12 @@ fn audio_thread(
             )
         }
         _ => {
-            let mut eq2 = eq;
+            let mixer_cb = mixer.clone();
+            let vis = sample_buffer.clone();
+            let mut eq = eq;
             device.build_output_stream(
                 &stream_config,
-                move |data: &mut [f32], _| {
-                    fill_output(data, &pcm_cb, &paused_cb, &vol_cb, &vis_cb, &mut eq2)
-                },
+                move |data: &mut [f32], _| fill_output(data, &mixer_cb, &vis, &mut eq),
                 err_fn,
                 None,
             )
@@ -210,140 +418,269 @@ fn audio_thread(
         return;
     }
 
-    let mut cancel: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-    let mut current_path: Option<PathBuf> = None;
-
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap();
 
+    let mut replaygain = ReplayGainMode::Off;
+
     rt.block_on(async {
-        loop {
-            match cmd_rx.recv().await {
-                None => break,
-
-                Some(AudioCommand::Stop) => {
-                    cancel.store(true, Ordering::SeqCst);
-                    paused.store(false, Ordering::SeqCst);
-                    pcm.lock().unwrap().clear();
-                    current_path = None;
-                    let _ = event_tx.send(AudioEvent::Stopped);
-                }
-
-                Some(AudioCommand::Pause) => {
-                    paused.store(true, Ordering::SeqCst);
-                    let _ = event_tx.send(AudioEvent::Paused);
-                }
-
-                Some(AudioCommand::Resume) => {
-                    paused.store(false, Ordering::SeqCst);
-                    if let Some(ref path) = current_path {
-                        let _ = event_tx.send(AudioEvent::Playing { path: path.clone() });
+        while let Some(cmd) = cmd_rx.recv().await {
+            match cmd {
+                AudioCommand::Play(path) => {
+                    let mut state = mixer.lock().unwrap();
+                    if let Some(source) = state.current.take() {
+                        source.stop();
                     }
+                    if let Some(source) = state.next.take() {
+                        source.stop();
+                    }
+                    state.fading = false;
+                    state.fade_frames = 0;
+                    state.paused = false;
+                    drop(state);
+
+                    let gain = loudness::gain_for(&path, replaygain);
+                    let source = Source::new(path.clone(), gain, 0);
+                    spawn_decoder(&source, None);
+
+                    let mut state = mixer.lock().unwrap();
+                    state.current = Some(source);
+                    state.arm_fade_in();
+                    let _ = state.tx.send(AudioEvent::Playing { path });
                 }
 
-                Some(AudioCommand::SetVolume(v)) => {
-                    let clamped = v.clamp(0.0, 1.0);
-                    *shared_vol.lock().unwrap() = clamped;
-                    sync_system_volume(clamped);
+                AudioCommand::Preload(next) => {
+                    let mut state = mixer.lock().unwrap();
+                    let Some(path) = next else {
+                        if let Some(source) = state.next.take() {
+                            source.stop();
+                        }
+                        state.fading = false;
+                        state.fade_frames = 0;
+                        continue;
+                    };
+                    // Progress is reported ten times a second; the app
+                    // re-issues the same preload until it changes. Ignoring a
+                    // repeat keeps a running crossfade intact.
+                    if state.next.as_ref().is_some_and(|n| n.path == path) {
+                        continue;
+                    }
+                    if let Some(source) = state.next.take() {
+                        source.stop();
+                    }
+                    state.fading = false;
+                    state.fade_frames = 0;
+
+                    let gain = loudness::gain_for(&path, replaygain);
+                    let source = Source::new(path, gain, 0);
+                    spawn_decoder(&source, None);
+                    state.next = Some(source);
                 }
 
-                Some(AudioCommand::Seek(pos)) => {
-                    if let Some(path) = current_path.clone() {
-                        cancel.store(true, Ordering::SeqCst);
-                        paused.store(false, Ordering::SeqCst);
-                        pcm.lock().unwrap().clear();
+                AudioCommand::Pause => {
+                    let mut state = mixer.lock().unwrap();
+                    state.paused = true;
+                    let _ = state.tx.send(AudioEvent::Paused);
+                }
 
-                        let new_cancel = Arc::new(AtomicBool::new(false));
-                        cancel = new_cancel.clone();
-
-                        let pcm2 = pcm.clone();
-                        let tx = event_tx.clone();
-                        let vol = shared_vol.clone();
-                        let flag = new_cancel;
-
-                        tokio::task::spawn_blocking(move || {
-                            match decode_file(&path, pcm2, tx.clone(), vol, flag, Some(pos)) {
-                                Ok(true) => {
-                                    let _ = tx.send(AudioEvent::TrackEnded);
-                                }
-                                Ok(false) => {}
-                                Err(e) => {
-                                    let _ = tx.send(AudioEvent::Error(e.to_string()));
-                                }
-                            }
+                AudioCommand::Resume => {
+                    let mut state = mixer.lock().unwrap();
+                    state.paused = false;
+                    state.arm_fade_in();
+                    if let Some(source) = state.current.as_ref() {
+                        let _ = state.tx.send(AudioEvent::Playing {
+                            path: source.path.clone(),
                         });
                     }
                 }
 
-                Some(AudioCommand::Play(path)) => {
-                    cancel.store(true, Ordering::SeqCst);
-                    paused.store(false, Ordering::SeqCst);
-                    pcm.lock().unwrap().clear();
-
-                    let new_cancel = Arc::new(AtomicBool::new(false));
-                    cancel = new_cancel.clone();
-                    current_path = Some(path.clone());
-
-                    let _ = event_tx.send(AudioEvent::Playing { path: path.clone() });
-
-                    let pcm2 = pcm.clone();
-                    let tx = event_tx.clone();
-                    let vol = shared_vol.clone();
-                    let flag = new_cancel;
-
-                    let vol_val = *vol.lock().unwrap();
-                    sync_system_volume(vol_val);
-
-                    tokio::task::spawn_blocking(move || {
-                        match decode_file(&path, pcm2, tx.clone(), vol, flag, None) {
-                            Ok(true) => {
-                                let _ = tx.send(AudioEvent::TrackEnded);
-                            }
-                            Ok(false) => {}
-                            Err(e) => {
-                                let _ = tx.send(AudioEvent::Error(e.to_string()));
-                            }
-                        }
-                    });
+                AudioCommand::SetVolume(v) => {
+                    let clamped = v.clamp(0.0, 1.0);
+                    mixer.lock().unwrap().volume = clamped;
+                    sync_system_volume(clamped);
                 }
 
-                Some(_) => {}
+                AudioCommand::SetCrossfade(secs) => {
+                    let frames = (secs.clamp(0.0, 12.0) as f64 * OUTPUT_RATE as f64) as u64;
+                    mixer.lock().unwrap().crossfade_frames = frames;
+                }
+
+                AudioCommand::SetReplayGain(mode) => {
+                    replaygain = mode;
+                }
+
+                AudioCommand::Stop => {
+                    let mut state = mixer.lock().unwrap();
+                    if let Some(source) = state.current.take() {
+                        source.stop();
+                    }
+                    if let Some(source) = state.next.take() {
+                        source.stop();
+                    }
+                    state.fading = false;
+                    state.fade_frames = 0;
+                    state.paused = false;
+                    state.fade_in_left = 0;
+                    state.fade_in_total = 0;
+                    let _ = state.tx.send(AudioEvent::Stopped);
+                }
+
+                AudioCommand::Seek(pos) => {
+                    let path = {
+                        let mut state = mixer.lock().unwrap();
+                        let path = state.current.as_ref().map(|s| s.path.clone());
+                        if let Some(source) = state.current.take() {
+                            source.stop();
+                        }
+                        if let Some(source) = state.next.take() {
+                            source.stop();
+                        }
+                        state.fading = false;
+                        state.fade_frames = 0;
+                        path
+                    };
+
+                    let Some(path) = path else {
+                        continue;
+                    };
+
+                    let start = (pos.as_secs_f64() * OUTPUT_RATE as f64) as u64;
+                    let gain = loudness::gain_for(&path, replaygain);
+                    let source = Source::new(path, gain, start);
+                    spawn_decoder(&source, Some(pos));
+                    let mut state = mixer.lock().unwrap();
+                    state.current = Some(source);
+                    state.arm_fade_in();
+                }
             }
         }
     });
 }
 
+fn spawn_decoder(source: &Source, seek_to: Option<Duration>) {
+    let source = source.clone();
+    tokio::task::spawn_blocking(move || {
+        if let Err(e) = decode_source(&source, seek_to) {
+            let _ = e; // reported by the mixer when the buffer runs dry
+            source.done.store(true, Ordering::SeqCst);
+        }
+        source.done.store(true, Ordering::SeqCst);
+    });
+}
+
 fn fill_output(
     output: &mut [f32],
-    pcm: &Arc<Mutex<VecDeque<f32>>>,
-    paused: &Arc<AtomicBool>,
-    volume: &Arc<Mutex<f32>>,
+    mixer: &Arc<Mutex<Mixer>>,
     vis_buffer: &Arc<Mutex<VecDeque<f32>>>,
     eq: &mut EqProcessor,
 ) {
-    if paused.load(Ordering::SeqCst) {
-        for s in output.iter_mut() {
-            *s = 0.0;
+    let mut state = mixer.lock().unwrap();
+
+    if state.paused {
+        for sample in output.iter_mut() {
+            *sample = 0.0;
         }
         return;
     }
-    let vol = *volume.lock().unwrap();
-    let mut buf = pcm.lock().unwrap();
-    let mut vis = vis_buffer.lock().unwrap();
 
-    // Pull the raw PCM out first so the equalizer sees the untouched signal.
-    for sample in output.iter_mut() {
-        *sample = buf.pop_front().unwrap_or(0.0);
+    let volume = state.volume;
+    let frames = output.len() / 2;
+
+    // A deck that was queued but never claimed (the app preloaded while
+    // nothing was playing) still needs to be promoted, silently.
+    if state.current.is_none() && state.next.is_some() {
+        state.promote_next(false);
     }
+
+    for frame in 0..frames {
+        let (mut left, mut right) = match state.current.as_ref() {
+            Some(current) => current.pop_frame(),
+            None => (0.0, 0.0),
+        };
+
+        if state.next.is_some() {
+            state.start_fade_if_due();
+        }
+
+        if state.fading {
+            let faded = {
+                match state.next.as_ref() {
+                    Some(next) if !next.is_empty() => {
+                        let (out_gain, in_gain) = state.fade_gains();
+                        let (nl, nr) = next.pop_frame();
+                        Some((nl * in_gain, nr * in_gain, out_gain))
+                    }
+                    _ => None,
+                }
+            };
+
+            if let Some((nl, nr, out_gain)) = faded {
+                left = left * out_gain + nl;
+                right = right * out_gain + nr;
+                state.fade_frames += 1;
+                if state.fade_frames >= state.crossfade_frames {
+                    state.promote_next(true);
+                }
+            }
+        } else if state
+            .current
+            .as_ref()
+            .is_some_and(|current| current.frames_done())
+        {
+            if state.next.is_some() {
+                // Gapless: swap at the sample boundary, mid output buffer.
+                state.promote_next(true);
+                if let Some(current) = state.current.as_ref() {
+                    let (l, r) = current.pop_frame();
+                    left += l;
+                    right += r;
+                }
+            } else if let Some(current) = state.current.as_mut() {
+                if !current.ended {
+                    current.ended = true;
+                    state.emit(AudioEvent::TrackEnded);
+                }
+            }
+        }
+
+        let fade = state.take_fade_in();
+        left *= fade;
+        right *= fade;
+
+        if let Some(current) = state.current.as_mut() {
+            current.played += 1;
+            if current.played.saturating_sub(current.reported) >= PROGRESS_FRAMES {
+                current.reported = current.played;
+                let position = current.position();
+                let duration = current.duration();
+                state.emit(AudioEvent::Progress { position, duration });
+            }
+        }
+
+        output[frame * 2] = left.clamp(-1.0, 1.0);
+        output[frame * 2 + 1] = right.clamp(-1.0, 1.0);
+    }
+
+    let current_finished = state
+        .current
+        .as_ref()
+        .is_some_and(|current| current.frames_done() && current.ended);
+    if current_finished {
+        state.current = None;
+    }
+
+    state.flush_events();
+    drop(state);
 
     // Filter before the volume stage: EQ gain stays independent of the volume
     // slider, and the visualizer taps what is actually being heard.
     eq.process_in_place(output);
 
+    let mut vis = vis_buffer.lock().unwrap();
     for sample in output.iter_mut() {
-        *sample *= vol;
+        *sample *= volume;
         vis.push_back(*sample);
         if vis.len() > 8192 {
             vis.pop_front();
@@ -353,15 +690,8 @@ fn fill_output(
 
 // ── Decode ───────────────────────────────────────────────────────────────────
 
-/// Returns Ok(true) if the track ended normally, Ok(false) if cancelled.
-fn decode_file(
-    path: &PathBuf,
-    pcm: Arc<Mutex<VecDeque<f32>>>,
-    event_tx: mpsc::UnboundedSender<AudioEvent>,
-    _volume: Arc<Mutex<f32>>,
-    cancel: Arc<AtomicBool>,
-    seek_to: Option<Duration>,
-) -> Result<bool> {
+fn decode_source(source: &Source, seek_to: Option<Duration>) -> Result<()> {
+    let path = &source.path;
     let file = std::fs::File::open(path)?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
@@ -395,6 +725,12 @@ fn decode_file(
     let is_opus = track.codec_params.codec == symphonia::core::codecs::CODEC_TYPE_OPUS;
     let n_channels_param = track.codec_params.channels.map(|c| c.count()).unwrap_or(2);
 
+    if let (Some(tb), Some(nf)) = (time_base, n_frames) {
+        let frames =
+            (nf as f64 * tb.numer as f64 / tb.denom as f64 * OUTPUT_RATE as f64).round() as u64;
+        source.total_frames.store(frames, Ordering::SeqCst);
+    }
+
     let mut symphonia_decoder = if !is_opus {
         Some(
             symphonia::default::get_codecs()
@@ -416,7 +752,7 @@ fn decode_file(
         None
     };
 
-    let mut sample_count = if let Some(pos) = seek_to {
+    if let Some(pos) = seek_to {
         let seek_time = SymphoniaTime {
             seconds: pos.as_secs(),
             frac: pos.subsec_nanos() as f64 / 1_000_000_000.0,
@@ -436,14 +772,11 @@ fn decode_file(
         if is_opus {
             opus_decoder = opus::Decoder::new(file_rate, channels_mode).ok();
         }
-        (pos.as_secs_f64() * OUTPUT_RATE as f64) as u64
-    } else {
-        0u64
-    };
+    }
 
     loop {
-        if cancel.load(Ordering::SeqCst) {
-            return Ok(false);
+        if source.cancel.load(Ordering::SeqCst) {
+            return Ok(());
         }
 
         let packet = match format.next_packet() {
@@ -521,31 +854,20 @@ fn decode_file(
             stereo
         };
 
-        sample_count += samples.len() as u64 / 2;
-
-        let position = Duration::from_secs_f64(sample_count as f64 / OUTPUT_RATE as f64);
-        let duration = if let (Some(tb), Some(nf)) = (time_base, n_frames) {
-            Duration::from_secs_f64(nf as f64 * tb.numer as f64 / tb.denom as f64)
-        } else {
-            // Opus/OGG: duration unknown until EOF, mirror position so UI stays responsive
-            position
-        };
-        let _ = event_tx.send(AudioEvent::Progress { position, duration });
-
         loop {
-            if cancel.load(Ordering::SeqCst) {
-                return Ok(false);
+            if source.cancel.load(Ordering::SeqCst) {
+                return Ok(());
             }
-            if pcm.lock().unwrap().len() < OUTPUT_RATE as usize * 2 {
+            if source.buf.lock().unwrap().len() < BUFFER_SAMPLES {
                 break;
             }
             std::thread::sleep(Duration::from_millis(5));
         }
 
-        pcm.lock().unwrap().extend(samples);
+        source.buf.lock().unwrap().extend(samples);
     }
 
-    Ok(true)
+    Ok(())
 }
 
 fn resample_stereo(input: &[f32], in_rate: u32, out_rate: u32) -> Vec<f32> {

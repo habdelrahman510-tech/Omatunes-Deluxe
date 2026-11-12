@@ -154,6 +154,107 @@ impl AppState {
         crate::db::write(|db| db.last_queue_paths = queue_paths);
     }
 
+    /// Index of the playing track inside the queue, if it is still there.
+    fn current_queue_index(&self) -> Option<usize> {
+        let id = self.current_track.as_ref()?.id;
+        self.queue.iter().position(|t| t.id == id)
+    }
+
+    /// The track an automatic advance will land on. Shuffle is already baked
+    /// into the queue order, so this is a pure lookup.
+    fn next_automatic_path(&self) -> Option<PathBuf> {
+        if self.queue.is_empty() {
+            return None;
+        }
+        match self.current_queue_index() {
+            Some(idx) if idx + 1 < self.queue.len() => Some(self.queue[idx + 1].path.clone()),
+            Some(_) if self.repeat => Some(self.queue[0].path.clone()),
+            // Not playing from the queue at all: start it from the top.
+            None => Some(self.queue[0].path.clone()),
+            _ => None,
+        }
+    }
+
+    /// Hand the next track to the engine's idle deck. Cheap and idempotent:
+    /// the engine drops repeats, and we skip sending if nothing changed.
+    pub(super) fn preload_next(&mut self) {
+        let next = self.next_automatic_path();
+        if next == self.preloaded_path {
+            return;
+        }
+        self.preloaded_path = next.clone();
+        self.audio.send(AudioCommand::Preload(next));
+    }
+
+    /// The engine spliced into the next deck on its own. Take ownership of the
+    /// change: the UI, MPRIS, stats and the preload chain all have to follow.
+    pub(super) fn on_spliced(&mut self, path: PathBuf) -> Task<Message> {
+        // Write out any pending like for the track we just left.
+        if let Some(prev) = self.current_track.as_ref() {
+            if prev.path != path {
+                let p = prev.path.clone();
+                if crate::library::pending::flush_one(&p) {
+                    eprintln!("Flushed pending liked on splice for {}", p.display());
+                }
+            }
+        }
+
+        let found = self
+            .all_tracks
+            .iter()
+            .find(|t| t.path == path)
+            .cloned()
+            .or_else(|| self.queue.iter().find(|t| t.path == path).cloned());
+
+        let Some(mut track) = found else {
+            // Preloaded file vanished from the library between decks; treat it
+            // as a stop rather than scrolling to a track we cannot name.
+            self.audio.send(AudioCommand::Stop);
+            self.playback_state = PlaybackState::Stopped;
+            self.position = Duration::ZERO;
+            self.send_mpris(MprisUpdate::Status(PlaybackStatus::Stopped));
+            return Task::none();
+        };
+
+        track.cover_data = load_cover(&track.path);
+        self.current_track = Some(track.clone());
+        self.selected_track = Some(track.clone());
+        self.playback_state = PlaybackState::Playing;
+        self.position = Duration::ZERO;
+        self.duration = Duration::ZERO;
+        self.last_accumulated_position = Duration::ZERO;
+        self.current_track_play_counted = false;
+        self.preloaded_path = None;
+        self.update_live_smart_playlists();
+        self.notify_mpris_track(PlaybackStatus::Playing);
+        self.preload_next();
+
+        let queue_paths: Vec<PathBuf> = self.queue.iter().map(|t| t.path.clone()).collect();
+        crate::db::write(|db| {
+            db.last_track_path = Some(track.path.clone());
+            db.last_queue_paths = queue_paths;
+            db.last_position_secs = 0;
+        });
+        crate::db::add_to_recently_played(track.path.clone());
+        if self.selected_playlist.as_deref() == Some("Recently Played") {
+            self.update_filtered_tracks();
+        }
+
+        // Keep the list in step with the playing track when it is visible.
+        if let Some(y) = self.calculate_scroll_offset(track.id) {
+            let target_y = (y - 120.0).max(0.0);
+            iced::widget::scrollable::scroll_to(
+                iced::widget::scrollable::Id::new("tracklist_scroll"),
+                iced::widget::scrollable::AbsoluteOffset {
+                    x: 0.0,
+                    y: target_y,
+                },
+            )
+        } else {
+            Task::none()
+        }
+    }
+
     pub(super) fn advance_track(&mut self, delta: i32) -> Task<Message> {
         // Flush pending liked tag for the track we're leaving (fd will be cancelled before next Play)
         if let Some(ref ct) = self.current_track {
@@ -224,6 +325,7 @@ impl AppState {
         };
         self.audio.send(AudioCommand::Play(track.path.clone()));
         self.audio.send(AudioCommand::SetVolume(self.volume));
+        self.preloaded_path = None;
         self.current_track = Some(track.clone());
         self.selected_track = Some(track.clone());
         self.update_live_smart_playlists();
@@ -252,6 +354,7 @@ impl AppState {
         if self.selected_playlist.as_deref() == Some("Recently Played") {
             self.update_filtered_tracks();
         }
+        self.preload_next();
 
         if let Some(y) = self.calculate_scroll_offset(track.id) {
             let target_y = (y - 120.0).max(0.0);

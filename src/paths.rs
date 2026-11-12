@@ -20,3 +20,7 @@ pub fn config_toml() -> PathBuf {
 pub fn library_cache() -> PathBuf {
     config_dir().join("library_cache.json")
 }
+
+pub fn loudness() -> PathBuf {
+    config_dir().join("loudness.json")
+}
