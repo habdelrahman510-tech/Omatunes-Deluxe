@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
@@ -161,7 +161,11 @@ impl Default for OmatunesDb {
     fn default() -> Self {
         let defaults = default_table_columns();
         let all_cols = default_column_order();
-        let hidden: Vec<TableColumn> = all_cols.iter().filter(|c| !defaults.contains(c)).copied().collect();
+        let hidden: Vec<TableColumn> = all_cols
+            .iter()
+            .filter(|c| !defaults.contains(c))
+            .copied()
+            .collect();
         OmatunesDb {
             play_counts: HashMap::default(),
             liked: HashMap::default(),
@@ -255,7 +259,10 @@ pub fn get<F, R>(f: F) -> R
 where
     F: FnOnce(&OmatunesDb) -> R,
 {
-    let guard = DB.get_or_init(|| Mutex::new(OmatunesDb::load())).lock().unwrap();
+    let guard = DB
+        .get_or_init(|| Mutex::new(OmatunesDb::load()))
+        .lock()
+        .unwrap();
     f(&guard)
 }
 
@@ -263,7 +270,10 @@ pub fn write<F, R>(f: F) -> R
 where
     F: FnOnce(&mut OmatunesDb) -> R,
 {
-    let mut guard = DB.get_or_init(|| Mutex::new(OmatunesDb::load())).lock().unwrap();
+    let mut guard = DB
+        .get_or_init(|| Mutex::new(OmatunesDb::load()))
+        .lock()
+        .unwrap();
     let res = f(&mut guard);
     DB_DIRTY.store(true, Ordering::Release);
     res
@@ -407,4 +417,3 @@ pub fn flush_sync() {
     }
     DB_FLUSH_IN_PROGRESS.store(false, Ordering::Release);
 }
-

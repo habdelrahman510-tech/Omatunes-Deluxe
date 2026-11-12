@@ -1,7 +1,7 @@
-use std::path::PathBuf;
+use crate::library::models::Track;
 use chrono::{Local, NaiveDateTime};
 use serde::{Deserialize, Serialize};
-use crate::library::models::Track;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum RuleField {
@@ -83,7 +83,11 @@ pub fn parse_duration(s: &str) -> Option<u64> {
     }
 }
 
-pub fn evaluate_rules(track: &Track, rules: &[SmartPlaylistRule], recently_played: &[(PathBuf, String)]) -> bool {
+pub fn evaluate_rules(
+    track: &Track,
+    rules: &[SmartPlaylistRule],
+    recently_played: &[(PathBuf, String)],
+) -> bool {
     if rules.is_empty() {
         return true;
     }
@@ -96,7 +100,11 @@ pub fn evaluate_rules(track: &Track, rules: &[SmartPlaylistRule], recently_playe
     true
 }
 
-fn evaluate_single_rule(track: &Track, rule: &SmartPlaylistRule, recently_played: &[(PathBuf, String)]) -> bool {
+fn evaluate_single_rule(
+    track: &Track,
+    rule: &SmartPlaylistRule,
+    recently_played: &[(PathBuf, String)],
+) -> bool {
     match rule.field {
         RuleField::Title => match_text(&track.title, rule),
         RuleField::Artist => match_text(&track.artist, rule),
@@ -117,7 +125,8 @@ fn evaluate_single_rule(track: &Track, rule: &SmartPlaylistRule, recently_played
         }
         RuleField::HasLyrics => {
             let has_lyrics = !track.lyrics.trim().is_empty();
-            let expect_has = rule.value.to_lowercase() == "yes" || rule.value.to_lowercase() == "true";
+            let expect_has =
+                rule.value.to_lowercase() == "yes" || rule.value.to_lowercase() == "true";
             match rule.operator {
                 RuleOperator::Is => has_lyrics == expect_has,
                 RuleOperator::IsNot => has_lyrics != expect_has,
@@ -125,7 +134,8 @@ fn evaluate_single_rule(track: &Track, rule: &SmartPlaylistRule, recently_played
             }
         }
         RuleField::LastPlayed => {
-            let last_played_str = recently_played.iter()
+            let last_played_str = recently_played
+                .iter()
                 .find(|(p, _)| p == &track.path)
                 .map(|(_, date)| date.clone());
 
@@ -243,8 +253,14 @@ pub fn sort_and_limit_tracks(
         }
         SmartPlaylistOrder::RecentlyPlayed => {
             tracks.sort_by(|a, b| {
-                let a_pos = recently_played.iter().position(|(p, _)| p == &a.path).unwrap_or(usize::MAX);
-                let b_pos = recently_played.iter().position(|(p, _)| p == &b.path).unwrap_or(usize::MAX);
+                let a_pos = recently_played
+                    .iter()
+                    .position(|(p, _)| p == &a.path)
+                    .unwrap_or(usize::MAX);
+                let b_pos = recently_played
+                    .iter()
+                    .position(|(p, _)| p == &b.path)
+                    .unwrap_or(usize::MAX);
                 a_pos.cmp(&b_pos)
             });
         }

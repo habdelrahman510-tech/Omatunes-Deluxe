@@ -1,6 +1,5 @@
-
-use std::path::Path;
 use omatunes::library::scanner::scan_folder;
+use std::path::Path;
 
 fn main() {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());

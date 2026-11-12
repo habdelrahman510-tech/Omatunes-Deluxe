@@ -1,12 +1,13 @@
-use iced::widget::{button, column, container, row, text_input, Space, pick_list};
-use iced::{Alignment, Element, Length};
 use crate::ui::txt::text;
+use iced::widget::{button, column, container, pick_list, row, text_input, Space};
+use iced::{Alignment, Element, Length};
 
-use crate::app::{Message, PlaylistDialogState, PlaylistDialogMode};
+use crate::app::{Message, PlaylistDialogMode, PlaylistDialogState};
 use crate::ui::{icons, theme};
 
 pub fn view(state: &PlaylistDialogState) -> Element<'static, Message> {
-    let custom_playlists = crate::db::get(|db| db.playlists.keys().cloned().collect::<Vec<String>>());
+    let custom_playlists =
+        crate::db::get(|db| db.playlists.keys().cloned().collect::<Vec<String>>());
 
     let title_text = match &state.mode {
         PlaylistDialogMode::Create => "Create New Playlist",
@@ -29,7 +30,8 @@ pub fn view(state: &PlaylistDialogState) -> Element<'static, Message> {
                 .on_input(Message::PlaylistInputChanged)
                 .padding(8);
 
-            content = content.push(text("Name").size(12).color(theme::subtext()))
+            content = content
+                .push(text("Name").size(12).color(theme::subtext()))
                 .push(name_input)
                 .push(Space::with_height(16));
         }
@@ -38,18 +40,31 @@ pub fn view(state: &PlaylistDialogState) -> Element<'static, Message> {
                 .on_input(Message::PlaylistInputChanged)
                 .padding(8);
 
-            content = content.push(text("Name").size(12).color(theme::subtext()))
+            content = content
+                .push(text("Name").size(12).color(theme::subtext()))
                 .push(name_input)
                 .push(Space::with_height(8))
-                .push(text(format!("Song: {}", track.title)).size(11).color(theme::overlay0()))
+                .push(
+                    text(format!("Song: {}", track.title))
+                        .size(11)
+                        .color(theme::overlay0()),
+                )
                 .push(Space::with_height(16));
         }
         PlaylistDialogMode::AddTrack(track) => {
             if custom_playlists.is_empty() {
-                content = content.push(text("No custom playlists found. Create one first!").size(14).color(theme::red()))
+                content = content
+                    .push(
+                        text("No custom playlists found. Create one first!")
+                            .size(14)
+                            .color(theme::red()),
+                    )
                     .push(Space::with_height(12));
             } else {
-                let current_selection = state.selected_playlist.clone().unwrap_or_else(|| custom_playlists[0].clone());
+                let current_selection = state
+                    .selected_playlist
+                    .clone()
+                    .unwrap_or_else(|| custom_playlists[0].clone());
                 let select_dropdown = pick_list(
                     custom_playlists.clone(),
                     Some(current_selection),
@@ -58,7 +73,8 @@ pub fn view(state: &PlaylistDialogState) -> Element<'static, Message> {
                 .padding(8)
                 .width(402);
 
-                content = content.push(text("Select Playlist").size(12).color(theme::subtext()))
+                content = content
+                    .push(text("Select Playlist").size(12).color(theme::subtext()))
                     .push(select_dropdown)
                     .push(Space::with_height(12));
             }
@@ -70,7 +86,8 @@ pub fn view(state: &PlaylistDialogState) -> Element<'static, Message> {
                 .on_input(Message::PlaylistInputChanged)
                 .padding(8);
 
-            content = content.push(text("New Name").size(12).color(theme::subtext()))
+            content = content
+                .push(text("New Name").size(12).color(theme::subtext()))
                 .push(name_input)
                 .push(Space::with_height(16));
         }
@@ -79,7 +96,9 @@ pub fn view(state: &PlaylistDialogState) -> Element<'static, Message> {
     let submit_enabled = match &state.mode {
         PlaylistDialogMode::Create => !state.name_input.trim().is_empty(),
         PlaylistDialogMode::CreateWithTrack(_) => !state.name_input.trim().is_empty(),
-        PlaylistDialogMode::AddTrack(_) => state.selected_playlist.is_some() && !custom_playlists.is_empty(),
+        PlaylistDialogMode::AddTrack(_) => {
+            state.selected_playlist.is_some() && !custom_playlists.is_empty()
+        }
         PlaylistDialogMode::Rename(_) => !state.name_input.trim().is_empty(),
     };
 
@@ -145,40 +164,37 @@ pub fn view(state: &PlaylistDialogState) -> Element<'static, Message> {
             ]
             .into()
         }
-        _ => {
-            row![
-                cancel_btn.width(half_btn),
-                Space::with_width(12),
-                submit_btn.width(half_btn),
-            ]
-            .align_y(Alignment::Center)
-            .into()
-        }
+        _ => row![
+            cancel_btn.width(half_btn),
+            Space::with_width(12),
+            submit_btn.width(half_btn),
+        ]
+        .align_y(Alignment::Center)
+        .into(),
     };
 
-    let main_col = content.push(button_block)
-        .spacing(4)
-        .padding(24)
-        .width(450);
+    let main_col = content.push(button_block).spacing(4).padding(24).width(450);
 
     container(
-        container(main_col)
-            .style(|_| iced::widget::container::Style {
-                background: Some(iced::Background::Color(theme::mantle())),
-                border: iced::Border {
-                    color: theme::surface0(),
-                    width: 1.0,
-                    radius: 8.0.into(),
-                },
-                ..Default::default()
-            })
+        container(main_col).style(|_| iced::widget::container::Style {
+            background: Some(iced::Background::Color(theme::mantle())),
+            border: iced::Border {
+                color: theme::surface0(),
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            ..Default::default()
+        }),
     )
     .width(Length::Fill)
     .height(Length::Fill)
     .center_x(Length::Fill)
     .center_y(Length::Fill)
     .style(|_| iced::widget::container::Style {
-        background: Some(iced::Background::Color(theme::with_alpha(theme::base(), 0.8))),
+        background: Some(iced::Background::Color(theme::with_alpha(
+            theme::base(),
+            0.8,
+        ))),
         ..Default::default()
     })
     .into()

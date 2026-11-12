@@ -1,6 +1,6 @@
-use iced::widget::{button, column, container, row, text_input, Space, checkbox, stack};
-use iced::{Alignment, Element, Length};
 use crate::ui::txt::text;
+use iced::widget::{button, checkbox, column, container, row, stack, text_input, Space};
+use iced::{Alignment, Element, Length};
 
 use crate::app::{Message, TagEditorState};
 use crate::ui::theme;
@@ -23,48 +23,99 @@ pub fn view<'a>(
             .id(iced::widget::text_input::Id::new("id3_title"))
             .on_input(Message::UpdateTagFieldTitle)
             .padding(8)
-            .style(move |_: &iced::Theme, _: iced::widget::text_input::Status| iced::widget::text_input::Style {
-                background: iced::Background::Color(theme::base()),
-                border: iced::Border { color: if title_saved { theme::green() } else { theme::surface0() }, width: if title_saved { 1.5 } else { 1.0 }, radius: 4.0.into() },
-                icon: theme::overlay0(),
-                placeholder: theme::overlay0(),
-                value: theme::text(),
-                selection: theme::accent(),
-            })
+            .style(
+                move |_: &iced::Theme, _: iced::widget::text_input::Status| {
+                    iced::widget::text_input::Style {
+                        background: iced::Background::Color(theme::base()),
+                        border: iced::Border {
+                            color: if title_saved {
+                                theme::green()
+                            } else {
+                                theme::surface0()
+                            },
+                            width: if title_saved { 1.5 } else { 1.0 },
+                            radius: 4.0.into(),
+                        },
+                        icon: theme::overlay0(),
+                        placeholder: theme::overlay0(),
+                        value: theme::text(),
+                        selection: theme::accent(),
+                    }
+                },
+            ),
     )
-    .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 2.0, left: 0.0 });
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 0.0,
+        bottom: 2.0,
+        left: 0.0,
+    });
 
     let artist_input = container(
         text_input("Artist", &state.artist)
             .id(iced::widget::text_input::Id::new("id3_artist"))
             .on_input(Message::UpdateTagFieldArtist)
             .padding(8)
-            .style(move |_: &iced::Theme, _: iced::widget::text_input::Status| iced::widget::text_input::Style {
-                background: iced::Background::Color(theme::base()),
-                border: iced::Border { color: if artist_saved { theme::green() } else { theme::surface0() }, width: if artist_saved { 1.5 } else { 1.0 }, radius: 4.0.into() },
-                icon: theme::overlay0(),
-                placeholder: theme::overlay0(),
-                value: theme::text(),
-                selection: theme::accent(),
-            })
+            .style(
+                move |_: &iced::Theme, _: iced::widget::text_input::Status| {
+                    iced::widget::text_input::Style {
+                        background: iced::Background::Color(theme::base()),
+                        border: iced::Border {
+                            color: if artist_saved {
+                                theme::green()
+                            } else {
+                                theme::surface0()
+                            },
+                            width: if artist_saved { 1.5 } else { 1.0 },
+                            radius: 4.0.into(),
+                        },
+                        icon: theme::overlay0(),
+                        placeholder: theme::overlay0(),
+                        value: theme::text(),
+                        selection: theme::accent(),
+                    }
+                },
+            ),
     )
-    .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 2.0, left: 0.0 });
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 0.0,
+        bottom: 2.0,
+        left: 0.0,
+    });
 
     let album_input = container(
         text_input("Album", &state.album)
             .id(iced::widget::text_input::Id::new("id3_album"))
             .on_input(Message::UpdateTagFieldAlbum)
             .padding(8)
-            .style(move |_: &iced::Theme, _: iced::widget::text_input::Status| iced::widget::text_input::Style {
-                background: iced::Background::Color(theme::base()),
-                border: iced::Border { color: if album_saved { theme::green() } else { theme::surface0() }, width: if album_saved { 1.5 } else { 1.0 }, radius: 4.0.into() },
-                icon: theme::overlay0(),
-                placeholder: theme::overlay0(),
-                value: theme::text(),
-                selection: theme::accent(),
-            })
+            .style(
+                move |_: &iced::Theme, _: iced::widget::text_input::Status| {
+                    iced::widget::text_input::Style {
+                        background: iced::Background::Color(theme::base()),
+                        border: iced::Border {
+                            color: if album_saved {
+                                theme::green()
+                            } else {
+                                theme::surface0()
+                            },
+                            width: if album_saved { 1.5 } else { 1.0 },
+                            radius: 4.0.into(),
+                        },
+                        icon: theme::overlay0(),
+                        placeholder: theme::overlay0(),
+                        value: theme::text(),
+                        selection: theme::accent(),
+                    }
+                },
+            ),
     )
-    .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 2.0, left: 0.0 });
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 0.0,
+        bottom: 2.0,
+        left: 0.0,
+    });
 
     let track_saved = state.just_saved.contains("track");
     let disc_saved = state.just_saved.contains("disc");
@@ -74,48 +125,99 @@ pub fn view<'a>(
             .id(iced::widget::text_input::Id::new("id3_track"))
             .on_input(Message::UpdateTagFieldTrackNumber)
             .padding(8)
-            .style(move |_: &iced::Theme, _: iced::widget::text_input::Status| iced::widget::text_input::Style {
-                background: iced::Background::Color(theme::base()),
-                border: iced::Border { color: if track_saved { theme::green() } else { theme::surface0() }, width: if track_saved { 1.5 } else { 1.0 }, radius: 4.0.into() },
-                icon: theme::overlay0(),
-                placeholder: theme::overlay0(),
-                value: theme::text(),
-                selection: theme::accent(),
-            })
+            .style(
+                move |_: &iced::Theme, _: iced::widget::text_input::Status| {
+                    iced::widget::text_input::Style {
+                        background: iced::Background::Color(theme::base()),
+                        border: iced::Border {
+                            color: if track_saved {
+                                theme::green()
+                            } else {
+                                theme::surface0()
+                            },
+                            width: if track_saved { 1.5 } else { 1.0 },
+                            radius: 4.0.into(),
+                        },
+                        icon: theme::overlay0(),
+                        placeholder: theme::overlay0(),
+                        value: theme::text(),
+                        selection: theme::accent(),
+                    }
+                },
+            ),
     )
-    .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 2.0, left: 0.0 });
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 0.0,
+        bottom: 2.0,
+        left: 0.0,
+    });
 
     let disc_num_input = container(
         text_input("Disc Number", &state.disc_number)
             .id(iced::widget::text_input::Id::new("id3_disc"))
             .on_input(Message::UpdateTagFieldDiscNumber)
             .padding(8)
-            .style(move |_: &iced::Theme, _: iced::widget::text_input::Status| iced::widget::text_input::Style {
-                background: iced::Background::Color(theme::base()),
-                border: iced::Border { color: if disc_saved { theme::green() } else { theme::surface0() }, width: if disc_saved { 1.5 } else { 1.0 }, radius: 4.0.into() },
-                icon: theme::overlay0(),
-                placeholder: theme::overlay0(),
-                value: theme::text(),
-                selection: theme::accent(),
-            })
+            .style(
+                move |_: &iced::Theme, _: iced::widget::text_input::Status| {
+                    iced::widget::text_input::Style {
+                        background: iced::Background::Color(theme::base()),
+                        border: iced::Border {
+                            color: if disc_saved {
+                                theme::green()
+                            } else {
+                                theme::surface0()
+                            },
+                            width: if disc_saved { 1.5 } else { 1.0 },
+                            radius: 4.0.into(),
+                        },
+                        icon: theme::overlay0(),
+                        placeholder: theme::overlay0(),
+                        value: theme::text(),
+                        selection: theme::accent(),
+                    }
+                },
+            ),
     )
-    .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 2.0, left: 0.0 });
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 0.0,
+        bottom: 2.0,
+        left: 0.0,
+    });
 
     let year_input = container(
         text_input("Year", &state.year)
             .id(iced::widget::text_input::Id::new("id3_year"))
             .on_input(Message::UpdateTagFieldYear)
             .padding(8)
-            .style(move |_: &iced::Theme, _: iced::widget::text_input::Status| iced::widget::text_input::Style {
-                background: iced::Background::Color(theme::base()),
-                border: iced::Border { color: if year_saved { theme::green() } else { theme::surface0() }, width: if year_saved { 1.5 } else { 1.0 }, radius: 4.0.into() },
-                icon: theme::overlay0(),
-                placeholder: theme::overlay0(),
-                value: theme::text(),
-                selection: theme::accent(),
-            })
+            .style(
+                move |_: &iced::Theme, _: iced::widget::text_input::Status| {
+                    iced::widget::text_input::Style {
+                        background: iced::Background::Color(theme::base()),
+                        border: iced::Border {
+                            color: if year_saved {
+                                theme::green()
+                            } else {
+                                theme::surface0()
+                            },
+                            width: if year_saved { 1.5 } else { 1.0 },
+                            radius: 4.0.into(),
+                        },
+                        icon: theme::overlay0(),
+                        placeholder: theme::overlay0(),
+                        value: theme::text(),
+                        selection: theme::accent(),
+                    }
+                },
+            ),
     )
-    .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 2.0, left: 0.0 });
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 0.0,
+        bottom: 2.0,
+        left: 0.0,
+    });
 
     let cover_display_val = match &state.cover_path {
         Some(p) if p.starts_with("/tmp/omatunes_clip_") => "Image pasted".to_string(),
@@ -128,28 +230,43 @@ pub fn view<'a>(
         .on_input(Message::UpdateTagFieldCoverPath)
         .padding([8, 8])
         .width(Length::Fill)
-        .style(|_: &iced::Theme, _status: iced::widget::text_input::Status| iced::widget::text_input::Style {
-            background: iced::Background::Color(iced::Color::TRANSPARENT),
-            border: iced::Border { color: iced::Color::TRANSPARENT, width: 0.0, radius: 0.0.into() },
-            icon: theme::overlay0(),
-            placeholder: theme::overlay0(),
-            value: theme::text(),
-            selection: theme::accent(),
-        });
+        .style(
+            |_: &iced::Theme, _status: iced::widget::text_input::Status| {
+                iced::widget::text_input::Style {
+                    background: iced::Background::Color(iced::Color::TRANSPARENT),
+                    border: iced::Border {
+                        color: iced::Color::TRANSPARENT,
+                        width: 0.0,
+                        radius: 0.0.into(),
+                    },
+                    icon: theme::overlay0(),
+                    placeholder: theme::overlay0(),
+                    value: theme::text(),
+                    selection: theme::accent(),
+                }
+            },
+        );
 
     let browse_btn = button(
         text(crate::ui::icons::ICON_FOLDER)
             .font(crate::ui::icons::NERD_FONT_MONO)
             .size(16)
-            .color(theme::subtext())
+            .color(theme::subtext()),
     )
     .on_press(Message::PickCoverImage)
     .padding([8, 10])
     .style(|_: &iced::Theme, status: iced::widget::button::Status| {
-        let hovered = matches!(status, iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed);
+        let hovered = matches!(
+            status,
+            iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+        );
         iced::widget::button::Style {
             background: None,
-            text_color: if hovered { theme::accent() } else { theme::subtext() },
+            text_color: if hovered {
+                theme::accent()
+            } else {
+                theme::subtext()
+            },
             border: iced::Border::default(),
             ..Default::default()
         }
@@ -159,15 +276,22 @@ pub fn view<'a>(
         text(crate::ui::icons::ICON_GLOBE)
             .font(crate::ui::icons::NERD_FONT_MONO)
             .size(16)
-            .color(theme::subtext())
+            .color(theme::subtext()),
     )
     .on_press(Message::SearchCoverOnline)
     .padding([8, 10])
     .style(|_: &iced::Theme, status: iced::widget::button::Status| {
-        let hovered = matches!(status, iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed);
+        let hovered = matches!(
+            status,
+            iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+        );
         iced::widget::button::Style {
             background: None,
-            text_color: if hovered { theme::accent() } else { theme::subtext() },
+            text_color: if hovered {
+                theme::accent()
+            } else {
+                theme::subtext()
+            },
             border: iced::Border::default(),
             ..Default::default()
         }
@@ -177,37 +301,106 @@ pub fn view<'a>(
         text("\u{f0ea}")
             .font(crate::ui::icons::NERD_FONT_MONO)
             .size(16)
-            .color(theme::subtext())
+            .color(theme::subtext()),
     )
     .on_press(Message::PasteCoverImage)
     .padding([8, 10])
     .style(|_: &iced::Theme, status: iced::widget::button::Status| {
-        let hovered = matches!(status, iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed);
+        let hovered = matches!(
+            status,
+            iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+        );
         iced::widget::button::Style {
             background: None,
-            text_color: if hovered { theme::accent() } else { theme::subtext() },
+            text_color: if hovered {
+                theme::accent()
+            } else {
+                theme::subtext()
+            },
             border: iced::Border::default(),
             ..Default::default()
         }
     });
 
     let cover_input = {
-        let browse_tip = iced::widget::tooltip(browse_btn, container(text("Browse for image").size(11).font(crate::ui::icons::UI_FONT).color(theme::text())).padding([4, 8]).style(|_| iced::widget::container::Style { background: Some(iced::Background::Color(theme::surface0())), border: iced::Border { color: theme::overlay0(), width: 1.0, radius: 4.0.into() }, ..Default::default() }), iced::widget::tooltip::Position::Top);
-        let search_tip = iced::widget::tooltip(search_btn, container(text("Search artwork online").size(11).font(crate::ui::icons::UI_FONT).color(theme::text())).padding([4, 8]).style(|_| iced::widget::container::Style { background: Some(iced::Background::Color(theme::surface0())), border: iced::Border { color: theme::overlay0(), width: 1.0, radius: 4.0.into() }, ..Default::default() }), iced::widget::tooltip::Position::Top);
-        let paste_tip = iced::widget::tooltip(paste_btn, container(text("Paste from clipboard").size(11).font(crate::ui::icons::UI_FONT).color(theme::text())).padding([4, 8]).style(|_| iced::widget::container::Style { background: Some(iced::Background::Color(theme::surface0())), border: iced::Border { color: theme::overlay0(), width: 1.0, radius: 4.0.into() }, ..Default::default() }), iced::widget::tooltip::Position::Top);
+        let browse_tip = iced::widget::tooltip(
+            browse_btn,
+            container(
+                text("Browse for image")
+                    .size(11)
+                    .font(crate::ui::icons::UI_FONT)
+                    .color(theme::text()),
+            )
+            .padding([4, 8])
+            .style(|_| iced::widget::container::Style {
+                background: Some(iced::Background::Color(theme::surface0())),
+                border: iced::Border {
+                    color: theme::overlay0(),
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            }),
+            iced::widget::tooltip::Position::Top,
+        );
+        let search_tip = iced::widget::tooltip(
+            search_btn,
+            container(
+                text("Search artwork online")
+                    .size(11)
+                    .font(crate::ui::icons::UI_FONT)
+                    .color(theme::text()),
+            )
+            .padding([4, 8])
+            .style(|_| iced::widget::container::Style {
+                background: Some(iced::Background::Color(theme::surface0())),
+                border: iced::Border {
+                    color: theme::overlay0(),
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            }),
+            iced::widget::tooltip::Position::Top,
+        );
+        let paste_tip = iced::widget::tooltip(
+            paste_btn,
+            container(
+                text("Paste from clipboard")
+                    .size(11)
+                    .font(crate::ui::icons::UI_FONT)
+                    .color(theme::text()),
+            )
+            .padding([4, 8])
+            .style(|_| iced::widget::container::Style {
+                background: Some(iced::Background::Color(theme::surface0())),
+                border: iced::Border {
+                    color: theme::overlay0(),
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            }),
+            iced::widget::tooltip::Position::Top,
+        );
         let cover_saved = state.just_saved.contains("cover");
         container(
-            row![
-                cover_input_field,
-                browse_tip,
-                paste_tip,
-                search_tip,
-            ].align_y(Alignment::Center).spacing(2)
+            row![cover_input_field, browse_tip, paste_tip, search_tip,]
+                .align_y(Alignment::Center)
+                .spacing(2),
         )
         .padding([4, 6])
         .style(move |_| iced::widget::container::Style {
             background: Some(iced::Background::Color(theme::base())),
-            border: iced::Border { color: if cover_saved { theme::green() } else { theme::surface0() }, width: if cover_saved { 1.5 } else { 1.0 }, radius: 4.0.into() },
+            border: iced::Border {
+                color: if cover_saved {
+                    theme::green()
+                } else {
+                    theme::surface0()
+                },
+                width: if cover_saved { 1.5 } else { 1.0 },
+                radius: 4.0.into(),
+            },
             ..Default::default()
         })
     };
@@ -224,13 +417,19 @@ pub fn view<'a>(
 
     let tab_btn = |tab: crate::app::TagEditorTab, label: &'static str| {
         let is_active = state.active_tab == tab;
-        
-        button(container(text(label).font(crate::ui::icons::UI_FONT_BOLD).size(12)).center_x(Length::Fill).center_y(Length::Fill))
-            .on_press(Message::SelectTagEditorTab(tab))
-            .width(Length::FillPortion(1))
-            .height(36.0)
-            .style(move |_theme: &iced::Theme, status: iced::widget::button::Status| {
-                let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
+
+        button(
+            container(text(label).font(crate::ui::icons::UI_FONT_BOLD).size(12))
+                .center_x(Length::Fill)
+                .center_y(Length::Fill),
+        )
+        .on_press(Message::SelectTagEditorTab(tab))
+        .width(Length::FillPortion(1))
+        .height(36.0)
+        .style(
+            move |_theme: &iced::Theme, status: iced::widget::button::Status| {
+                let is_hovered = status == iced::widget::button::Status::Hovered
+                    || status == iced::widget::button::Status::Pressed;
                 iced::widget::button::Style {
                     background: Some(iced::Background::Color(if is_active {
                         theme::surface0()
@@ -240,15 +439,24 @@ pub fn view<'a>(
                         iced::Color::TRANSPARENT
                     })),
                     border: iced::Border {
-                        color: if is_active { theme::accent() } else { theme::surface0() },
+                        color: if is_active {
+                            theme::accent()
+                        } else {
+                            theme::surface0()
+                        },
                         width: if is_active { 1.0 } else { 0.5 },
                         radius: 0.0.into(),
                     },
-                    text_color: if is_active { theme::accent() } else { theme::subtext() },
+                    text_color: if is_active {
+                        theme::accent()
+                    } else {
+                        theme::subtext()
+                    },
                     ..Default::default()
                 }
-            })
-            .padding(0)
+            },
+        )
+        .padding(0)
     };
 
     let tabs_header = row![
@@ -266,12 +474,21 @@ pub fn view<'a>(
                     checkbox("", state.apply_title)
                         .on_toggle(Message::ToggleTagFieldApplyTitle)
                         .size(16),
-                    column![
-                        text("Title").size(12).color(theme::subtext()),
-                        title_input
-                    ].width(Length::Fill),
-                    if title_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
-                ].align_y(Alignment::Center).spacing(6)
+                    column![text("Title").size(12).color(theme::subtext()), title_input]
+                        .width(Length::Fill),
+                    if title_saved {
+                        iced::Element::from(
+                            crate::ui::txt::text(crate::ui::icons::ICON_CHECK)
+                                .font(crate::ui::icons::NERD_FONT_MONO)
+                                .size(14)
+                                .color(theme::green()),
+                        )
+                    } else {
+                        iced::Element::from(Space::with_width(0))
+                    },
+                ]
+                .align_y(Alignment::Center)
+                .spacing(6),
             )
             .push(Space::with_height(2))
             .push(
@@ -285,14 +502,29 @@ pub fn view<'a>(
                         if !artist_suggestions.is_empty() {
                             iced::Element::from(column![
                                 Space::with_height(4),
-                                render_suggestions(&artist_suggestions, Message::UpdateTagFieldArtist)
+                                render_suggestions(
+                                    &artist_suggestions,
+                                    Message::UpdateTagFieldArtist
+                                )
                             ])
                         } else {
                             iced::Element::from(Space::with_height(0))
                         }
-                    ].width(Length::Fill),
-                    if artist_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
-                ].align_y(Alignment::Center).spacing(6)
+                    ]
+                    .width(Length::Fill),
+                    if artist_saved {
+                        iced::Element::from(
+                            crate::ui::txt::text(crate::ui::icons::ICON_CHECK)
+                                .font(crate::ui::icons::NERD_FONT_MONO)
+                                .size(14)
+                                .color(theme::green()),
+                        )
+                    } else {
+                        iced::Element::from(Space::with_width(0))
+                    },
+                ]
+                .align_y(Alignment::Center)
+                .spacing(6),
             )
             .push(Space::with_height(2))
             .push(
@@ -306,173 +538,300 @@ pub fn view<'a>(
                         if !album_suggestions.is_empty() {
                             iced::Element::from(column![
                                 Space::with_height(4),
-                                render_suggestions(&album_suggestions, Message::UpdateTagFieldAlbum)
+                                render_suggestions(
+                                    &album_suggestions,
+                                    Message::UpdateTagFieldAlbum
+                                )
                             ])
                         } else {
                             iced::Element::from(Space::with_height(0))
                         }
-                    ].width(Length::Fill),
-                    if album_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
-                ].align_y(Alignment::Center).spacing(6)
+                    ]
+                    .width(Length::Fill),
+                    if album_saved {
+                        iced::Element::from(
+                            crate::ui::txt::text(crate::ui::icons::ICON_CHECK)
+                                .font(crate::ui::icons::NERD_FONT_MONO)
+                                .size(14)
+                                .color(theme::green()),
+                        )
+                    } else {
+                        iced::Element::from(Space::with_width(0))
+                    },
+                ]
+                .align_y(Alignment::Center)
+                .spacing(6),
             )
             .push(Space::with_height(4));
 
-            if state.tracks.len() > 1 {
-                body = body.push(
-                    text(format!("Common genres across {} tracks:", state.tracks.len()))
-                        .size(12).color(theme::subtext())
-                );
-            } else {
-                body = body.push(
-                    text("Genres").size(12).color(theme::subtext())
-                );
-            }
+        if state.tracks.len() > 1 {
+            body = body.push(
+                text(format!(
+                    "Common genres across {} tracks:",
+                    state.tracks.len()
+                ))
+                .size(12)
+                .color(theme::subtext()),
+            );
+        } else {
+            body = body.push(text("Genres").size(12).color(theme::subtext()));
+        }
 
-            let is_multi = state.tracks.len() > 1;
-            for (i, (genre_val, apply_val)) in state.genres.iter().zip(state.apply_genres.iter()).enumerate() {
-                let is_new = i >= state.genres_original.len() || state.genres_original[i].is_empty();
-                let hint = format!("Genre {}", i + 1);
-                let placeholder = if is_new {
-                    if is_multi {
-                        "No Match, Overwrite all?".to_string()
-                    } else {
-                        format!("New genre {}...", i + 1)
-                    }
+        let is_multi = state.tracks.len() > 1;
+        for (i, (genre_val, apply_val)) in state
+            .genres
+            .iter()
+            .zip(state.apply_genres.iter())
+            .enumerate()
+        {
+            let is_new = i >= state.genres_original.len() || state.genres_original[i].is_empty();
+            let hint = format!("Genre {}", i + 1);
+            let placeholder = if is_new {
+                if is_multi {
+                    "No Match, Overwrite all?".to_string()
                 } else {
-                    state.genres_original[i].clone()
-                };
-                let genre_saved = state.just_saved.contains(&format!("genre{}", i));
-                let slot_suggestions = get_suggestions(genre_val, unique_genres);
-                let ghost_suffix = if genre_val.is_empty() {
-                    String::new()
-                } else if let Some(first) = slot_suggestions.first() {
-                    if first.to_lowercase().starts_with(&genre_val.to_lowercase()) && first.len() > genre_val.len() {
-                        first[genre_val.len()..].to_string()
-                    } else {
-                        String::new()
-                    }
+                    format!("New genre {}...", i + 1)
+                }
+            } else {
+                state.genres_original[i].clone()
+            };
+            let genre_saved = state.just_saved.contains(&format!("genre{}", i));
+            let slot_suggestions = get_suggestions(genre_val, unique_genres);
+            let ghost_suffix = if genre_val.is_empty() {
+                String::new()
+            } else if let Some(first) = slot_suggestions.first() {
+                if first.to_lowercase().starts_with(&genre_val.to_lowercase())
+                    && first.len() > genre_val.len()
+                {
+                    first[genre_val.len()..].to_string()
                 } else {
                     String::new()
-                };
-                let ghost_box = container(
-                    row![
-                        text(genre_val).font(crate::ui::icons::UI_FONT).size(14).color(iced::Color::TRANSPARENT),
-                        text(ghost_suffix.clone()).font(crate::ui::icons::UI_FONT).size(14).color(theme::overlay0()),
-                    ].align_y(Alignment::Center)
-                )
+                }
+            } else {
+                String::new()
+            };
+            let ghost_box = container(
+                row![
+                    text(genre_val)
+                        .font(crate::ui::icons::UI_FONT)
+                        .size(14)
+                        .color(iced::Color::TRANSPARENT),
+                    text(ghost_suffix.clone())
+                        .font(crate::ui::icons::UI_FONT)
+                        .size(14)
+                        .color(theme::overlay0()),
+                ]
+                .align_y(Alignment::Center),
+            )
+            .padding(8)
+            .width(Length::Fill)
+            .style(move |_| container::Style {
+                background: Some(iced::Background::Color(theme::base())),
+                border: iced::Border {
+                    color: if genre_saved {
+                        theme::green()
+                    } else {
+                        theme::surface0()
+                    },
+                    width: if genre_saved { 1.5 } else { 1.0 },
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            });
+            let input_field = text_input(&placeholder, genre_val)
+                .id(iced::widget::text_input::Id::new(format!(
+                    "id3_genre_{}",
+                    i
+                )))
+                .on_input(move |v| Message::UpdateTagFieldGenre(i, v))
                 .padding(8)
-                .width(Length::Fill)
-                .style(move |_| container::Style {
-                    background: Some(iced::Background::Color(theme::base())),
-                    border: iced::Border { color: if genre_saved { theme::green() } else { theme::surface0() }, width: if genre_saved { 1.5 } else { 1.0 }, radius: 4.0.into() },
-                    ..Default::default()
-                });
-                let input_field = text_input(&placeholder, genre_val)
-                    .id(iced::widget::text_input::Id::new(format!("id3_genre_{}", i)))
-                    .on_input(move |v| Message::UpdateTagFieldGenre(i, v))
-                    .padding(8)
-                    .style(|_: &iced::Theme, _: iced::widget::text_input::Status| iced::widget::text_input::Style {
+                .style(|_: &iced::Theme, _: iced::widget::text_input::Status| {
+                    iced::widget::text_input::Style {
                         background: iced::Background::Color(iced::Color::TRANSPARENT),
-                        border: iced::Border { color: iced::Color::TRANSPARENT, width: 0.0, radius: 0.0.into() },
+                        border: iced::Border {
+                            color: iced::Color::TRANSPARENT,
+                            width: 0.0,
+                            radius: 0.0.into(),
+                        },
                         icon: theme::overlay0(),
                         placeholder: theme::overlay0(),
                         value: theme::text(),
                         selection: theme::accent(),
-                    })
-                    .width(Length::Fill);
-                let slot_input = container(
-                    stack![ ghost_box, input_field ]
-                )
-                .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 2.0, left: 0.0 });
-                let mut slot_column = column![
-                    text(hint).size(12).color(theme::subtext()),
-                    slot_input,
-                ];
-                if !slot_suggestions.is_empty() {
-                    slot_column = slot_column.push(
-                        iced::Element::from(column![
-                            Space::with_height(4),
-                            render_suggestions(&slot_suggestions, move |v| Message::UpdateTagFieldGenre(i, v))
-                        ])
-                    );
-                }
-                let plus_btn: Element<'_, Message, iced::Theme> = if i == 1 {
-                    button(text(crate::ui::icons::ICON_PLUS).font(crate::ui::icons::NERD_FONT_MONO).size(12).color(theme::subtext()))
-                        .on_press(Message::AddGenreField)
-                        .padding([4, 6])
-                        .style(|_: &iced::Theme, status: iced::widget::button::Status| {
-                            let hovered = matches!(status, iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed);
-                            iced::widget::button::Style { background: None, text_color: if hovered { theme::accent() } else { theme::subtext() }, border: iced::Border::default(), ..Default::default() }
-                        }).into()
-                } else {
-                    iced::Element::from(Space::with_width(0))
-                };
-                let minus_btn: Element<'_, Message, iced::Theme> = if i >= 2 {
-                    button(text("\u{f068}").font(crate::ui::icons::NERD_FONT_MONO).size(12).color(theme::red()))
-                        .on_press(Message::RemoveGenreField(i))
-                        .padding([4, 6])
-                        .style(|_: &iced::Theme, status: iced::widget::button::Status| {
-                            let hovered = matches!(status, iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed);
-                            iced::widget::button::Style { background: None, text_color: if hovered { theme::red() } else { theme::overlay0() }, border: iced::Border::default(), ..Default::default() }
-                        }).into()
-                } else {
-                    iced::Element::from(Space::with_width(0))
-                };
-                let tick: Element<'_, Message, iced::Theme> = if genre_saved {
-                    iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green()))
-                } else {
-                    iced::Element::from(Space::with_width(0))
-                };
-                body = body.push(
-                    row![
-                        checkbox("", *apply_val)
-                            .on_toggle(move |v| Message::ToggleTagFieldApplyGenre(i, v))
-                            .size(16),
-                        slot_column.width(Length::Fill),
-                        plus_btn,
-                        minus_btn,
-                        tick,
-                    ].align_y(Alignment::Center).spacing(6)
-                );
+                    }
+                })
+                .width(Length::Fill);
+            let slot_input = container(stack![ghost_box, input_field]).padding(iced::Padding {
+                top: 0.0,
+                right: 0.0,
+                bottom: 2.0,
+                left: 0.0,
+            });
+            let mut slot_column = column![text(hint).size(12).color(theme::subtext()), slot_input,];
+            if !slot_suggestions.is_empty() {
+                slot_column = slot_column.push(iced::Element::from(column![
+                    Space::with_height(4),
+                    render_suggestions(&slot_suggestions, move |v| Message::UpdateTagFieldGenre(
+                        i, v
+                    ))
+                ]));
             }
-
-            body = body.push(Space::with_height(2))
-            .push(
+            let plus_btn: Element<'_, Message, iced::Theme> = if i == 1 {
+                button(
+                    text(crate::ui::icons::ICON_PLUS)
+                        .font(crate::ui::icons::NERD_FONT_MONO)
+                        .size(12)
+                        .color(theme::subtext()),
+                )
+                .on_press(Message::AddGenreField)
+                .padding([4, 6])
+                .style(|_: &iced::Theme, status: iced::widget::button::Status| {
+                    let hovered = matches!(
+                        status,
+                        iced::widget::button::Status::Hovered
+                            | iced::widget::button::Status::Pressed
+                    );
+                    iced::widget::button::Style {
+                        background: None,
+                        text_color: if hovered {
+                            theme::accent()
+                        } else {
+                            theme::subtext()
+                        },
+                        border: iced::Border::default(),
+                        ..Default::default()
+                    }
+                })
+                .into()
+            } else {
+                iced::Element::from(Space::with_width(0))
+            };
+            let minus_btn: Element<'_, Message, iced::Theme> = if i >= 2 {
+                button(
+                    text("\u{f068}")
+                        .font(crate::ui::icons::NERD_FONT_MONO)
+                        .size(12)
+                        .color(theme::red()),
+                )
+                .on_press(Message::RemoveGenreField(i))
+                .padding([4, 6])
+                .style(|_: &iced::Theme, status: iced::widget::button::Status| {
+                    let hovered = matches!(
+                        status,
+                        iced::widget::button::Status::Hovered
+                            | iced::widget::button::Status::Pressed
+                    );
+                    iced::widget::button::Style {
+                        background: None,
+                        text_color: if hovered {
+                            theme::red()
+                        } else {
+                            theme::overlay0()
+                        },
+                        border: iced::Border::default(),
+                        ..Default::default()
+                    }
+                })
+                .into()
+            } else {
+                iced::Element::from(Space::with_width(0))
+            };
+            let tick: Element<'_, Message, iced::Theme> = if genre_saved {
+                iced::Element::from(
+                    crate::ui::txt::text(crate::ui::icons::ICON_CHECK)
+                        .font(crate::ui::icons::NERD_FONT_MONO)
+                        .size(14)
+                        .color(theme::green()),
+                )
+            } else {
+                iced::Element::from(Space::with_width(0))
+            };
+            body = body.push(
                 row![
-                    row![
-                        checkbox("", state.apply_track_num)
-                            .on_toggle(Message::ToggleTagFieldApplyTrackNum)
-                            .size(16),
-                        column![
-                            text("Track #").size(12).color(theme::subtext()),
-                            track_num_input
-                        ].width(Length::Fill),
-                        if track_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
-                    ].align_y(Alignment::Center).spacing(6).width(Length::FillPortion(1)),
-                    Space::with_width(12),
-                    row![
-                        checkbox("", state.apply_disc_num)
-                            .on_toggle(Message::ToggleTagFieldApplyDiscNum)
-                            .size(16),
-                        column![
-                            text("Disc #").size(12).color(theme::subtext()),
-                            disc_num_input
-                        ].width(Length::Fill),
-                        if disc_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
-                    ].align_y(Alignment::Center).spacing(6).width(Length::FillPortion(1)),
-                    Space::with_width(12),
-                    row![
-                        checkbox("", state.apply_year)
-                            .on_toggle(Message::ToggleTagFieldApplyYear)
-                            .size(16),
-                        column![
-                            text("Year").size(12).color(theme::subtext()),
-                            year_input
-                        ].width(Length::Fill),
-                        if year_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
-                    ].align_y(Alignment::Center).spacing(8).width(Length::FillPortion(1)),
+                    checkbox("", *apply_val)
+                        .on_toggle(move |v| Message::ToggleTagFieldApplyGenre(i, v))
+                        .size(16),
+                    slot_column.width(Length::Fill),
+                    plus_btn,
+                    minus_btn,
+                    tick,
                 ]
-            )
+                .align_y(Alignment::Center)
+                .spacing(6),
+            );
+        }
+
+        body = body
+            .push(Space::with_height(2))
+            .push(row![
+                row![
+                    checkbox("", state.apply_track_num)
+                        .on_toggle(Message::ToggleTagFieldApplyTrackNum)
+                        .size(16),
+                    column![
+                        text("Track #").size(12).color(theme::subtext()),
+                        track_num_input
+                    ]
+                    .width(Length::Fill),
+                    if track_saved {
+                        iced::Element::from(
+                            crate::ui::txt::text(crate::ui::icons::ICON_CHECK)
+                                .font(crate::ui::icons::NERD_FONT_MONO)
+                                .size(14)
+                                .color(theme::green()),
+                        )
+                    } else {
+                        iced::Element::from(Space::with_width(0))
+                    },
+                ]
+                .align_y(Alignment::Center)
+                .spacing(6)
+                .width(Length::FillPortion(1)),
+                Space::with_width(12),
+                row![
+                    checkbox("", state.apply_disc_num)
+                        .on_toggle(Message::ToggleTagFieldApplyDiscNum)
+                        .size(16),
+                    column![
+                        text("Disc #").size(12).color(theme::subtext()),
+                        disc_num_input
+                    ]
+                    .width(Length::Fill),
+                    if disc_saved {
+                        iced::Element::from(
+                            crate::ui::txt::text(crate::ui::icons::ICON_CHECK)
+                                .font(crate::ui::icons::NERD_FONT_MONO)
+                                .size(14)
+                                .color(theme::green()),
+                        )
+                    } else {
+                        iced::Element::from(Space::with_width(0))
+                    },
+                ]
+                .align_y(Alignment::Center)
+                .spacing(6)
+                .width(Length::FillPortion(1)),
+                Space::with_width(12),
+                row![
+                    checkbox("", state.apply_year)
+                        .on_toggle(Message::ToggleTagFieldApplyYear)
+                        .size(16),
+                    column![text("Year").size(12).color(theme::subtext()), year_input]
+                        .width(Length::Fill),
+                    if year_saved {
+                        iced::Element::from(
+                            crate::ui::txt::text(crate::ui::icons::ICON_CHECK)
+                                .font(crate::ui::icons::NERD_FONT_MONO)
+                                .size(14)
+                                .color(theme::green()),
+                        )
+                    } else {
+                        iced::Element::from(Space::with_width(0))
+                    },
+                ]
+                .align_y(Alignment::Center)
+                .spacing(8)
+                .width(Length::FillPortion(1)),
+            ])
             .push(Space::with_height(2))
             .push(
                 row![
@@ -482,9 +841,21 @@ pub fn view<'a>(
                     column![
                         text("Cover Path").size(12).color(theme::subtext()),
                         cover_input
-                    ].width(Length::Fill),
-                    if cover_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
-                ].align_y(Alignment::Center).spacing(6)
+                    ]
+                    .width(Length::Fill),
+                    if cover_saved {
+                        iced::Element::from(
+                            crate::ui::txt::text(crate::ui::icons::ICON_CHECK)
+                                .font(crate::ui::icons::NERD_FONT_MONO)
+                                .size(14)
+                                .color(theme::green()),
+                        )
+                    } else {
+                        iced::Element::from(Space::with_width(0))
+                    },
+                ]
+                .align_y(Alignment::Center)
+                .spacing(6),
             );
     } else {
         if let Some(track) = state.tracks.first() {
@@ -494,15 +865,15 @@ pub fn view<'a>(
             } else {
                 track.title.clone()
             };
-            body = body.push(
-                row![
+            body = body
+                .push(row![
                     Space::with_width(24),
                     text(format!("{} ({})", title, duration_str))
                         .size(13)
                         .font(crate::ui::icons::UI_FONT_BOLD)
                         .color(theme::accent())
-                ]
-            ).push(Space::with_height(6));
+                ])
+                .push(Space::with_height(6));
         }
 
         body = body.push(
@@ -518,8 +889,18 @@ pub fn view<'a>(
                             .on_press(Message::SearchLyricsOnline)
                             .style(theme::secondary_button)
                             .padding([2, 6]),
-                        if lyrics_saved { iced::Element::from(crate::ui::txt::text(crate::ui::icons::ICON_CHECK).font(crate::ui::icons::NERD_FONT_MONO).size(14).color(theme::green())) } else { iced::Element::from(Space::with_width(0)) },
-                    ].align_y(Alignment::Center),
+                        if lyrics_saved {
+                            iced::Element::from(
+                                crate::ui::txt::text(crate::ui::icons::ICON_CHECK)
+                                    .font(crate::ui::icons::NERD_FONT_MONO)
+                                    .size(14)
+                                    .color(theme::green()),
+                            )
+                        } else {
+                            iced::Element::from(Space::with_width(0))
+                        },
+                    ]
+                    .align_y(Alignment::Center),
                     Space::with_height(4),
                     container(
                         iced::widget::text_editor(&state.lyrics_content)
@@ -528,7 +909,11 @@ pub fn view<'a>(
                     )
                     .style(move |_| iced::widget::container::Style {
                         border: iced::Border {
-                            color: if lyrics_saved { theme::green() } else { theme::surface0() },
+                            color: if lyrics_saved {
+                                theme::green()
+                            } else {
+                                theme::surface0()
+                            },
                             width: if lyrics_saved { 1.5 } else { 1.0 },
                             radius: 4.0.into(),
                         },
@@ -552,7 +937,9 @@ pub fn view<'a>(
                             .on_press(Message::ChangePendingLyricOffset(1.0))
                             .style(theme::secondary_button)
                             .padding([4, 10]),
-                    ].spacing(8).align_y(Alignment::Center),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center),
                     Space::with_height(8),
                     row![
                         text(format!("Pending shift: {:+.2}s", state.pending_offset))
@@ -574,9 +961,12 @@ pub fn view<'a>(
                                 .style(theme::secondary_button)
                                 .padding([4, 10])
                         }
-                    ].align_y(Alignment::Center)
-                ].width(Length::Fill)
-            ].spacing(8)
+                    ]
+                    .align_y(Alignment::Center)
+                ]
+                .width(Length::Fill)
+            ]
+            .spacing(8),
         );
     }
 
@@ -586,21 +976,37 @@ pub fn view<'a>(
             .font(crate::ui::icons::UI_FONT_BOLD)
             .color(theme::accent()),
         Space::with_width(Length::Fill),
-        button(text("X").size(14).font(crate::ui::icons::UI_FONT_BOLD).color(theme::subtext()))
-            .on_press(Message::CloseTagEditor)
-            .style(|_theme: &iced::Theme, status: iced::widget::button::Status| {
-                let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
+        button(
+            text("X")
+                .size(14)
+                .font(crate::ui::icons::UI_FONT_BOLD)
+                .color(theme::subtext())
+        )
+        .on_press(Message::CloseTagEditor)
+        .style(
+            |_theme: &iced::Theme, status: iced::widget::button::Status| {
+                let is_hovered = status == iced::widget::button::Status::Hovered
+                    || status == iced::widget::button::Status::Pressed;
                 iced::widget::button::Style {
-                    background: Some(iced::Background::Color(if is_hovered { theme::surface0() } else { iced::Color::TRANSPARENT })),
-                    text_color: if is_hovered { theme::red() } else { theme::subtext() },
+                    background: Some(iced::Background::Color(if is_hovered {
+                        theme::surface0()
+                    } else {
+                        iced::Color::TRANSPARENT
+                    })),
+                    text_color: if is_hovered {
+                        theme::red()
+                    } else {
+                        theme::subtext()
+                    },
                     border: iced::Border {
                         radius: 4.0.into(),
                         ..Default::default()
                     },
                     ..Default::default()
                 }
-            })
-            .padding([4, 8])
+            }
+        )
+        .padding([4, 8])
     ]
     .align_y(Alignment::Center)
     .width(Length::Fill);
@@ -647,7 +1053,11 @@ pub fn view<'a>(
                 button(text("Save"))
                     .on_press(Message::SaveTags)
                     .padding([8, 16])
-                    .style(if state.is_saved { theme::save_button_saved } else { theme::save_button })
+                    .style(if state.is_saved {
+                        theme::save_button_saved
+                    } else {
+                        theme::save_button
+                    })
             ]
             .align_y(Alignment::Center),
             Space::with_width(Length::Fill),
@@ -661,28 +1071,30 @@ pub fn view<'a>(
             .style(theme::secondary_button)
         ]
         .width(Length::Fill)
-        .align_y(Alignment::Center)
+        .align_y(Alignment::Center),
     );
 
     // Modal background overlay
     container(
-        container(content)
-            .style(|_| iced::widget::container::Style {
-                background: Some(iced::Background::Color(theme::mantle())),
-                border: iced::Border {
-                    color: theme::surface0(),
-                    width: 1.0,
-                    radius: 8.0.into(),
-                },
-                ..Default::default()
-            })
+        container(content).style(|_| iced::widget::container::Style {
+            background: Some(iced::Background::Color(theme::mantle())),
+            border: iced::Border {
+                color: theme::surface0(),
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            ..Default::default()
+        }),
     )
     .width(Length::Fill)
     .height(Length::Fill)
     .center_x(Length::Fill)
     .center_y(Length::Fill)
     .style(|_| iced::widget::container::Style {
-        background: Some(iced::Background::Color(theme::with_alpha(theme::base(), 0.8))),
+        background: Some(iced::Background::Color(theme::with_alpha(
+            theme::base(),
+            0.8,
+        ))),
         ..Default::default()
     })
     .into()

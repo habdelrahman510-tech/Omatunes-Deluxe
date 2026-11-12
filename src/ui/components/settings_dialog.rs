@@ -1,10 +1,17 @@
-use iced::widget::{button, checkbox, column, container, pick_list, radio, row, scrollable, slider, text_input, Space};
-use iced::{Alignment, Element, Length};
 use crate::ui::txt::text;
+use iced::widget::{
+    button, checkbox, column, container, pick_list, radio, row, scrollable, slider, text_input,
+    Space,
+};
+use iced::{Alignment, Element, Length};
 
 use crate::app::{Message, SettingsState, SettingsTab};
+use crate::ui::icons::{
+    ICON_AUTO_SCAN, ICON_CHECK, ICON_FOLDER, ICON_KEYBOARD, ICON_LIBRARY, ICON_MONITOR,
+    ICON_PALETTE, ICON_SLIDERS, ICON_TIMES, ICON_VOLUME_HIGH, NERD_FONT_MONO, UI_FONT,
+    UI_FONT_BOLD,
+};
 use crate::ui::theme;
-use crate::ui::icons::{ICON_LIBRARY, ICON_SLIDERS, ICON_MONITOR, ICON_PALETTE, ICON_KEYBOARD, ICON_FOLDER, ICON_AUTO_SCAN, ICON_VOLUME_HIGH, ICON_CHECK, ICON_TIMES, NERD_FONT_MONO, UI_FONT_BOLD, UI_FONT};
 
 fn tab_button<'a>(
     icon: &'static str,
@@ -14,45 +21,69 @@ fn tab_button<'a>(
 ) -> Element<'a, Message> {
     button(
         row![
-            text(icon).font(NERD_FONT_MONO).size(16).color(
-                if is_selected { theme::accent() } else { theme::overlay0() }
-            ),
+            text(icon)
+                .font(NERD_FONT_MONO)
+                .size(16)
+                .color(if is_selected {
+                    theme::accent()
+                } else {
+                    theme::overlay0()
+                }),
             Space::with_width(8),
-            text(label).font(UI_FONT_BOLD).size(14).color(
-                if is_selected { theme::text() } else { theme::subtext() }
-            ),
+            text(label)
+                .font(UI_FONT_BOLD)
+                .size(14)
+                .color(if is_selected {
+                    theme::text()
+                } else {
+                    theme::subtext()
+                }),
         ]
-        .align_y(Alignment::Center)
+        .align_y(Alignment::Center),
     )
     .on_press(Message::SettingsTabChanged(tab))
     .padding([10, 12])
     .width(Length::Fill)
-    .style(move |_t: &iced::Theme, status: iced::widget::button::Status| {
-        let hovered = status == iced::widget::button::Status::Hovered
-            || status == iced::widget::button::Status::Pressed;
-        iced::widget::button::Style {
-            background: if is_selected || hovered {
-                Some(iced::Background::Color(theme::surface0()))
-            } else {
-                None
-            },
-            text_color: if is_selected { theme::text() } else { theme::subtext() },
-            border: iced::Border {
-                radius: 6.0.into(),
+    .style(
+        move |_t: &iced::Theme, status: iced::widget::button::Status| {
+            let hovered = status == iced::widget::button::Status::Hovered
+                || status == iced::widget::button::Status::Pressed;
+            iced::widget::button::Style {
+                background: if is_selected || hovered {
+                    Some(iced::Background::Color(theme::surface0()))
+                } else {
+                    None
+                },
+                text_color: if is_selected {
+                    theme::text()
+                } else {
+                    theme::subtext()
+                },
+                border: iced::Border {
+                    radius: 6.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
-            },
-            ..Default::default()
-        }
-    })
+            }
+        },
+    )
     .into()
 }
 
 fn field_label(label: &'static str) -> Element<'static, Message> {
-    text(label).size(12).font(UI_FONT_BOLD).color(theme::subtext()).into()
+    text(label)
+        .size(12)
+        .font(UI_FONT_BOLD)
+        .color(theme::subtext())
+        .into()
 }
 
 fn section_header(label: &'static str) -> Element<'static, Message> {
-    text(label).size(15).font(UI_FONT_BOLD).color(theme::accent()).into()
+    text(label)
+        .size(15)
+        .font(UI_FONT_BOLD)
+        .color(theme::accent())
+        .into()
 }
 
 pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
@@ -83,16 +114,51 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
 
     // ── Left nav ──────────────────────────────────────────────────────────────
     let nav = column![
-        tab_button(ICON_LIBRARY, "Library", SettingsTab::Library, state.selected_tab == SettingsTab::Library),
-        tab_button(ICON_SLIDERS, "Playback", SettingsTab::Playback, state.selected_tab == SettingsTab::Playback),
-        tab_button(ICON_MONITOR, "Display", SettingsTab::Display, state.selected_tab == SettingsTab::Display),
-        tab_button(ICON_PALETTE, "Theme", SettingsTab::Theme, state.selected_tab == SettingsTab::Theme),
-        tab_button(crate::ui::icons::ICON_VISUALIZER, "Visualizer", SettingsTab::Visualizer, state.selected_tab == SettingsTab::Visualizer),
-        tab_button(ICON_KEYBOARD, "Shortcuts", SettingsTab::Shortcuts, state.selected_tab == SettingsTab::Shortcuts),
+        tab_button(
+            ICON_LIBRARY,
+            "Library",
+            SettingsTab::Library,
+            state.selected_tab == SettingsTab::Library
+        ),
+        tab_button(
+            ICON_SLIDERS,
+            "Playback",
+            SettingsTab::Playback,
+            state.selected_tab == SettingsTab::Playback
+        ),
+        tab_button(
+            ICON_MONITOR,
+            "Display",
+            SettingsTab::Display,
+            state.selected_tab == SettingsTab::Display
+        ),
+        tab_button(
+            ICON_PALETTE,
+            "Theme",
+            SettingsTab::Theme,
+            state.selected_tab == SettingsTab::Theme
+        ),
+        tab_button(
+            crate::ui::icons::ICON_VISUALIZER,
+            "Visualizer",
+            SettingsTab::Visualizer,
+            state.selected_tab == SettingsTab::Visualizer
+        ),
+        tab_button(
+            ICON_KEYBOARD,
+            "Shortcuts",
+            SettingsTab::Shortcuts,
+            state.selected_tab == SettingsTab::Shortcuts
+        ),
     ]
     .spacing(4)
     .width(160)
-    .padding(iced::Padding { top: 0.0, right: 12.0, bottom: 0.0, left: 0.0 });
+    .padding(iced::Padding {
+        top: 0.0,
+        right: 12.0,
+        bottom: 0.0,
+        left: 0.0,
+    });
 
     // ── Right panel content ───────────────────────────────────────────────────
     let content: Element<'a, Message> = match state.selected_tab {
@@ -106,40 +172,67 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                 .padding([8, 14])
                 .style(theme::secondary_button);
 
-            let interval_input = text_input("e.g. 15", &state.auto_scan.interval_minutes.to_string())
-                .on_input(Message::SettingsAutoScanIntervalChanged)
-                .padding(8);
+            let interval_input =
+                text_input("e.g. 15", &state.auto_scan.interval_minutes.to_string())
+                    .on_input(Message::SettingsAutoScanIntervalChanged)
+                    .padding(8);
 
             let mut panel = column![
                 section_header("Library"),
                 Space::with_height(16),
                 row![
-                    text(ICON_FOLDER).font(NERD_FONT_MONO).size(14).color(theme::overlay0()),
+                    text(ICON_FOLDER)
+                        .font(NERD_FONT_MONO)
+                        .size(14)
+                        .color(theme::overlay0()),
                     Space::with_width(6),
                     field_label("Music Library Path"),
-                ].align_y(Alignment::Center),
+                ]
+                .align_y(Alignment::Center),
                 Space::with_height(6),
                 row![
                     music_input.width(Length::Fill),
                     Space::with_width(8),
                     browse_btn,
-                ].align_y(Alignment::Center),
+                ]
+                .align_y(Alignment::Center),
                 Space::with_height(16),
                 row![
-                    text(ICON_AUTO_SCAN).font(NERD_FONT_MONO).size(14).color(theme::overlay0()),
+                    text(ICON_AUTO_SCAN)
+                        .font(NERD_FONT_MONO)
+                        .size(14)
+                        .color(theme::overlay0()),
                     Space::with_width(6),
                     field_label("Library Scan Mode"),
-                ].align_y(Alignment::Center),
+                ]
+                .align_y(Alignment::Center),
                 Space::with_height(8),
                 column![
-                    radio("Manual (F5 to scan)", "manual", Some(state.auto_scan.mode.as_str()), |_| Message::SettingsAutoScanModeChanged("manual".to_string()))
-                        .spacing(8),
-                    radio("On Startup", "startup", Some(state.auto_scan.mode.as_str()), |_| Message::SettingsAutoScanModeChanged("startup".to_string()))
-                        .spacing(8),
-                    radio("Periodic", "periodic", Some(state.auto_scan.mode.as_str()), |_| Message::SettingsAutoScanModeChanged("periodic".to_string()))
-                        .spacing(8),
-                ].spacing(4),
-            ].spacing(0);
+                    radio(
+                        "Manual (F5 to scan)",
+                        "manual",
+                        Some(state.auto_scan.mode.as_str()),
+                        |_| Message::SettingsAutoScanModeChanged("manual".to_string())
+                    )
+                    .spacing(8),
+                    radio(
+                        "On Startup",
+                        "startup",
+                        Some(state.auto_scan.mode.as_str()),
+                        |_| Message::SettingsAutoScanModeChanged("startup".to_string())
+                    )
+                    .spacing(8),
+                    radio(
+                        "Periodic",
+                        "periodic",
+                        Some(state.auto_scan.mode.as_str()),
+                        |_| Message::SettingsAutoScanModeChanged("periodic".to_string())
+                    )
+                    .spacing(8),
+                ]
+                .spacing(4),
+            ]
+            .spacing(0);
 
             if state.auto_scan.mode == "periodic" {
                 panel = panel.push(Space::with_height(12));
@@ -159,8 +252,12 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
         }
 
         SettingsTab::Playback => {
-            let vol_slider = slider(0.0..=1.0f32, state.initial_volume, Message::SettingsInitialVolumeChanged)
-                .step(0.01);
+            let vol_slider = slider(
+                0.0..=1.0f32,
+                state.initial_volume,
+                Message::SettingsInitialVolumeChanged,
+            )
+            .step(0.01);
             let vol_label = text(format!("{:.0}%", state.initial_volume * 100.0))
                 .size(12)
                 .color(theme::text());
@@ -168,9 +265,21 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
             let mut defaults_table = column![
                 Space::with_height(8),
                 row![
-                    text("Context").font(UI_FONT_BOLD).size(12).color(theme::subtext()).width(Length::FillPortion(3)),
-                    text("Shuffle").font(UI_FONT_BOLD).size(12).color(theme::subtext()).width(Length::FillPortion(1)),
-                    text("Repeat").font(UI_FONT_BOLD).size(12).color(theme::subtext()).width(Length::FillPortion(1)),
+                    text("Context")
+                        .font(UI_FONT_BOLD)
+                        .size(12)
+                        .color(theme::subtext())
+                        .width(Length::FillPortion(3)),
+                    text("Shuffle")
+                        .font(UI_FONT_BOLD)
+                        .size(12)
+                        .color(theme::subtext())
+                        .width(Length::FillPortion(1)),
+                    text("Repeat")
+                        .font(UI_FONT_BOLD)
+                        .size(12)
+                        .color(theme::subtext())
+                        .width(Length::FillPortion(1)),
                 ]
                 .align_y(Alignment::Center)
                 .spacing(8),
@@ -182,27 +291,37 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                     text(if enabled { ICON_CHECK } else { ICON_TIMES })
                         .font(NERD_FONT_MONO)
                         .size(14)
-                        .color(if enabled { theme::accent() } else { theme::overlay0() })
+                        .color(if enabled {
+                            theme::accent()
+                        } else {
+                            theme::overlay0()
+                        }),
                 )
                 .on_press(on_press)
                 .padding([4, 8])
-                .style(move |_t: &iced::Theme, status: iced::widget::button::Status| {
-                    let hovered = status == iced::widget::button::Status::Hovered
-                        || status == iced::widget::button::Status::Pressed;
-                    iced::widget::button::Style {
-                        background: if hovered {
-                            Some(iced::Background::Color(theme::surface0()))
-                        } else {
-                            None
-                        },
-                        text_color: if enabled { theme::accent() } else { theme::overlay0() },
-                        border: iced::Border {
-                            radius: 4.0.into(),
+                .style(
+                    move |_t: &iced::Theme, status: iced::widget::button::Status| {
+                        let hovered = status == iced::widget::button::Status::Hovered
+                            || status == iced::widget::button::Status::Pressed;
+                        iced::widget::button::Style {
+                            background: if hovered {
+                                Some(iced::Background::Color(theme::surface0()))
+                            } else {
+                                None
+                            },
+                            text_color: if enabled {
+                                theme::accent()
+                            } else {
+                                theme::overlay0()
+                            },
+                            border: iced::Border {
+                                radius: 4.0.into(),
+                                ..Default::default()
+                            },
                             ..Default::default()
-                        },
-                        ..Default::default()
-                    }
-                })
+                        }
+                    },
+                )
                 .into()
             };
 
@@ -218,7 +337,10 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                 defaults_table = defaults_table.push(
                     row![
                         row![
-                            text(*icon).font(NERD_FONT_MONO).size(12).color(theme::overlay0()),
+                            text(*icon)
+                                .font(NERD_FONT_MONO)
+                                .size(12)
+                                .color(theme::overlay0()),
                             Space::with_width(6),
                             text(*label).font(UI_FONT).size(13).color(theme::text()),
                         ]
@@ -226,13 +348,21 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                         .width(Length::FillPortion(3)),
                         container(toggle_btn(
                             entry.shuffle,
-                            Message::SettingsPlaybackDefaultChanged(key.to_string(), "shuffle".to_string(), !entry.shuffle),
+                            Message::SettingsPlaybackDefaultChanged(
+                                key.to_string(),
+                                "shuffle".to_string(),
+                                !entry.shuffle
+                            ),
                         ))
                         .width(Length::FillPortion(1))
                         .center_x(Length::Fill),
                         container(toggle_btn(
                             entry.repeat,
-                            Message::SettingsPlaybackDefaultChanged(key.to_string(), "repeat".to_string(), !entry.repeat),
+                            Message::SettingsPlaybackDefaultChanged(
+                                key.to_string(),
+                                "repeat".to_string(),
+                                !entry.repeat
+                            ),
                         ))
                         .width(Length::FillPortion(1))
                         .center_x(Length::Fill),
@@ -274,9 +404,15 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
         }
 
         SettingsTab::Display => {
-            let scale_slider = slider(0.5..=2.5f32, state.font_scale, Message::SettingsFontScaleChanged)
-                .step(0.05);
-            let scale_label = text(format!("{:.2}x", state.font_scale)).size(12).color(theme::text());
+            let scale_slider = slider(
+                0.5..=2.5f32,
+                state.font_scale,
+                Message::SettingsFontScaleChanged,
+            )
+            .step(0.05);
+            let scale_label = text(format!("{:.2}x", state.font_scale))
+                .size(12)
+                .color(theme::text());
 
             let show_achievements_cb = checkbox(
                 "Show achievements icons in the main UI",
@@ -285,38 +421,48 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
             .on_toggle(Message::SettingsShowAchievementsInUiChanged)
             .size(16);
 
-            let show_toasts_cb = checkbox(
-                "Show toast notifications",
-                state.show_toasts,
-            )
-            .on_toggle(Message::SettingsShowToastsChanged)
-            .size(16);
+            let show_toasts_cb = checkbox("Show toast notifications", state.show_toasts)
+                .on_toggle(Message::SettingsShowToastsChanged)
+                .size(16);
 
             scrollable(
                 column![
                     section_header("Display"),
                     Space::with_height(16),
                     row![
-                        text("Aa").font(UI_FONT_BOLD).size(14).color(theme::overlay0()),
+                        text("Aa")
+                            .font(UI_FONT_BOLD)
+                            .size(14)
+                            .color(theme::overlay0()),
                         Space::with_width(6),
                         field_label("Font Scale (Zoom)"),
-                    ].align_y(Alignment::Center),
+                    ]
+                    .align_y(Alignment::Center),
                     Space::with_height(6),
-                    row![scale_slider, Space::with_width(12), scale_label].align_y(Alignment::Center),
+                    row![scale_slider, Space::with_width(12), scale_label]
+                        .align_y(Alignment::Center),
                     Space::with_height(20),
                     row![
-                        text("\u{f053f}").font(NERD_FONT_MONO).size(14).color(theme::overlay0()),
+                        text("\u{f053f}")
+                            .font(NERD_FONT_MONO)
+                            .size(14)
+                            .color(theme::overlay0()),
                         Space::with_width(6),
                         field_label("Achievements UI Visibility"),
-                    ].align_y(Alignment::Center),
+                    ]
+                    .align_y(Alignment::Center),
                     Space::with_height(8),
                     show_achievements_cb,
                     Space::with_height(16),
                     row![
-                        text("\u{f0f3}").font(NERD_FONT_MONO).size(14).color(theme::overlay0()),
+                        text("\u{f0f3}")
+                            .font(NERD_FONT_MONO)
+                            .size(14)
+                            .color(theme::overlay0()),
                         Space::with_width(6),
                         field_label("Toast Notifications"),
-                    ].align_y(Alignment::Center),
+                    ]
+                    .align_y(Alignment::Center),
                     Space::with_height(8),
                     show_toasts_cb,
                 ]
@@ -345,10 +491,14 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                 section_header("Theme"),
                 Space::with_height(16),
                 row![
-                    text(ICON_PALETTE).font(NERD_FONT_MONO).size(14).color(theme::overlay0()),
+                    text(ICON_PALETTE)
+                        .font(NERD_FONT_MONO)
+                        .size(14)
+                        .color(theme::overlay0()),
                     Space::with_width(6),
                     field_label("Theme Source"),
-                ].align_y(Alignment::Center),
+                ]
+                .align_y(Alignment::Center),
                 Space::with_height(6),
                 source_pick,
             ]
@@ -370,8 +520,12 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
             }
 
             if state.theme_source == "Custom" {
-                let render_field = |label: &'static str, token: &'static str, hex_val: &'a str| -> Element<'a, Message> {
-                    let parsed_color = crate::ui::theme::hex_to_color(hex_val).unwrap_or(iced::Color::TRANSPARENT);
+                let render_field = |label: &'static str,
+                                    token: &'static str,
+                                    hex_val: &'a str|
+                 -> Element<'a, Message> {
+                    let parsed_color =
+                        crate::ui::theme::hex_to_color(hex_val).unwrap_or(iced::Color::TRANSPARENT);
                     let has_error = state.custom_validation_errors.contains_key(token);
                     let is_expanded = state.color_picker_token.as_deref() == Some(token);
                     let picker_r = state.color_picker_r;
@@ -382,7 +536,13 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                         .style(move |_| iced::widget::container::Style {
                             background: Some(iced::Background::Color(parsed_color)),
                             border: iced::Border {
-                                color: if has_error { theme::red() } else if is_expanded { theme::accent() } else { theme::surface0() },
+                                color: if has_error {
+                                    theme::red()
+                                } else if is_expanded {
+                                    theme::accent()
+                                } else {
+                                    theme::surface0()
+                                },
                                 width: 1.0,
                                 radius: 4.0.into(),
                             },
@@ -396,61 +556,92 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                         .padding(0)
                         .style(|_, _| iced::widget::button::Style {
                             background: None,
-                            border: iced::Border { width: 0.0, ..Default::default() },
+                            border: iced::Border {
+                                width: 0.0,
+                                ..Default::default()
+                            },
                             shadow: iced::Shadow::default(),
                             text_color: iced::Color::TRANSPARENT,
                         });
 
                     let input = text_input("#RRGGBB", hex_val)
-                        .on_input(move |v| Message::SettingsCustomColorChanged(token.to_string(), v))
+                        .on_input(move |v| {
+                            Message::SettingsCustomColorChanged(token.to_string(), v)
+                        })
                         .padding(6)
                         .size(12)
                         .width(Length::Fill);
 
-                    let label_col = text(label)
-                        .size(12)
-                        .width(140)
-                        .color(if has_error { theme::red() } else { theme::text() });
+                    let label_col = text(label).size(12).width(140).color(if has_error {
+                        theme::red()
+                    } else {
+                        theme::text()
+                    });
 
                     let picker: Element<'a, Message> = if is_expanded {
                         column![
                             Space::with_height(4),
                             row![
                                 text("R").size(11).width(14).color(theme::subtext()),
-                                slider(0.0..=255.0, picker_r, move |v| Message::SettingsColorPickerRChanged(v))
-                                    .width(Length::Fill),
-                                text(format!("{}", picker_r.round() as u8)).size(11).width(24).color(theme::text()),
-                            ].spacing(6).align_y(Alignment::Center),
+                                slider(0.0..=255.0, picker_r, move |v| {
+                                    Message::SettingsColorPickerRChanged(v)
+                                })
+                                .width(Length::Fill),
+                                text(format!("{}", picker_r.round() as u8))
+                                    .size(11)
+                                    .width(24)
+                                    .color(theme::text()),
+                            ]
+                            .spacing(6)
+                            .align_y(Alignment::Center),
                             row![
                                 text("G").size(11).width(14).color(theme::subtext()),
-                                slider(0.0..=255.0, picker_g, move |v| Message::SettingsColorPickerGChanged(v))
-                                    .width(Length::Fill),
-                                text(format!("{}", picker_g.round() as u8)).size(11).width(24).color(theme::text()),
-                            ].spacing(6).align_y(Alignment::Center),
+                                slider(0.0..=255.0, picker_g, move |v| {
+                                    Message::SettingsColorPickerGChanged(v)
+                                })
+                                .width(Length::Fill),
+                                text(format!("{}", picker_g.round() as u8))
+                                    .size(11)
+                                    .width(24)
+                                    .color(theme::text()),
+                            ]
+                            .spacing(6)
+                            .align_y(Alignment::Center),
                             row![
                                 text("B").size(11).width(14).color(theme::subtext()),
-                                slider(0.0..=255.0, picker_b, move |v| Message::SettingsColorPickerBChanged(v))
-                                    .width(Length::Fill),
-                                text(format!("{}", picker_b.round() as u8)).size(11).width(24).color(theme::text()),
-                            ].spacing(6).align_y(Alignment::Center),
-                        ].spacing(2).padding(iced::Padding { top: 2.0, right: 0.0, bottom: 0.0, left: 0.0 }).into()
+                                slider(0.0..=255.0, picker_b, move |v| {
+                                    Message::SettingsColorPickerBChanged(v)
+                                })
+                                .width(Length::Fill),
+                                text(format!("{}", picker_b.round() as u8))
+                                    .size(11)
+                                    .width(24)
+                                    .color(theme::text()),
+                            ]
+                            .spacing(6)
+                            .align_y(Alignment::Center),
+                        ]
+                        .spacing(2)
+                        .padding(iced::Padding {
+                            top: 2.0,
+                            right: 0.0,
+                            bottom: 0.0,
+                            left: 0.0,
+                        })
+                        .into()
                     } else {
                         Space::with_height(0).into()
                     };
 
                     column![
-                        row![
-                            label_col,
-                            input,
-                            Space::with_width(8),
-                            swatch_btn,
-                        ]
-                        .align_y(Alignment::Center),
+                        row![label_col, input, Space::with_width(8), swatch_btn,]
+                            .align_y(Alignment::Center),
                         if has_error {
                             let err_row: Element<'a, Message> = row![
                                 Space::with_width(148),
                                 text("Invalid hex (#RRGGBB)").size(10).color(theme::red()),
-                            ].into();
+                            ]
+                            .into();
                             err_row
                         } else {
                             Space::with_height(0).into()
@@ -461,8 +652,11 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                     .into()
                 };
 
-                let render_derived_swatch = |label: &'static str, hex_val: &'a str| -> Element<'a, Message> {
-                    let parsed_color = crate::ui::theme::hex_to_color(hex_val).unwrap_or(iced::Color::TRANSPARENT);
+                let render_derived_swatch = |label: &'static str,
+                                             hex_val: &'a str|
+                 -> Element<'a, Message> {
+                    let parsed_color =
+                        crate::ui::theme::hex_to_color(hex_val).unwrap_or(iced::Color::TRANSPARENT);
                     let swatch = container(Space::new(Length::Fixed(18.0), Length::Fixed(18.0)))
                         .style(move |_| iced::widget::container::Style {
                             background: Some(iced::Background::Color(parsed_color)),
@@ -481,10 +675,7 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                         .font(UI_FONT_BOLD)
                         .color(theme::overlay0());
 
-                    let label_col = text(label)
-                        .size(12)
-                        .width(140)
-                        .color(theme::subtext());
+                    let label_col = text(label).size(12).width(140).color(theme::subtext());
 
                     row![
                         label_col,
@@ -499,19 +690,41 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                 theming_col = theming_col.push(Space::with_height(12));
                 theming_col = theming_col.push(field_label("Custom Theme Palette"));
                 theming_col = theming_col.push(Space::with_height(8));
-                theming_col = theming_col.push(render_field("Background", "base", &state.custom_theme.base));
-                theming_col = theming_col.push(render_derived_swatch("Background (Deep)", &state.custom_theme.mantle));
-                theming_col = theming_col.push(render_derived_swatch("Panel Background", &state.custom_theme.surface0));
-                theming_col = theming_col.push(render_field("Primary Text", "text", &state.custom_theme.text));
-                theming_col = theming_col.push(render_derived_swatch("Secondary Text", &state.custom_theme.subtext));
-                theming_col = theming_col.push(render_derived_swatch("Muted / Icons", &state.custom_theme.overlay0));
-                theming_col = theming_col.push(render_field("Accent", "accent", &state.custom_theme.accent));
-                theming_col = theming_col.push(render_field("Green", "green", &state.custom_theme.green));
+                theming_col =
+                    theming_col.push(render_field("Background", "base", &state.custom_theme.base));
+                theming_col = theming_col.push(render_derived_swatch(
+                    "Background (Deep)",
+                    &state.custom_theme.mantle,
+                ));
+                theming_col = theming_col.push(render_derived_swatch(
+                    "Panel Background",
+                    &state.custom_theme.surface0,
+                ));
+                theming_col = theming_col.push(render_field(
+                    "Primary Text",
+                    "text",
+                    &state.custom_theme.text,
+                ));
+                theming_col = theming_col.push(render_derived_swatch(
+                    "Secondary Text",
+                    &state.custom_theme.subtext,
+                ));
+                theming_col = theming_col.push(render_derived_swatch(
+                    "Muted / Icons",
+                    &state.custom_theme.overlay0,
+                ));
+                theming_col =
+                    theming_col.push(render_field("Accent", "accent", &state.custom_theme.accent));
+                theming_col =
+                    theming_col.push(render_field("Green", "green", &state.custom_theme.green));
                 theming_col = theming_col.push(render_field("Red", "red", &state.custom_theme.red));
-                theming_col = theming_col.push(render_field("Yellow", "yellow", &state.custom_theme.yellow));
-                theming_col = theming_col.push(render_field("Blue", "blue", &state.custom_theme.blue));
+                theming_col =
+                    theming_col.push(render_field("Yellow", "yellow", &state.custom_theme.yellow));
+                theming_col =
+                    theming_col.push(render_field("Blue", "blue", &state.custom_theme.blue));
 
-                let warnings = crate::ui::theme::check_custom_contrast_warnings(&state.custom_theme);
+                let warnings =
+                    crate::ui::theme::check_custom_contrast_warnings(&state.custom_theme);
                 if !warnings.is_empty() {
                     let mut warning_list = column![
                         text("Poor Contrast Detected:")
@@ -524,9 +737,12 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
 
                     for (name, cr, target) in warnings {
                         warning_list = warning_list.push(
-                            text(format!("• {} ratio is {:.2} (aim for ≥ {:.1})", name, cr, target))
-                                .size(11)
-                                .color(theme::subtext()),
+                            text(format!(
+                                "• {} ratio is {:.2} (aim for ≥ {:.1})",
+                                name, cr, target
+                            ))
+                            .size(11)
+                            .color(theme::subtext()),
                         );
                     }
 
@@ -534,7 +750,10 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                         .width(Length::Fill)
                         .padding(8)
                         .style(|_| iced::widget::container::Style {
-                            background: Some(iced::Background::Color(theme::with_alpha(theme::yellow(), 0.08))),
+                            background: Some(iced::Background::Color(theme::with_alpha(
+                                theme::yellow(),
+                                0.08,
+                            ))),
                             border: iced::Border {
                                 color: theme::yellow(),
                                 width: 1.0,
@@ -548,36 +767,50 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                 }
             }
 
-            scrollable(
-                column![theming_col]
-                    .spacing(0)
-                    .padding(iced::Padding {
-                        top: 0.0,
-                        right: 8.0,
-                        bottom: 0.0,
-                        left: 0.0,
-                    }),
-            )
+            scrollable(column![theming_col].spacing(0).padding(iced::Padding {
+                top: 0.0,
+                right: 8.0,
+                bottom: 0.0,
+                left: 0.0,
+            }))
             .height(Length::Fill)
             .into()
         }
 
         SettingsTab::Visualizer => {
             let sensitivity_val = state.visualizer_sensitivity;
-            let sensitivity_label = format!("{:.1}x ({})", sensitivity_val, match sensitivity_val {
-                v if v < 0.6 => "Subtle",
-                v if v < 1.4 => "Dynamic",
-                _ => "High Energy",
-            });
-            let sensitivity_slider = slider(0.2_f32..=2.5_f32, sensitivity_val, Message::SettingsVisualizerSensitivityChanged).step(0.1_f32);
+            let sensitivity_label = format!(
+                "{:.1}x ({})",
+                sensitivity_val,
+                match sensitivity_val {
+                    v if v < 0.6 => "Subtle",
+                    v if v < 1.4 => "Dynamic",
+                    _ => "High Energy",
+                }
+            );
+            let sensitivity_slider = slider(
+                0.2_f32..=2.5_f32,
+                sensitivity_val,
+                Message::SettingsVisualizerSensitivityChanged,
+            )
+            .step(0.1_f32);
 
             let shift_val = state.color_shift_speed;
-            let shift_label = format!("{:.1}x ({})", shift_val, match shift_val {
-                v if v < 0.1 => "Static Theme Colors",
-                v if v < 1.2 => "Smooth Spectrum Shift",
-                _ => "Fast Spectrum Shift",
-            });
-            let shift_slider = slider(0.0_f32..=2.0_f32, shift_val, Message::SettingsColorShiftSpeedChanged).step(0.1_f32);
+            let shift_label = format!(
+                "{:.1}x ({})",
+                shift_val,
+                match shift_val {
+                    v if v < 0.1 => "Static Theme Colors",
+                    v if v < 1.2 => "Smooth Spectrum Shift",
+                    _ => "Fast Spectrum Shift",
+                }
+            );
+            let shift_slider = slider(
+                0.0_f32..=2.0_f32,
+                shift_val,
+                Message::SettingsColorShiftSpeedChanged,
+            )
+            .step(0.1_f32);
 
             let mode_names = vec![
                 "0: Mirrored Spectrograph",
@@ -591,27 +824,25 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                 "8: Retro Synthwave Horizon",
             ];
 
-            let selected_mode_name = mode_names.get(state.selected_visualizer_settings_mode.min(8)).cloned();
+            let selected_mode_name = mode_names
+                .get(state.selected_visualizer_settings_mode.min(8))
+                .cloned();
 
-            let mode_picker = pick_list(
-                mode_names,
-                selected_mode_name,
-                |chosen| {
-                    let idx = match chosen {
-                        "0: Mirrored Spectrograph" => 0,
-                        "1: Radial Pulse" => 1,
-                        "2: Liquid Ribbon" => 2,
-                        "3: Particle Constellation" => 3,
-                        "4: Depth Tunnel" => 4,
-                        "5: Rolling Plains" => 5,
-                        "6: Kaleidoscope Mirror" => 6,
-                        "7: Cosmic Aurora" => 7,
-                        "8: Retro Synthwave Horizon" => 8,
-                        _ => 0,
-                    };
-                    Message::SettingsVisualizerSettingsModeSelected(idx)
-                }
-            );
+            let mode_picker = pick_list(mode_names, selected_mode_name, |chosen| {
+                let idx = match chosen {
+                    "0: Mirrored Spectrograph" => 0,
+                    "1: Radial Pulse" => 1,
+                    "2: Liquid Ribbon" => 2,
+                    "3: Particle Constellation" => 3,
+                    "4: Depth Tunnel" => 4,
+                    "5: Rolling Plains" => 5,
+                    "6: Kaleidoscope Mirror" => 6,
+                    "7: Cosmic Aurora" => 7,
+                    "8: Retro Synthwave Horizon" => 8,
+                    _ => 0,
+                };
+                Message::SettingsVisualizerSettingsModeSelected(idx)
+            });
 
             // Background Mode Pick List (Theme, Custom RGB, Muted Reactive)
             let bg_modes = vec![
@@ -625,18 +856,14 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                 _ => "Theme Default (Transparent)",
             };
 
-            let bg_mode_picker = pick_list(
-                bg_modes,
-                Some(current_bg_mode_name),
-                |chosen| {
-                    let idx = match chosen {
-                        "Custom RGB Color" => 1,
-                        "Muted Reactive Pulse" => 2,
-                        _ => 0,
-                    };
-                    Message::SettingsVisualizerBgModeChanged(idx)
-                }
-            );
+            let bg_mode_picker = pick_list(bg_modes, Some(current_bg_mode_name), |chosen| {
+                let idx = match chosen {
+                    "Custom RGB Color" => 1,
+                    "Muted Reactive Pulse" => 2,
+                    _ => 0,
+                };
+                Message::SettingsVisualizerBgModeChanged(idx)
+            });
 
             // Contextual mode-specific settings
             let mode_settings_panel: Element<'static, Message> = match state.selected_visualizer_settings_mode {
@@ -763,36 +990,46 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
             let panel = column![
                 section_header("Visualizer Global & Mode Settings"),
                 Space::with_height(16),
-
                 field_label("Reaction Intensity / Sensitivity"),
                 row![text(sensitivity_label).size(13).color(theme::text())],
                 Space::with_height(4),
                 sensitivity_slider,
-
                 Space::with_height(16),
                 field_label("Spectrum Color Shift Speed"),
                 row![text(shift_label).size(13).color(theme::text())],
                 Space::with_height(4),
                 shift_slider,
-
                 Space::with_height(16),
                 field_label("Visualizer Background Mode"),
                 bg_mode_picker,
                 if state.visualizer_bg_mode == 1 {
                     let bg_hex = &state.visualizer_bg_color;
-                    let parsed = crate::ui::theme::hex_to_color(bg_hex).unwrap_or(iced::Color::from_rgb(0.06, 0.06, 0.10));
+                    let parsed = crate::ui::theme::hex_to_color(bg_hex)
+                        .unwrap_or(iced::Color::from_rgb(0.06, 0.06, 0.10));
                     let is_expanded = state.color_picker_token.as_deref() == Some("visualizer_bg");
                     let (pr, pg, pb) = if is_expanded {
-                        (state.color_picker_r, state.color_picker_g, state.color_picker_b)
+                        (
+                            state.color_picker_r,
+                            state.color_picker_g,
+                            state.color_picker_b,
+                        )
                     } else {
-                        ((parsed.r * 255.0).round(), (parsed.g * 255.0).round(), (parsed.b * 255.0).round())
+                        (
+                            (parsed.r * 255.0).round(),
+                            (parsed.g * 255.0).round(),
+                            (parsed.b * 255.0).round(),
+                        )
                     };
 
                     let swatch = container(Space::new(Length::Fixed(20.0), Length::Fixed(20.0)))
                         .style(move |_| iced::widget::container::Style {
                             background: Some(iced::Background::Color(parsed)),
                             border: iced::Border {
-                                color: if is_expanded { theme::accent() } else { theme::surface0() },
+                                color: if is_expanded {
+                                    theme::accent()
+                                } else {
+                                    theme::surface0()
+                                },
                                 width: 1.0,
                                 radius: 4.0.into(),
                             },
@@ -802,11 +1039,16 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                         .height(20.0);
 
                     let swatch_btn = button(swatch)
-                        .on_press(Message::SettingsColorPickerToggle("visualizer_bg".to_string()))
+                        .on_press(Message::SettingsColorPickerToggle(
+                            "visualizer_bg".to_string(),
+                        ))
                         .padding(0)
                         .style(|_, _| iced::widget::button::Style {
                             background: None,
-                            border: iced::Border { width: 0.0, ..Default::default() },
+                            border: iced::Border {
+                                width: 0.0,
+                                ..Default::default()
+                            },
                             shadow: iced::Shadow::default(),
                             text_color: iced::Color::TRANSPARENT,
                         });
@@ -822,20 +1064,40 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                             Space::with_height(4),
                             row![
                                 text("R").size(11).width(14).color(theme::subtext()),
-                                slider(0.0..=255.0, pr, Message::SettingsColorPickerRChanged).width(Length::Fill),
-                                text(format!("{}", pr.round() as u8)).size(11).width(24).color(theme::text()),
-                            ].spacing(6).align_y(Alignment::Center),
+                                slider(0.0..=255.0, pr, Message::SettingsColorPickerRChanged)
+                                    .width(Length::Fill),
+                                text(format!("{}", pr.round() as u8))
+                                    .size(11)
+                                    .width(24)
+                                    .color(theme::text()),
+                            ]
+                            .spacing(6)
+                            .align_y(Alignment::Center),
                             row![
                                 text("G").size(11).width(14).color(theme::subtext()),
-                                slider(0.0..=255.0, pg, Message::SettingsColorPickerGChanged).width(Length::Fill),
-                                text(format!("{}", pg.round() as u8)).size(11).width(24).color(theme::text()),
-                            ].spacing(6).align_y(Alignment::Center),
+                                slider(0.0..=255.0, pg, Message::SettingsColorPickerGChanged)
+                                    .width(Length::Fill),
+                                text(format!("{}", pg.round() as u8))
+                                    .size(11)
+                                    .width(24)
+                                    .color(theme::text()),
+                            ]
+                            .spacing(6)
+                            .align_y(Alignment::Center),
                             row![
                                 text("B").size(11).width(14).color(theme::subtext()),
-                                slider(0.0..=255.0, pb, Message::SettingsColorPickerBChanged).width(Length::Fill),
-                                text(format!("{}", pb.round() as u8)).size(11).width(24).color(theme::text()),
-                            ].spacing(6).align_y(Alignment::Center),
-                        ].spacing(4).into()
+                                slider(0.0..=255.0, pb, Message::SettingsColorPickerBChanged)
+                                    .width(Length::Fill),
+                                text(format!("{}", pb.round() as u8))
+                                    .size(11)
+                                    .width(24)
+                                    .color(theme::text()),
+                            ]
+                            .spacing(6)
+                            .align_y(Alignment::Center),
+                        ]
+                        .spacing(4)
+                        .into()
                     } else {
                         Space::with_height(0).into()
                     };
@@ -848,14 +1110,15 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                             bg_input,
                             Space::with_width(8),
                             swatch_btn,
-                        ].align_y(Alignment::Center),
+                        ]
+                        .align_y(Alignment::Center),
                         bg_picker_ui,
-                    ].into();
+                    ]
+                    .into();
                     bg_block
                 } else {
                     column![].into()
                 },
-
                 Space::with_height(20),
                 section_header("Customize Mode Parameters"),
                 Space::with_height(8),
@@ -929,7 +1192,8 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
     // ── Save / Cancel bar ─────────────────────────────────────────────────────
     let mut has_contrast_warning = false;
     if state.theme_source == "Custom" {
-        has_contrast_warning = !crate::ui::theme::check_custom_contrast_warnings(&state.custom_theme).is_empty();
+        has_contrast_warning =
+            !crate::ui::theme::check_custom_contrast_warnings(&state.custom_theme).is_empty();
     }
 
     let save_label = if has_contrast_warning {
@@ -961,45 +1225,43 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
         .padding([10, 20])
         .style(theme::secondary_button);
 
-    let buttons = row![
-        cancel_btn,
-        Space::with_width(Length::Fill),
-        save_btn,
-    ]
-    .align_y(Alignment::Center);
+    let buttons =
+        row![cancel_btn, Space::with_width(Length::Fill), save_btn,].align_y(Alignment::Center);
 
     // ── Assemble dialog ───────────────────────────────────────────────────────
     let body = container(
-        row![
-            nav,
-            divider,
-            Space::with_width(12),
-            content,
-        ]
-        .spacing(0)
-        .height(Length::Fill),
+        row![nav, divider, Space::with_width(12), content,]
+            .spacing(0)
+            .height(Length::Fill),
     )
     .height(Length::Fill);
 
-    let close_btn = button(
-        text(ICON_TIMES)
-            .font(NERD_FONT_MONO)
-            .size(16)
-    )
-    .on_press(Message::CloseSettings)
-    .padding(6)
-    .style(|_theme: &iced::Theme, status: iced::widget::button::Status| {
-        let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-        iced::widget::button::Style {
-            background: if is_hovered { Some(iced::Background::Color(theme::surface0())) } else { None },
-            text_color: if is_hovered { theme::accent() } else { theme::text() },
-            border: iced::Border {
-                radius: 4.0.into(),
-                ..Default::default()
+    let close_btn = button(text(ICON_TIMES).font(NERD_FONT_MONO).size(16))
+        .on_press(Message::CloseSettings)
+        .padding(6)
+        .style(
+            |_theme: &iced::Theme, status: iced::widget::button::Status| {
+                let is_hovered = status == iced::widget::button::Status::Hovered
+                    || status == iced::widget::button::Status::Pressed;
+                iced::widget::button::Style {
+                    background: if is_hovered {
+                        Some(iced::Background::Color(theme::surface0()))
+                    } else {
+                        None
+                    },
+                    text_color: if is_hovered {
+                        theme::accent()
+                    } else {
+                        theme::text()
+                    },
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }
             },
-            ..Default::default()
-        }
-    });
+        );
 
     let dialog_content = column![
         row![
@@ -1039,9 +1301,10 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
     .center_x(Length::Fill)
     .center_y(Length::Fill)
     .style(|_| iced::widget::container::Style {
-        background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.6))),
+        background: Some(iced::Background::Color(iced::Color::from_rgba(
+            0.0, 0.0, 0.0, 0.6,
+        ))),
         ..Default::default()
     })
     .into()
 }
-

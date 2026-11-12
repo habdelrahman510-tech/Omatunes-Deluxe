@@ -1,9 +1,14 @@
-use std::collections::HashMap;
-use iced::widget::{column, container, image, row, Space, button, slider, mouse_area, stack, scrollable, tooltip, text_input};
-use iced::{Alignment, Element, Length};
 use crate::ui::txt::{guard_lines, text};
+use iced::widget::{
+    button, column, container, image, mouse_area, row, scrollable, slider, stack, text_input,
+    tooltip, Space,
+};
+use iced::{Alignment, Element, Length};
+use std::collections::HashMap;
 
-use crate::app::{AppState, Message, MIN_VOLUME_SLIDER_WIDTH, MAX_VOLUME_SLIDER_WIDTH, PLAYER_FIXED_WIDTH};
+use crate::app::{
+    AppState, Message, MAX_VOLUME_SLIDER_WIDTH, MIN_VOLUME_SLIDER_WIDTH, PLAYER_FIXED_WIDTH,
+};
 use crate::audio::PlaybackState;
 use crate::ui::components::progress;
 use crate::ui::{icons, theme};
@@ -14,17 +19,28 @@ pub const LYRICS_OFFSET: std::time::Duration = std::time::Duration::from_millis(
 pub fn view(state: &AppState) -> Element<'_, Message> {
     let is_allowed = state.window_width >= (crate::app::MIN_NON_DRAWER_WIDTH + 450.0);
     let tab_strip_height = state.player_height - 28.0;
-    let btn_slot_height = if is_allowed { tab_strip_height / 3.0 } else { 0.0 };
+    let btn_slot_height = if is_allowed {
+        tab_strip_height / 3.0
+    } else {
+        0.0
+    };
     // button = icon(28) + padding([4,8]) vertical = 28 + 8 = 36px
     let btn_content_height = 28.0 + 8.0; // icon_size + vertical_padding
-    let centering_space = if is_allowed { (btn_slot_height - btn_content_height) / 2.0 } else { 0.0 };
+    let centering_space = if is_allowed {
+        (btn_slot_height - btn_content_height) / 2.0
+    } else {
+        0.0
+    };
 
     // 1. Determine which track to display (active track or selected track as queue fallback)
     let is_playing_or_paused = !matches!(state.playback_state, PlaybackState::Stopped);
     let (display_track, is_queued) = if is_playing_or_paused {
         (state.current_track.as_ref(), false)
     } else {
-        (state.selected_track.as_ref(), state.selected_track.is_some())
+        (
+            state.selected_track.as_ref(),
+            state.selected_track.is_some(),
+        )
     };
 
     let track_info: Element<Message> = if let Some(track) = display_track {
@@ -43,29 +59,28 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
                 .font(iced::Font {
                     weight: iced::font::Weight::Bold,
                     ..crate::ui::icons::UI_FONT
-                })
+                }),
         )
         .on_press(Message::FocusSongName)
         .style(iced::widget::button::text)
         .padding(0);
 
-        let artist_btn = button(
-            text(&track.artist)
-                .color(theme::subtext())
-                .size(16)
-        )
-        .on_press(Message::FocusArtistName)
-        .style(iced::widget::button::text)
-        .padding(0);
+        let artist_btn = button(text(&track.artist).color(theme::subtext()).size(16))
+            .on_press(Message::FocusArtistName)
+            .style(iced::widget::button::text)
+            .padding(0);
 
         let artist_badge: Element<'_, Message> = if state.show_achievements_in_ui() {
             if let Some(a) = crate::stats::get_highest_achievement("Artist", &track.artist) {
                 row![
                     Space::with_width(6),
-                    image(iced::widget::image::Handle::from_bytes(crate::ui::icons::get_award_image_bytes("All-Time", &a.tier).to_vec()))
-                        .width(Length::Fixed(14.0))
-                        .height(Length::Fixed(14.0)),
-                ].into()
+                    image(iced::widget::image::Handle::from_bytes(
+                        crate::ui::icons::get_award_image_bytes("All-Time", &a.tier).to_vec()
+                    ))
+                    .width(Length::Fixed(14.0))
+                    .height(Length::Fixed(14.0)),
+                ]
+                .into()
             } else {
                 Space::with_width(0).into()
             }
@@ -73,29 +88,25 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             Space::with_width(0).into()
         };
 
-        let artist_row = row![
-            artist_btn,
-            artist_badge,
-        ].align_y(Alignment::Center);
+        let artist_row = row![artist_btn, artist_badge,].align_y(Alignment::Center);
 
         let album_label = track.album.clone();
-        let album_btn = button(
-            text(album_label)
-                .color(theme::subtext())
-                .size(16)
-        )
-        .on_press(Message::FocusAlbumName)
-        .style(iced::widget::button::text)
-        .padding(0);
+        let album_btn = button(text(album_label).color(theme::subtext()).size(16))
+            .on_press(Message::FocusAlbumName)
+            .style(iced::widget::button::text)
+            .padding(0);
 
         let album_badge: Element<'_, Message> = if state.show_achievements_in_ui() {
             if let Some(a) = crate::stats::get_highest_achievement("Album", &track.album) {
                 row![
                     Space::with_width(6),
-                    image(iced::widget::image::Handle::from_bytes(crate::ui::icons::get_award_image_bytes("All-Time", &a.tier).to_vec()))
-                        .width(Length::Fixed(14.0))
-                        .height(Length::Fixed(14.0)),
-                ].into()
+                    image(iced::widget::image::Handle::from_bytes(
+                        crate::ui::icons::get_award_image_bytes("All-Time", &a.tier).to_vec()
+                    ))
+                    .width(Length::Fixed(14.0))
+                    .height(Length::Fixed(14.0)),
+                ]
+                .into()
             } else {
                 Space::with_width(0).into()
             }
@@ -103,22 +114,13 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             Space::with_width(0).into()
         };
 
-        let album_row = row![
-            album_btn,
-            album_badge,
-        ].align_y(Alignment::Center);
+        let album_row = row![album_btn, album_badge,].align_y(Alignment::Center);
 
-        column![
-            artist_row,
-            song_btn,
-            album_row,
-        ]
-        .spacing(4)
-        .into()
+        column![artist_row, song_btn, album_row,].spacing(4).into()
     } else {
-        column![
-            text(state.strings.no_track).color(theme::overlay0()).size(16),
-        ]
+        column![text(state.strings.no_track)
+            .color(theme::overlay0())
+            .size(16),]
         .into()
     };
 
@@ -139,7 +141,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             image(handle)
                 .width(cover_size as u16)
                 .height(cover_size as u16)
-                .content_fit(iced::ContentFit::Cover)
+                .content_fit(iced::ContentFit::Cover),
         )
         .width(cover_size)
         .height(cover_size)
@@ -162,7 +164,8 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     } else {
         state.window_width
     };
-    let vol_slider_width = (player_width - PLAYER_FIXED_WIDTH).clamp(MIN_VOLUME_SLIDER_WIDTH, MAX_VOLUME_SLIDER_WIDTH);
+    let vol_slider_width =
+        (player_width - PLAYER_FIXED_WIDTH).clamp(MIN_VOLUME_SLIDER_WIDTH, MAX_VOLUME_SLIDER_WIDTH);
 
     // Right-aligned volume control
     let vol_slider = slider(0.0..=1.0f32, state.volume, Message::VolumeChanged)
@@ -172,16 +175,20 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     let vol_percent = (state.volume * 100.0).round() as u32;
     let vol_tooltip_text = format!("{}%", vol_percent);
 
-    let vol_slider_with_tooltip = tooltip(vol_slider, text(vol_tooltip_text), iced::widget::tooltip::Position::Top)
-        .style(|theme: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(theme::surface0())),
-            border: iced::Border {
-                color: theme::overlay0(),
-                width: 1.0,
-                radius: 4.0.into(),
-            },
-            ..Default::default()
-        });
+    let vol_slider_with_tooltip = tooltip(
+        vol_slider,
+        text(vol_tooltip_text),
+        iced::widget::tooltip::Position::Top,
+    )
+    .style(|theme: &iced::Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(theme::surface0())),
+        border: iced::Border {
+            color: theme::overlay0(),
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        ..Default::default()
+    });
 
     let volume_control = row![
         text(icons::ICON_VOL_UP)
@@ -239,92 +246,113 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
     let vol_step = crate::config::get().volume_step;
 
-    let player_with_scroll = mouse_area(player_container)
-        .on_scroll(move |delta| {
-            match delta {
-                iced::mouse::ScrollDelta::Lines { y, .. } | iced::mouse::ScrollDelta::Pixels { y, .. } => {
-                    if y > 0.0 {
-                        Message::VolumeStep(vol_step)
-                    } else if y < 0.0 {
-                        Message::VolumeStep(-vol_step)
-                    } else {
-                        Message::VolumeStep(0.0)
-                    }
-                }
+    let player_with_scroll = mouse_area(player_container).on_scroll(move |delta| match delta {
+        iced::mouse::ScrollDelta::Lines { y, .. } | iced::mouse::ScrollDelta::Pixels { y, .. } => {
+            if y > 0.0 {
+                Message::VolumeStep(vol_step)
+            } else if y < 0.0 {
+                Message::VolumeStep(-vol_step)
+            } else {
+                Message::VolumeStep(0.0)
             }
-        });
+        }
+    });
 
     player_with_scroll.into()
 }
 
 pub fn tab_strip(state: &AppState) -> Element<'_, Message> {
-    let tab_btn = |tab: crate::app::RightPanelTab, icon_str: &'static str, tooltip_text: &'static str| {
-        let is_active = state.right_panel_tab == Some(tab);
-        let btn_icon = text(icon_str)
-            .size(28)
-            .font(crate::ui::icons::NERD_FONT_MONO);
+    let tab_btn =
+        |tab: crate::app::RightPanelTab, icon_str: &'static str, tooltip_text: &'static str| {
+            let is_active = state.right_panel_tab == Some(tab);
+            let btn_icon = text(icon_str)
+                .size(28)
+                .font(crate::ui::icons::NERD_FONT_MONO);
 
-        let btn = button(container(btn_icon).center_x(Length::Fill).center_y(Length::Fill))
+            let btn = button(
+                container(btn_icon)
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill),
+            )
             .on_press(Message::ToggleRightPanelTab(tab))
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(move |_theme: &iced::Theme, status: iced::widget::button::Status| {
-                let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-                iced::widget::button::Style {
-                    background: Some(iced::Background::Color(if is_active {
-                        theme::surface0()
-                    } else if is_hovered {
-                        theme::surface0()
-                    } else {
-                        iced::Color::TRANSPARENT
-                    })),
-                    text_color: if is_active {
-                        theme::accent()
-                    } else if is_hovered {
-                        theme::text()
-                    } else {
-                        theme::subtext()
-                    },
-                    ..Default::default()
-                }
-            })
+            .style(
+                move |_theme: &iced::Theme, status: iced::widget::button::Status| {
+                    let is_hovered = status == iced::widget::button::Status::Hovered
+                        || status == iced::widget::button::Status::Pressed;
+                    iced::widget::button::Style {
+                        background: Some(iced::Background::Color(if is_active {
+                            theme::surface0()
+                        } else if is_hovered {
+                            theme::surface0()
+                        } else {
+                            iced::Color::TRANSPARENT
+                        })),
+                        text_color: if is_active {
+                            theme::accent()
+                        } else if is_hovered {
+                            theme::text()
+                        } else {
+                            theme::subtext()
+                        },
+                        ..Default::default()
+                    }
+                },
+            )
             .padding(0);
 
-        let tooltip_content = container(
-            text(tooltip_text)
-                .size(13)
-                .font(crate::ui::icons::UI_FONT)
-                .color(theme::text())
-        )
-        .padding(8)
-        .style(|_| iced::widget::container::Style {
-            background: Some(iced::Background::Color(theme::surface0())),
-            border: iced::Border {
-                color: theme::overlay0(),
-                width: 1.0,
-                radius: 4.0.into(),
-            },
-            ..Default::default()
-        });
+            let tooltip_content = container(
+                text(tooltip_text)
+                    .size(13)
+                    .font(crate::ui::icons::UI_FONT)
+                    .color(theme::text()),
+            )
+            .padding(8)
+            .style(|_| iced::widget::container::Style {
+                background: Some(iced::Background::Color(theme::surface0())),
+                border: iced::Border {
+                    color: theme::overlay0(),
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            });
 
-        container(tooltip(btn, tooltip_content, iced::widget::tooltip::Position::Left))
+            container(tooltip(
+                btn,
+                tooltip_content,
+                iced::widget::tooltip::Position::Left,
+            ))
             .width(Length::Fill)
             .height(Length::Fill)
             .style(|_| iced::widget::container::Style {
                 background: None,
                 ..Default::default()
             })
-    };
+        };
 
     container(
         column![
-            tab_btn(crate::app::RightPanelTab::Visualizer, crate::ui::icons::ICON_VISUALIZER, "Visualizer"),
-            tab_btn(crate::app::RightPanelTab::Equalizer, crate::ui::icons::ICON_EQUALIZER, "Equalizer"),
-            tab_btn(crate::app::RightPanelTab::Lyrics, crate::ui::icons::ICON_LYRICS, "Lyrics"),
+            tab_btn(
+                crate::app::RightPanelTab::Visualizer,
+                crate::ui::icons::ICON_VISUALIZER,
+                "Visualizer"
+            ),
+            tab_btn(
+                crate::app::RightPanelTab::Equalizer,
+                crate::ui::icons::ICON_EQUALIZER,
+                "Equalizer"
+            ),
+            tab_btn(
+                crate::app::RightPanelTab::Lyrics,
+                crate::ui::icons::ICON_LYRICS,
+                "Lyrics"
+            ),
         ]
         .width(Length::Fill)
         .height(Length::Fill)
-        .spacing(0)
+        .spacing(0),
     )
     .width(56.0)
     .height(Length::Fill)
@@ -342,22 +370,40 @@ pub fn tab_strip(state: &AppState) -> Element<'_, Message> {
 
 fn render_stat_row(label: String, value: String) -> Element<'static, Message> {
     row![
-        text(label).font(crate::ui::icons::UI_FONT).color(theme::subtext()).width(Length::Fixed(180.0)),
-        text(value).font(crate::ui::icons::UI_FONT_BOLD).color(theme::text()).align_x(iced::alignment::Horizontal::Right).width(Length::Fill),
+        text(label)
+            .font(crate::ui::icons::UI_FONT)
+            .color(theme::subtext())
+            .width(Length::Fixed(180.0)),
+        text(value)
+            .font(crate::ui::icons::UI_FONT_BOLD)
+            .color(theme::text())
+            .align_x(iced::alignment::Horizontal::Right)
+            .width(Length::Fill),
     ]
     .align_y(Alignment::Center)
     .padding([4, 0])
     .into()
 }
 
-fn render_leaderboard_minutes(title: String, entries: Vec<(String, f64)>) -> Element<'static, Message> {
+fn render_leaderboard_minutes(
+    title: String,
+    entries: Vec<(String, f64)>,
+) -> Element<'static, Message> {
     let mut col = column![
-        text(title).font(crate::ui::icons::UI_FONT_BOLD).color(theme::accent()).size(14),
+        text(title)
+            .font(crate::ui::icons::UI_FONT_BOLD)
+            .color(theme::accent())
+            .size(14),
         Space::with_height(6),
-    ].spacing(2);
-    
+    ]
+    .spacing(2);
+
     if entries.is_empty() {
-        col = col.push(text("No stats yet").font(crate::ui::icons::UI_FONT).color(theme::overlay0()));
+        col = col.push(
+            text("No stats yet")
+                .font(crate::ui::icons::UI_FONT)
+                .color(theme::overlay0()),
+        );
     } else {
         for (idx, (name, mins)) in entries.into_iter().enumerate() {
             let rank = idx + 1;
@@ -367,11 +413,21 @@ fn render_leaderboard_minutes(title: String, entries: Vec<(String, f64)>) -> Ele
                 3 => theme::red(),
                 _ => theme::subtext(),
             };
-            
+
             let row_item = row![
-                text(format!("{rank}.")).font(crate::ui::icons::UI_FONT_BOLD).color(medal_color).width(Length::Fixed(24.0)),
-                text(name).font(crate::ui::icons::UI_FONT).color(theme::text()).width(Length::Fixed(200.0)),
-                text(format!("{:.1}m", mins)).font(crate::ui::icons::UI_FONT_BOLD).color(theme::text()).align_x(iced::alignment::Horizontal::Right).width(Length::Fill),
+                text(format!("{rank}."))
+                    .font(crate::ui::icons::UI_FONT_BOLD)
+                    .color(medal_color)
+                    .width(Length::Fixed(24.0)),
+                text(name)
+                    .font(crate::ui::icons::UI_FONT)
+                    .color(theme::text())
+                    .width(Length::Fixed(200.0)),
+                text(format!("{:.1}m", mins))
+                    .font(crate::ui::icons::UI_FONT_BOLD)
+                    .color(theme::text())
+                    .align_x(iced::alignment::Horizontal::Right)
+                    .width(Length::Fill),
             ]
             .align_y(Alignment::Center);
             col = col.push(row_item);
@@ -380,14 +436,25 @@ fn render_leaderboard_minutes(title: String, entries: Vec<(String, f64)>) -> Ele
     col.into()
 }
 
-fn render_leaderboard_counts(title: String, entries: Vec<(String, u32)>) -> Element<'static, Message> {
+fn render_leaderboard_counts(
+    title: String,
+    entries: Vec<(String, u32)>,
+) -> Element<'static, Message> {
     let mut col = column![
-        text(title).font(crate::ui::icons::UI_FONT_BOLD).color(theme::accent()).size(14),
+        text(title)
+            .font(crate::ui::icons::UI_FONT_BOLD)
+            .color(theme::accent())
+            .size(14),
         Space::with_height(6),
-    ].spacing(2);
-    
+    ]
+    .spacing(2);
+
     if entries.is_empty() {
-        col = col.push(text("No stats yet").font(crate::ui::icons::UI_FONT).color(theme::overlay0()));
+        col = col.push(
+            text("No stats yet")
+                .font(crate::ui::icons::UI_FONT)
+                .color(theme::overlay0()),
+        );
     } else {
         for (idx, (name, count)) in entries.into_iter().enumerate() {
             let rank = idx + 1;
@@ -397,11 +464,21 @@ fn render_leaderboard_counts(title: String, entries: Vec<(String, u32)>) -> Elem
                 3 => theme::red(),
                 _ => theme::subtext(),
             };
-            
+
             let row_item = row![
-                text(format!("{rank}.")).font(crate::ui::icons::UI_FONT_BOLD).color(medal_color).width(Length::Fixed(24.0)),
-                text(name).font(crate::ui::icons::UI_FONT).color(theme::text()).width(Length::Fixed(200.0)),
-                text(format!("{count} plays")).font(crate::ui::icons::UI_FONT_BOLD).color(theme::text()).align_x(iced::alignment::Horizontal::Right).width(Length::Fill),
+                text(format!("{rank}."))
+                    .font(crate::ui::icons::UI_FONT_BOLD)
+                    .color(medal_color)
+                    .width(Length::Fixed(24.0)),
+                text(name)
+                    .font(crate::ui::icons::UI_FONT)
+                    .color(theme::text())
+                    .width(Length::Fixed(200.0)),
+                text(format!("{count} plays"))
+                    .font(crate::ui::icons::UI_FONT_BOLD)
+                    .color(theme::text())
+                    .align_x(iced::alignment::Horizontal::Right)
+                    .width(Length::Fill),
             ]
             .align_y(Alignment::Center);
             col = col.push(row_item);
@@ -436,19 +513,23 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
             let dice_btn = button(
                 text(crate::ui::icons::ICON_SHUFFLE)
                     .font(crate::ui::icons::NERD_FONT)
-                    .size(13)
+                    .size(13),
             )
             .on_press(crate::app::Message::SelectRandomVisualizerMode)
             .padding(2)
             .style(|_, status| {
                 let color = match status {
-                    iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed => theme::text(),
+                    iced::widget::button::Status::Hovered
+                    | iced::widget::button::Status::Pressed => theme::text(),
                     _ => theme::subtext(),
                 };
                 iced::widget::button::Style {
                     text_color: color,
                     background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
-                    border: iced::Border { radius: 4.0.into(), ..Default::default() },
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 }
             });
@@ -465,38 +546,40 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                 let is_selected = state.visualizer_mode == idx;
                 let icon_glyph = if is_selected { "\u{f192}" } else { "\u{f10c}" }; // nf-fa-dot_circle_o / nf-fa-circle_o
 
-                let dot_btn = button(
-                    text(icon_glyph)
-                        .font(crate::ui::icons::NERD_FONT)
-                        .size(12)
-                )
-                .on_press(crate::app::Message::SelectVisualizerMode(idx))
-                .padding(2)
-                .style(move |_theme: &iced::Theme, status: iced::widget::button::Status| {
-                    let icon_color = match status {
-                        iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed => {
-                            if is_selected {
-                                theme::accent()
-                            } else {
-                                theme::text()
-                            }
-                        }
-                        _ => {
-                            if is_selected {
-                                theme::accent()
-                            } else {
-                                theme::subtext()
-                            }
-                        }
-                    };
+                let dot_btn = button(text(icon_glyph).font(crate::ui::icons::NERD_FONT).size(12))
+                    .on_press(crate::app::Message::SelectVisualizerMode(idx))
+                    .padding(2)
+                    .style(
+                        move |_theme: &iced::Theme, status: iced::widget::button::Status| {
+                            let icon_color = match status {
+                                iced::widget::button::Status::Hovered
+                                | iced::widget::button::Status::Pressed => {
+                                    if is_selected {
+                                        theme::accent()
+                                    } else {
+                                        theme::text()
+                                    }
+                                }
+                                _ => {
+                                    if is_selected {
+                                        theme::accent()
+                                    } else {
+                                        theme::subtext()
+                                    }
+                                }
+                            };
 
-                    iced::widget::button::Style {
-                        text_color: icon_color,
-                        background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
-                        border: iced::Border { radius: 2.0.into(), ..Default::default() },
-                        ..Default::default()
-                    }
-                });
+                            iced::widget::button::Style {
+                                text_color: icon_color,
+                                background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
+                                border: iced::Border {
+                                    radius: 2.0.into(),
+                                    ..Default::default()
+                                },
+                                ..Default::default()
+                            }
+                        },
+                    );
 
                 let dot_tooltip = tooltip(
                     dot_btn,
@@ -532,7 +615,12 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                     .height(Length::Fill)
                     .align_x(iced::alignment::Horizontal::Center)
                     .align_y(iced::alignment::Vertical::Bottom)
-                    .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 8.0, left: 0.0 }),
+                    .padding(iced::Padding {
+                        top: 0.0,
+                        right: 0.0,
+                        bottom: 8.0,
+                        left: 0.0
+                    }),
             ]
             .width(Length::Fill)
             .height(Length::Fill);
@@ -542,20 +630,19 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                 .height(Length::Fill)
                 .into()
         }
-        crate::app::RightPanelTab::Statistics => {
-            container(Space::new(Length::Fill, Length::Fill))
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .into()
-        }
+        crate::app::RightPanelTab::Statistics => container(Space::new(Length::Fill, Length::Fill))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into(),
         crate::app::RightPanelTab::Equalizer => crate::ui::views::eq::view(state),
 
         crate::app::RightPanelTab::Lyrics => {
-            let display_track = if !matches!(state.playback_state, crate::audio::PlaybackState::Stopped) {
-                state.current_track.as_ref()
-            } else {
-                state.selected_track.as_ref()
-            };
+            let display_track =
+                if !matches!(state.playback_state, crate::audio::PlaybackState::Stopped) {
+                    state.current_track.as_ref()
+                } else {
+                    state.selected_track.as_ref()
+                };
 
             if let Some(track) = display_track {
                 if track.lyrics.trim().is_empty() {
@@ -564,7 +651,7 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                             .color(theme::overlay0())
                             .size(14)
                             .align_y(iced::alignment::Vertical::Center)
-                            .align_x(iced::alignment::Horizontal::Center)
+                            .align_x(iced::alignment::Horizontal::Center),
                     )
                     .width(Length::Fill)
                     .height(Length::Fill)
@@ -577,43 +664,57 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                         // Apply half-second delay: use position minus offset
                         let adjusted_pos = state.position.saturating_sub(LYRICS_OFFSET);
 
-                        let active_idx = lrc_lines.iter().position(|l| l.time > adjusted_pos)
+                        let active_idx = lrc_lines
+                            .iter()
+                            .position(|l| l.time > adjusted_pos)
                             .map(|idx| if idx > 0 { idx - 1 } else { 0 })
                             .unwrap_or_else(|| lrc_lines.len() - 1);
 
-                         // Show ALL lines in a scrollable container; highlight the active one
-                         let mut lines_col = column![].spacing(6).align_x(Alignment::Center).width(Length::Fill);
-                         lines_col = lines_col.push(iced::widget::Space::with_height(108.0));
+                        // Show ALL lines in a scrollable container; highlight the active one
+                        let mut lines_col = column![]
+                            .spacing(6)
+                            .align_x(Alignment::Center)
+                            .width(Length::Fill);
+                        lines_col = lines_col.push(iced::widget::Space::with_height(108.0));
 
-                         let available_width = (state.right_panel_width - 40.0).max(100.0);
+                        let available_width = (state.right_panel_width - 40.0).max(100.0);
 
-                         for i in 0..lrc_lines.len() {
-                             let line = &lrc_lines[i];
-                             let is_active = i == active_idx;
-                             let is_interim = (active_idx > 0 && i == active_idx - 1) || (i == active_idx + 1);
-                             let line_time = line.time;
+                        for i in 0..lrc_lines.len() {
+                            let line = &lrc_lines[i];
+                            let is_active = i == active_idx;
+                            let is_interim =
+                                (active_idx > 0 && i == active_idx - 1) || (i == active_idx + 1);
+                            let line_time = line.time;
 
-                             let font_size = if is_active { 20 } else { 17 };
-                             let char_width = 0.60 * font_size as f32;
-                             let max_chars = ((available_width / char_width).floor() as usize).max(10);
-                             let sub_lines = wrap_text(&line.text, max_chars);
+                            let font_size = if is_active { 20 } else { 17 };
+                            let char_width = 0.60 * font_size as f32;
+                            let max_chars =
+                                ((available_width / char_width).floor() as usize).max(10);
+                            let sub_lines = wrap_text(&line.text, max_chars);
 
-                             let mut text_col = column![].spacing(2).align_x(Alignment::Center).width(Length::Fill);
-                             for sub_line in sub_lines {
-                                 let txt = text(sub_line)
-                                     .size(font_size)
-                                     .font(if is_active { crate::ui::icons::UI_FONT_BOLD } else { crate::ui::icons::UI_FONT })
-                                     .width(Length::Fill)
-                                     .align_x(iced::alignment::Horizontal::Center);
-                                 text_col = text_col.push(txt);
-                             }
+                            let mut text_col = column![]
+                                .spacing(2)
+                                .align_x(Alignment::Center)
+                                .width(Length::Fill);
+                            for sub_line in sub_lines {
+                                let txt = text(sub_line)
+                                    .size(font_size)
+                                    .font(if is_active {
+                                        crate::ui::icons::UI_FONT_BOLD
+                                    } else {
+                                        crate::ui::icons::UI_FONT
+                                    })
+                                    .width(Length::Fill)
+                                    .align_x(iced::alignment::Horizontal::Center);
+                                text_col = text_col.push(txt);
+                            }
 
-                             let container_element = container(text_col)
-                                 .width(Length::Fill)
-                                 .align_x(iced::alignment::Horizontal::Center);
+                            let container_element = container(text_col)
+                                .width(Length::Fill)
+                                .align_x(iced::alignment::Horizontal::Center);
 
-                             // Each line is clickable to seek to that timestamp
-                             let line_btn = button(container_element)
+                            // Each line is clickable to seek to that timestamp
+                            let line_btn = button(container_element)
                                  .on_press(Message::SeekToLyric(line_time))
                                  .width(Length::Fill)
                                  .padding([4, 8])
@@ -642,15 +743,15 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                                      }
                                  });
 
-                             lines_col = lines_col.push(line_btn);
-                         }
-                         lines_col = lines_col.push(iced::widget::Space::with_height(108.0));
+                            lines_col = lines_col.push(line_btn);
+                        }
+                        lines_col = lines_col.push(iced::widget::Space::with_height(108.0));
 
                         scrollable(
                             container(lines_col)
                                 .width(Length::Fill)
                                 .padding([16, 12])
-                                .center_x(Length::Fill)
+                                .center_x(Length::Fill),
                         )
                         .id(state.lyrics_scroll_id.clone())
                         .height(Length::Fill)
@@ -664,27 +765,23 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                             container(
                                 text(guard_lines(&track.lyrics))
                                     .color(theme::text())
-                                    .size(17)
+                                    .size(17),
                             )
                             .width(Length::Fill)
                             .padding(12)
-                            .center_x(Length::Fill)
+                            .center_x(Length::Fill),
                         )
                         .height(Length::Fill)
                         .into()
                     }
                 }
             } else {
-                container(
-                    text("No track selected")
-                        .color(theme::overlay0())
-                        .size(16)
-                )
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-                .into()
+                container(text("No track selected").color(theme::overlay0()).size(16))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .center_x(Length::Fill)
+                    .center_y(Length::Fill)
+                    .into()
             }
         }
     };
@@ -692,22 +789,33 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
     let close_btn = button(
         text("\u{f00d}")
             .font(crate::ui::icons::NERD_FONT_MONO)
-            .size(14)
+            .size(14),
     )
     .on_press(Message::ToggleRightPanelTab(tab))
     .padding(6)
-    .style(move |_theme: &iced::Theme, status: iced::widget::button::Status| {
-        let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-        iced::widget::button::Style {
-            background: if is_hovered { Some(iced::Background::Color(theme::surface0())) } else { None },
-            text_color: if is_hovered { theme::accent() } else { theme::subtext() },
-            border: iced::Border {
-                radius: 4.0.into(),
+    .style(
+        move |_theme: &iced::Theme, status: iced::widget::button::Status| {
+            let is_hovered = status == iced::widget::button::Status::Hovered
+                || status == iced::widget::button::Status::Pressed;
+            iced::widget::button::Style {
+                background: if is_hovered {
+                    Some(iced::Background::Color(theme::surface0()))
+                } else {
+                    None
+                },
+                text_color: if is_hovered {
+                    theme::accent()
+                } else {
+                    theme::subtext()
+                },
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
-            },
-            ..Default::default()
-        }
-    });
+            }
+        },
+    );
 
     let close_container = container(close_btn)
         .width(Length::Fill)
@@ -716,12 +824,9 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
         .align_y(iced::alignment::Vertical::Top)
         .padding([8, 8]);
 
-    let pane_stack = stack![
-        pane_content,
-        close_container,
-    ]
-    .width(Length::Fill)
-    .height(Length::Fill);
+    let pane_stack = stack![pane_content, close_container,]
+        .width(Length::Fill)
+        .height(Length::Fill);
 
     let pane = container(pane_stack)
         .style(theme::player_panel)
@@ -731,17 +836,18 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
     // Add a draggable resize handle between player and panel
     let panel_drag_handle = mouse_area(
         container(
-            container(Space::new(Length::Fixed(1.0), Length::Fill))
-                .style(move |_| iced::widget::container::Style {
+            container(Space::new(Length::Fixed(1.0), Length::Fill)).style(move |_| {
+                iced::widget::container::Style {
                     background: Some(iced::Background::Color(
                         if state.dragging_right_panel || state.is_hovering_right_panel_resizer {
                             theme::accent()
                         } else {
                             iced::Color::TRANSPARENT
-                        }
+                        },
                     )),
                     ..Default::default()
-                })
+                }
+            }),
         )
         .width(4.0)
         .height(Length::Fill)
@@ -749,7 +855,7 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
         .style(|_| iced::widget::container::Style {
             background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
             ..Default::default()
-        })
+        }),
     )
     .on_press(Message::RightPanelDragStart)
     .on_enter(Message::HoverRightPanelResizer(true))
@@ -757,12 +863,9 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
     .interaction(iced::mouse::Interaction::ResizingHorizontally);
 
     Some(
-        row![
-            panel_drag_handle,
-            pane
-        ]
-        .height(Length::Fixed(state.player_height))
-        .into()
+        row![panel_drag_handle, pane]
+            .height(Length::Fixed(state.player_height))
+            .into(),
     )
 }
 
@@ -875,12 +978,20 @@ pub fn period_breakdown_view(state: &crate::app::AppState) -> Element<'_, Messag
             text(*icon)
                 .font(crate::ui::icons::NERD_FONT_MONO)
                 .size(20)
-                .color(if is_active { theme::accent() } else { theme::subtext() }),
+                .color(if is_active {
+                    theme::accent()
+                } else {
+                    theme::subtext()
+                }),
             Space::with_width(6),
             text(*label)
                 .font(crate::ui::icons::UI_FONT_BOLD)
                 .size(18)
-                .color(if is_active { theme::accent() } else { theme::subtext() }),
+                .color(if is_active {
+                    theme::accent()
+                } else {
+                    theme::subtext()
+                }),
         ]
         .spacing(0)
         .align_y(Alignment::Center);
@@ -888,50 +999,64 @@ pub fn period_breakdown_view(state: &crate::app::AppState) -> Element<'_, Messag
         let tab_btn = button(tab_content)
             .on_press(Message::ShowPeriodBreakdown(i))
             .padding([8, 16])
-            .style(move |_theme: &iced::Theme, status: iced::widget::button::Status| {
-                let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-                iced::widget::button::Style {
-                    background: if is_active || is_hovered {
-                        Some(iced::Background::Color(theme::surface0()))
-                    } else {
-                        None
-                    },
-                    text_color: if is_active {
-                        theme::accent()
-                    } else if is_hovered {
-                        theme::text()
-                    } else {
-                        theme::subtext()
-                    },
-                    border: iced::Border {
-                        radius: 6.0.into(),
+            .style(
+                move |_theme: &iced::Theme, status: iced::widget::button::Status| {
+                    let is_hovered = status == iced::widget::button::Status::Hovered
+                        || status == iced::widget::button::Status::Pressed;
+                    iced::widget::button::Style {
+                        background: if is_active || is_hovered {
+                            Some(iced::Background::Color(theme::surface0()))
+                        } else {
+                            None
+                        },
+                        text_color: if is_active {
+                            theme::accent()
+                        } else if is_hovered {
+                            theme::text()
+                        } else {
+                            theme::subtext()
+                        },
+                        border: iced::Border {
+                            radius: 6.0.into(),
+                            ..Default::default()
+                        },
                         ..Default::default()
-                    },
-                    ..Default::default()
-                }
-            });
+                    }
+                },
+            );
         period_tabs = period_tabs.push(tab_btn);
     }
 
     let close_btn = button(
         text("\u{f00d}")
             .font(crate::ui::icons::NERD_FONT_MONO)
-            .size(18)
+            .size(18),
     )
     .on_press(Message::ClosePeriodBreakdown)
     .padding(6)
-    .style(move |_theme: &iced::Theme, status: iced::widget::button::Status| {
-        let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-        iced::widget::button::Style {
-            background: if is_hovered { Some(iced::Background::Color(theme::surface0())) } else { None },
-            text_color: if is_hovered { theme::accent() } else { theme::subtext() },
-            border: iced::Border {
-                radius: 4.0.into(),
+    .style(
+        move |_theme: &iced::Theme, status: iced::widget::button::Status| {
+            let is_hovered = status == iced::widget::button::Status::Hovered
+                || status == iced::widget::button::Status::Pressed;
+            iced::widget::button::Style {
+                background: if is_hovered {
+                    Some(iced::Background::Color(theme::surface0()))
+                } else {
+                    None
+                },
+                text_color: if is_hovered {
+                    theme::accent()
+                } else {
+                    theme::subtext()
+                },
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
-            },
-            ..Default::default()
-        }
-    });
+            }
+        },
+    );
 
     let text_size: u16 = 17;
     let small_size: u16 = 16;
@@ -965,7 +1090,7 @@ pub fn period_breakdown_view(state: &crate::app::AppState) -> Element<'_, Messag
                 text("No data yet")
                     .font(crate::ui::icons::UI_FONT)
                     .size(small_size)
-                    .color(theme::overlay0())
+                    .color(theme::overlay0()),
             );
         } else {
             let dim_color = theme::lerp_color(theme::mantle(), theme::text(), 0.65);
@@ -981,7 +1106,7 @@ pub fn period_breakdown_view(state: &crate::app::AppState) -> Element<'_, Messag
                                 ..Default::default()
                             })
                             .height(1.0)
-                            .width(Length::Fill)
+                            .width(Length::Fill),
                     );
                 }
 
@@ -990,7 +1115,9 @@ pub fn period_breakdown_view(state: &crate::app::AppState) -> Element<'_, Messag
                     if let Some(changes) = rank_changes {
                         if let Some(change) = changes.get(name) {
                             let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-                            let is_unviewed = viewed_changes.map(|set| !set.contains(name)).unwrap_or(true);
+                            let is_unviewed = viewed_changes
+                                .map(|set| !set.contains(name))
+                                .unwrap_or(true);
                             if change.date == today && is_unviewed {
                                 if change.direction == "up" {
                                     arrow_color = Some(theme::green());
@@ -1032,12 +1159,10 @@ pub fn period_breakdown_view(state: &crate::app::AppState) -> Element<'_, Messag
                     theme::subtext()
                 };
 
-                let mut rank_row = row![
-                    text(format!("{:>2}", rank))
-                        .font(crate::ui::icons::NERD_FONT_MONO)
-                        .size(text_size)
-                        .color(rank_color)
-                ]
+                let mut rank_row = row![text(format!("{:>2}", rank))
+                    .font(crate::ui::icons::NERD_FONT_MONO)
+                    .size(text_size)
+                    .color(rank_color)]
                 .spacing(2)
                 .align_y(Alignment::Center);
 
@@ -1051,7 +1176,7 @@ pub fn period_breakdown_view(state: &crate::app::AppState) -> Element<'_, Messag
                         text(arrow_char)
                             .font(crate::ui::icons::NERD_FONT_MONO)
                             .size(text_size - 4)
-                            .color(col)
+                            .color(col),
                     );
                 }
 
@@ -1083,15 +1208,22 @@ pub fn period_breakdown_view(state: &crate::app::AppState) -> Element<'_, Messag
                 )
                 .on_press(make_on_press(name.clone()))
                 .padding(0)
-                .style(move |_theme: &iced::Theme, status: iced::widget::button::Status| {
-                    let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-                    iced::widget::button::Style {
-                        background: None,
-                        text_color: if is_hovered { theme::accent() } else { name_color },
-                        border: iced::Border::default(),
-                        ..Default::default()
-                    }
-                });
+                .style(
+                    move |_theme: &iced::Theme, status: iced::widget::button::Status| {
+                        let is_hovered = status == iced::widget::button::Status::Hovered
+                            || status == iced::widget::button::Status::Pressed;
+                        iced::widget::button::Style {
+                            background: None,
+                            text_color: if is_hovered {
+                                theme::accent()
+                            } else {
+                                name_color
+                            },
+                            border: iced::Border::default(),
+                            ..Default::default()
+                        }
+                    },
+                );
 
                 let row_item = row![
                     name_btn.width(Length::Fill),
@@ -1142,15 +1274,48 @@ pub fn period_breakdown_view(state: &crate::app::AppState) -> Element<'_, Messag
 
     let tables = row![
         Space::with_width(12),
-        build_col("Artist", '\u{f4ff}', &breakdown.artist_minutes, &format_hours, text_size, small_size, |name| Message::SelectArtistFromBreakdown(name), is_all_time, artist_changes.as_ref(), viewed_changes.as_ref()),
+        build_col(
+            "Artist",
+            '\u{f4ff}',
+            &breakdown.artist_minutes,
+            &format_hours,
+            text_size,
+            small_size,
+            |name| Message::SelectArtistFromBreakdown(name),
+            is_all_time,
+            artist_changes.as_ref(),
+            viewed_changes.as_ref()
+        ),
         Space::with_width(12),
         sep(),
         Space::with_width(12),
-        build_col("Album", '\u{e271}', &breakdown.album_minutes, &format_hours, text_size, small_size, |name| Message::SelectAlbumFromBreakdown(name), is_all_time, album_changes.as_ref(), viewed_changes.as_ref()),
+        build_col(
+            "Album",
+            '\u{e271}',
+            &breakdown.album_minutes,
+            &format_hours,
+            text_size,
+            small_size,
+            |name| Message::SelectAlbumFromBreakdown(name),
+            is_all_time,
+            album_changes.as_ref(),
+            viewed_changes.as_ref()
+        ),
         Space::with_width(12),
         sep(),
         Space::with_width(12),
-        build_col("Genre", '\u{f02b}', &breakdown.genre_minutes, &format_hours, text_size, small_size, |name| Message::SelectGenreFromBreakdown(name), is_all_time, genre_changes.as_ref(), viewed_changes.as_ref()),
+        build_col(
+            "Genre",
+            '\u{f02b}',
+            &breakdown.genre_minutes,
+            &format_hours,
+            text_size,
+            small_size,
+            |name| Message::SelectGenreFromBreakdown(name),
+            is_all_time,
+            genre_changes.as_ref(),
+            viewed_changes.as_ref()
+        ),
         Space::with_width(12),
     ]
     .spacing(0)
@@ -1162,15 +1327,30 @@ pub fn period_breakdown_view(state: &crate::app::AppState) -> Element<'_, Messag
                 .font(crate::ui::icons::UI_FONT_BOLD)
                 .size(20)
         )
-        .on_press(Message::SelectStatsModalTab(crate::app::StatsModalTab::Leaderboard))
+        .on_press(Message::SelectStatsModalTab(
+            crate::app::StatsModalTab::Leaderboard
+        ))
         .padding([4, 12])
         .style(|_, status| {
             let is_active = state.stats_modal_tab == crate::app::StatsModalTab::Leaderboard;
             let is_hovered = status == iced::widget::button::Status::Hovered;
             iced::widget::button::Style {
-                background: if is_active { Some(iced::Background::Color(theme::surface0())) } else { None },
-                text_color: if is_active { theme::accent() } else if is_hovered { theme::text() } else { theme::subtext() },
-                border: iced::Border { radius: 6.0.into(), ..Default::default() },
+                background: if is_active {
+                    Some(iced::Background::Color(theme::surface0()))
+                } else {
+                    None
+                },
+                text_color: if is_active {
+                    theme::accent()
+                } else if is_hovered {
+                    theme::text()
+                } else {
+                    theme::subtext()
+                },
+                border: iced::Border {
+                    radius: 6.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             }
         }),
@@ -1180,52 +1360,75 @@ pub fn period_breakdown_view(state: &crate::app::AppState) -> Element<'_, Messag
                 .font(crate::ui::icons::UI_FONT_BOLD)
                 .size(20)
         )
-        .on_press(Message::SelectStatsModalTab(crate::app::StatsModalTab::Achievements))
+        .on_press(Message::SelectStatsModalTab(
+            crate::app::StatsModalTab::Achievements
+        ))
         .padding([4, 12])
         .style(|_, status| {
             let is_active = state.stats_modal_tab == crate::app::StatsModalTab::Achievements;
             let is_hovered = status == iced::widget::button::Status::Hovered;
             iced::widget::button::Style {
-                background: if is_active { Some(iced::Background::Color(theme::surface0())) } else { None },
-                text_color: if is_active { theme::accent() } else if is_hovered { theme::text() } else { theme::subtext() },
-                border: iced::Border { radius: 6.0.into(), ..Default::default() },
+                background: if is_active {
+                    Some(iced::Background::Color(theme::surface0()))
+                } else {
+                    None
+                },
+                text_color: if is_active {
+                    theme::accent()
+                } else if is_hovered {
+                    theme::text()
+                } else {
+                    theme::subtext()
+                },
+                border: iced::Border {
+                    radius: 6.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             }
         }),
-    ].align_y(Alignment::Center);
+    ]
+    .align_y(Alignment::Center);
 
-    let main_body: Element<'_, Message> = if state.stats_modal_tab == crate::app::StatsModalTab::Leaderboard {
-        column![
-            row![
-                Space::with_width(Length::Fill),
-                period_tabs,
-                Space::with_width(Length::Fill),
-            ]
-            .align_y(Alignment::Center),
-            Space::with_height(16),
-            row![
-                Space::with_width(Length::Fill),
-                text(&breakdown.period_label)
-                    .font(crate::ui::icons::UI_FONT_BOLD)
-                    .size(15)
-                    .color(theme::accent()),
-                text(" - ")
+    let main_body: Element<'_, Message> =
+        if state.stats_modal_tab == crate::app::StatsModalTab::Leaderboard {
+            column![
+                row![
+                    Space::with_width(Length::Fill),
+                    period_tabs,
+                    Space::with_width(Length::Fill),
+                ]
+                .align_y(Alignment::Center),
+                Space::with_height(16),
+                row![
+                    Space::with_width(Length::Fill),
+                    text(&breakdown.period_label)
+                        .font(crate::ui::icons::UI_FONT_BOLD)
+                        .size(15)
+                        .color(theme::accent()),
+                    text(" - ")
+                        .font(crate::ui::icons::UI_FONT_BOLD)
+                        .size(15)
+                        .color(theme::subtext()),
+                    text(format!(
+                        "{} Tracks | {} played",
+                        breakdown.total_plays,
+                        format_header_time(breakdown.total_minutes)
+                    ))
                     .font(crate::ui::icons::UI_FONT_BOLD)
                     .size(15)
                     .color(theme::subtext()),
-                text(format!("{} Tracks | {} played", breakdown.total_plays, format_header_time(breakdown.total_minutes)))
-                    .font(crate::ui::icons::UI_FONT_BOLD)
-                    .size(15)
-                    .color(theme::subtext()),
-                Space::with_width(Length::Fill),
+                    Space::with_width(Length::Fill),
+                ]
+                .align_y(Alignment::Center),
+                Space::with_height(16),
+                tables,
             ]
-            .align_y(Alignment::Center),
-            Space::with_height(16),
-            tables,
-        ].spacing(0).into()
-    } else {
-        achievements_tab_view(state)
-    };
+            .spacing(0)
+            .into()
+        } else {
+            achievements_tab_view(state)
+        };
 
     let content = column![
         row![
@@ -1253,14 +1456,17 @@ pub fn period_breakdown_view(state: &crate::app::AppState) -> Element<'_, Messag
                     radius: 8.0.into(),
                 },
                 ..Default::default()
-            })
+            }),
     )
     .width(Length::Fill)
     .height(Length::Fill)
     .center_x(Length::Fill)
     .center_y(Length::Fill)
     .style(|_| iced::widget::container::Style {
-        background: Some(iced::Background::Color(theme::with_alpha(theme::base(), 0.8))),
+        background: Some(iced::Background::Color(theme::with_alpha(
+            theme::base(),
+            0.8,
+        ))),
         ..Default::default()
     });
 
@@ -1270,8 +1476,12 @@ pub fn period_breakdown_view(state: &crate::app::AppState) -> Element<'_, Messag
         .into()
 }
 
-fn get_artist_cover_data(artist: &str, tracks: &[crate::library::models::Track]) -> Option<Vec<u8>> {
-    let mut artist_tracks: Vec<&crate::library::models::Track> = tracks.iter().filter(|t| t.artist == artist).collect();
+fn get_artist_cover_data(
+    artist: &str,
+    tracks: &[crate::library::models::Track],
+) -> Option<Vec<u8>> {
+    let mut artist_tracks: Vec<&crate::library::models::Track> =
+        tracks.iter().filter(|t| t.artist == artist).collect();
     if !artist_tracks.is_empty() {
         use rand::seq::SliceRandom;
         let mut rng = rand::thread_rng();
@@ -1297,10 +1507,14 @@ fn get_album_cover_data(album: &str, tracks: &[crate::library::models::Track]) -
 }
 
 fn get_genre_cover_data(genre: &str, tracks: &[crate::library::models::Track]) -> Option<Vec<u8>> {
-    let mut album_tracks: HashMap<(String, String), Vec<&crate::library::models::Track>> = HashMap::new();
+    let mut album_tracks: HashMap<(String, String), Vec<&crate::library::models::Track>> =
+        HashMap::new();
     for t in tracks {
         if !t.album.trim().is_empty() {
-            album_tracks.entry((t.artist.clone(), t.album.clone())).or_default().push(t);
+            album_tracks
+                .entry((t.artist.clone(), t.album.clone()))
+                .or_default()
+                .push(t);
         }
     }
 
@@ -1310,13 +1524,16 @@ fn get_genre_cover_data(genre: &str, tracks: &[crate::library::models::Track]) -
         if total == 0 {
             continue;
         }
-        let matching = track_list.iter().filter(|t| {
-            if t.genre.contains("; ") {
-                t.genre.split("; ").any(|g| g.trim() == genre)
-            } else {
-                t.genre.trim() == genre
-            }
-        }).count();
+        let matching = track_list
+            .iter()
+            .filter(|t| {
+                if t.genre.contains("; ") {
+                    t.genre.split("; ").any(|g| g.trim() == genre)
+                } else {
+                    t.genre.trim() == genre
+                }
+            })
+            .count();
         let pct = (matching as f32) / (total as f32);
         if pct > 0.70 {
             matching_albums.push(track_list);
@@ -1339,54 +1556,69 @@ fn get_genre_cover_data(genre: &str, tracks: &[crate::library::models::Track]) -
 
 fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
     use crate::stats::EarnedAchievement;
-    
+
     let make_sub_tab = |label: &'static str, tab: crate::app::AchievementsSubTab| {
         let is_active = state.achievements_sub_tab == tab;
-        button(
-            text(label)
-                .font(crate::ui::icons::UI_FONT_BOLD)
-                .size(16)
-        )
-        .on_press(Message::SelectAchievementsSubTab(tab))
-        .padding([6, 16])
-        .style(move |_, status| {
-            let is_hovered = status == iced::widget::button::Status::Hovered;
-            iced::widget::button::Style {
-                background: if is_active { Some(iced::Background::Color(theme::surface0())) } else { None },
-                text_color: if is_active { theme::accent() } else if is_hovered { theme::text() } else { theme::subtext() },
-                border: iced::Border { radius: 6.0.into(), ..Default::default() },
-                ..Default::default()
-            }
-        })
+        button(text(label).font(crate::ui::icons::UI_FONT_BOLD).size(16))
+            .on_press(Message::SelectAchievementsSubTab(tab))
+            .padding([6, 16])
+            .style(move |_, status| {
+                let is_hovered = status == iced::widget::button::Status::Hovered;
+                iced::widget::button::Style {
+                    background: if is_active {
+                        Some(iced::Background::Color(theme::surface0()))
+                    } else {
+                        None
+                    },
+                    text_color: if is_active {
+                        theme::accent()
+                    } else if is_hovered {
+                        theme::text()
+                    } else {
+                        theme::subtext()
+                    },
+                    border: iced::Border {
+                        radius: 6.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }
+            })
     };
 
     let make_sort_btn = |label: &'static str, sort: crate::app::AchievementsSort| {
         let is_active = state.achievements_sort == sort;
-        button(
-            text(label)
-                .font(crate::ui::icons::UI_FONT)
-                .size(13)
-        )
-        .on_press(Message::SelectAchievementsSort(sort))
-        .padding([4, 12])
-        .style(move |_, status| {
-            let is_hovered = status == iced::widget::button::Status::Hovered;
-            iced::widget::button::Style {
-                background: if is_active { Some(iced::Background::Color(theme::surface0())) } else { None },
-                text_color: if is_active { theme::accent() } else if is_hovered { theme::text() } else { theme::subtext() },
-                border: iced::Border { radius: 4.0.into(), ..Default::default() },
-                ..Default::default()
-            }
-        })
+        button(text(label).font(crate::ui::icons::UI_FONT).size(13))
+            .on_press(Message::SelectAchievementsSort(sort))
+            .padding([4, 12])
+            .style(move |_, status| {
+                let is_hovered = status == iced::widget::button::Status::Hovered;
+                iced::widget::button::Style {
+                    background: if is_active {
+                        Some(iced::Background::Color(theme::surface0()))
+                    } else {
+                        None
+                    },
+                    text_color: if is_active {
+                        theme::accent()
+                    } else if is_hovered {
+                        theme::text()
+                    } else {
+                        theme::subtext()
+                    },
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }
+            })
     };
 
-    let search_input = text_input(
-        "Search...",
-        &state.achievements_search_query,
-    )
-    .on_input(Message::AchievementsSearchChanged)
-    .padding(6)
-    .width(Length::Fixed(180.0));
+    let search_input = text_input("Search...", &state.achievements_search_query)
+        .on_input(Message::AchievementsSearchChanged)
+        .padding(6)
+        .width(Length::Fixed(180.0));
 
     let top_bar = row![
         row![
@@ -1395,17 +1627,22 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
             make_sub_tab("Albums", crate::app::AchievementsSubTab::Albums),
             Space::with_width(8),
             make_sub_tab("Genres", crate::app::AchievementsSubTab::Genres),
-        ].align_y(Alignment::Center),
+        ]
+        .align_y(Alignment::Center),
         Space::with_width(Length::Fill),
         search_input,
         Space::with_width(Length::Fill),
         row![
-            text("Sort:").font(crate::ui::icons::UI_FONT).size(13).color(theme::subtext()),
+            text("Sort:")
+                .font(crate::ui::icons::UI_FONT)
+                .size(13)
+                .color(theme::subtext()),
             Space::with_width(6),
             make_sort_btn("Level", crate::app::AchievementsSort::AchievementLevel),
             Space::with_width(4),
             make_sort_btn("A-Z", crate::app::AchievementsSort::Alphabetical),
-        ].align_y(Alignment::Center),
+        ]
+        .align_y(Alignment::Center),
     ]
     .align_y(Alignment::Center)
     .width(Length::Fill)
@@ -1413,19 +1650,24 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
 
     // Filter the items by query (case-insensitive contains check)
     let query = state.achievements_search_query.to_lowercase();
-    let filtered_items: Vec<&crate::app::AchievementItem> = state.achievements_items.iter()
+    let filtered_items: Vec<&crate::app::AchievementItem> = state
+        .achievements_items
+        .iter()
         .filter(|item| item.name.to_lowercase().contains(&query))
         .collect();
 
     let total_items = filtered_items.len();
-    let page_items = filtered_items.iter()
+    let page_items = filtered_items
+        .iter()
         .skip(state.achievements_offset)
         .take(5);
 
     // Auto-complete Suggestions (take up to 3 containing matching names)
     let mut suggestions = Vec::new();
     if !state.achievements_search_query.trim().is_empty() {
-        let matches: Vec<String> = state.achievements_items.iter()
+        let matches: Vec<String> = state
+            .achievements_items
+            .iter()
             .map(|item| item.name.clone())
             .filter(|name| name.to_lowercase().contains(&query) && name.to_lowercase() != query)
             .collect();
@@ -1439,24 +1681,34 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
                 .size(11)
                 .color(theme::subtext()),
             Space::with_width(6)
-        ].align_y(Alignment::Center);
+        ]
+        .align_y(Alignment::Center);
 
         for sug in suggestions {
             let sug_clone = sug.clone();
-            sug_row = sug_row.push(
-                button(text(sug).font(crate::ui::icons::UI_FONT).size(11))
-                    .on_press(Message::AchievementsSearchChanged(sug_clone))
-                    .padding([2, 8])
-                    .style(move |_, status| {
-                        let is_hovered = status == iced::widget::button::Status::Hovered;
-                        iced::widget::button::Style {
-                            background: Some(iced::Background::Color(theme::surface0())),
-                            text_color: if is_hovered { theme::accent() } else { theme::text() },
-                            border: iced::Border { radius: 4.0.into(), ..Default::default() },
-                            ..Default::default()
-                        }
-                    })
-            ).push(Space::with_width(6));
+            sug_row = sug_row
+                .push(
+                    button(text(sug).font(crate::ui::icons::UI_FONT).size(11))
+                        .on_press(Message::AchievementsSearchChanged(sug_clone))
+                        .padding([2, 8])
+                        .style(move |_, status| {
+                            let is_hovered = status == iced::widget::button::Status::Hovered;
+                            iced::widget::button::Style {
+                                background: Some(iced::Background::Color(theme::surface0())),
+                                text_color: if is_hovered {
+                                    theme::accent()
+                                } else {
+                                    theme::text()
+                                },
+                                border: iced::Border {
+                                    radius: 4.0.into(),
+                                    ..Default::default()
+                                },
+                                ..Default::default()
+                            }
+                        }),
+                )
+                .push(Space::with_width(6));
         }
         container(sug_row)
             .width(Length::Fill)
@@ -1466,19 +1718,26 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
         Space::with_height(0).into()
     };
 
-    let mut list_col = column![].spacing(12).width(Length::Fill).padding(iced::Padding {
-        top: 0.0,
-        right: 12.0,
-        bottom: 0.0,
-        left: 0.0,
-    });
+    let mut list_col = column![]
+        .spacing(12)
+        .width(Length::Fill)
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 12.0,
+            bottom: 0.0,
+            left: 0.0,
+        });
 
     if filtered_items.is_empty() {
         list_col = list_col.push(
-            container(text("No items found").font(crate::ui::icons::UI_FONT).color(theme::overlay0()))
-                .padding(24)
-                .width(Length::Fill)
-                .align_x(iced::alignment::Horizontal::Center)
+            container(
+                text("No items found")
+                    .font(crate::ui::icons::UI_FONT)
+                    .color(theme::overlay0()),
+            )
+            .padding(24)
+            .width(Length::Fill)
+            .align_x(iced::alignment::Horizontal::Center),
         );
     } else {
         for (idx, item) in page_items.enumerate() {
@@ -1492,9 +1751,15 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
                     handle.clone()
                 } else {
                     let cover_data = match state.achievements_sub_tab {
-                        crate::app::AchievementsSubTab::Artists => get_artist_cover_data(&item.name, &state.all_tracks),
-                        crate::app::AchievementsSubTab::Albums => get_album_cover_data(&item.name, &state.all_tracks),
-                        crate::app::AchievementsSubTab::Genres => get_genre_cover_data(&item.name, &state.all_tracks),
+                        crate::app::AchievementsSubTab::Artists => {
+                            get_artist_cover_data(&item.name, &state.all_tracks)
+                        }
+                        crate::app::AchievementsSubTab::Albums => {
+                            get_album_cover_data(&item.name, &state.all_tracks)
+                        }
+                        crate::app::AchievementsSubTab::Genres => {
+                            get_genre_cover_data(&item.name, &state.all_tracks)
+                        }
                     };
                     let handle = if let Some(data) = cover_data {
                         iced::widget::image::Handle::from_bytes(data)
@@ -1523,7 +1788,8 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
             };
 
             let thresholds = match state.achievements_sub_tab {
-                crate::app::AchievementsSubTab::Artists | crate::app::AchievementsSubTab::Albums => &crate::stats::ARTIST_THRESHOLDS,
+                crate::app::AchievementsSubTab::Artists
+                | crate::app::AchievementsSubTab::Albums => &crate::stats::ARTIST_THRESHOLDS,
                 crate::app::AchievementsSubTab::Genres => &crate::stats::GENRE_THRESHOLDS,
             };
 
@@ -1531,13 +1797,21 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
             let f: f32 = if plays_f < thresholds[0] as f32 {
                 0.0 + 0.2 * (plays_f / thresholds[0] as f32)
             } else if plays_f < thresholds[1] as f32 {
-                0.2 + 0.2 * ((plays_f - thresholds[0] as f32) / (thresholds[1] as f32 - thresholds[0] as f32))
+                0.2 + 0.2
+                    * ((plays_f - thresholds[0] as f32)
+                        / (thresholds[1] as f32 - thresholds[0] as f32))
             } else if plays_f < thresholds[2] as f32 {
-                0.4 + 0.2 * ((plays_f - thresholds[1] as f32) / (thresholds[2] as f32 - thresholds[1] as f32))
+                0.4 + 0.2
+                    * ((plays_f - thresholds[1] as f32)
+                        / (thresholds[2] as f32 - thresholds[1] as f32))
             } else if plays_f < thresholds[3] as f32 {
-                0.6 + 0.2 * ((plays_f - thresholds[2] as f32) / (thresholds[3] as f32 - thresholds[2] as f32))
+                0.6 + 0.2
+                    * ((plays_f - thresholds[2] as f32)
+                        / (thresholds[3] as f32 - thresholds[2] as f32))
             } else if plays_f < thresholds[4] as f32 {
-                0.8 + 0.2 * ((plays_f - thresholds[3] as f32) / (thresholds[4] as f32 - thresholds[3] as f32))
+                0.8 + 0.2
+                    * ((plays_f - thresholds[3] as f32)
+                        / (thresholds[4] as f32 - thresholds[3] as f32))
             } else {
                 1.0
             };
@@ -1549,7 +1823,10 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
                     .width(Length::Fill)
                     .style(|_| iced::widget::container::Style {
                         background: Some(iced::Background::Color(theme::accent())),
-                        border: iced::Border { radius: 6.0.into(), ..Default::default() },
+                        border: iced::Border {
+                            radius: 6.0.into(),
+                            ..Default::default()
+                        },
                         ..Default::default()
                     })
                     .into()
@@ -1559,10 +1836,16 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
                         .width(Length::FillPortion((f * 100.0) as u16))
                         .style(|_| iced::widget::container::Style {
                             background: Some(iced::Background::Color(theme::accent())),
-                            border: iced::Border { radius: 6.0.into(), ..Default::default() },
+                            border: iced::Border {
+                                radius: 6.0.into(),
+                                ..Default::default()
+                            },
                             ..Default::default()
                         }),
-                    Space::new(Length::FillPortion(((1.0 - f) * 100.0) as u16), Length::Fill)
+                    Space::new(
+                        Length::FillPortion(((1.0 - f) * 100.0) as u16),
+                        Length::Fill
+                    )
                 ]
                 .width(Length::Fill)
                 .into()
@@ -1573,10 +1856,16 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
                     .width(Length::Fill)
                     .height(Length::Fill)
                     .style(|_| iced::widget::container::Style {
-                        background: Some(iced::Background::Color(theme::with_alpha(theme::accent(), 0.15))),
-                        border: iced::Border { radius: 6.0.into(), ..Default::default() },
+                        background: Some(iced::Background::Color(theme::with_alpha(
+                            theme::accent(),
+                            0.15,
+                        ))),
+                        border: iced::Border {
+                            radius: 6.0.into(),
+                            ..Default::default()
+                        },
                         ..Default::default()
-                    })
+                    }),
             )
             .width(Length::Fill)
             .height(58.0)
@@ -1587,14 +1876,14 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
                 let thresh = thresholds[i];
                 let achieved = item.plays >= thresh;
                 let tier_name = crate::stats::TIERS[i];
-                
+
                 let dot_char = match i {
                     0 | 1 | 2 => crate::ui::icons::ICON_TROPHY,
                     3 => crate::ui::icons::ICON_CROWN,
                     4 => crate::ui::icons::ICON_GEM,
                     _ => crate::ui::icons::ICON_TROPHY,
                 };
-                
+
                 let tier_color = match i {
                     0 => iced::Color::from_rgb(0.72, 0.45, 0.20),
                     1 => iced::Color::from_rgb(0.75, 0.75, 0.75),
@@ -1617,11 +1906,11 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
                         } else {
                             format!("{} more plays to earn", remaining)
                         })
-                            .font(crate::ui::icons::UI_FONT)
-                            .size(11)
-                            .color(theme::subtext()),
+                        .font(crate::ui::icons::UI_FONT)
+                        .size(11)
+                        .color(theme::subtext()),
                     ]
-                    .spacing(2)
+                    .spacing(2),
                 )
                 .padding(8)
                 .style(|_| iced::widget::container::Style {
@@ -1646,36 +1935,46 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
                     .width(52)
                     .height(52)
                     .align_x(iced::alignment::Horizontal::Center)
-                    .align_y(iced::alignment::Vertical::Center)
+                    .align_y(iced::alignment::Vertical::Center),
                 )
                 .on_press(Message::Noop)
                 .padding(0)
-                .style(move |_theme: &iced::Theme, status: iced::widget::button::Status| {
-                    let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-                    iced::widget::button::Style {
-                        background: None,
-                        text_color: if is_hovered { tier_color } else { default_color },
-                        border: iced::Border { radius: 6.0.into(), ..Default::default() },
-                        ..Default::default()
-                    }
-                });
+                .style(
+                    move |_theme: &iced::Theme, status: iced::widget::button::Status| {
+                        let is_hovered = status == iced::widget::button::Status::Hovered
+                            || status == iced::widget::button::Status::Pressed;
+                        iced::widget::button::Style {
+                            background: None,
+                            text_color: if is_hovered {
+                                tier_color
+                            } else {
+                                default_color
+                            },
+                            border: iced::Border {
+                                radius: 6.0.into(),
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        }
+                    },
+                );
 
-                let icon_with_tooltip: Element<Message> = tooltip(
-                    icon_btn,
-                    tooltip_body,
-                    iced::widget::tooltip::Position::Top,
-                ).into();
+                let icon_with_tooltip: Element<Message> =
+                    tooltip(icon_btn, tooltip_body, iced::widget::tooltip::Position::Top).into();
 
                 dots_row = dots_row.push(
                     container(icon_with_tooltip)
                         .width(Length::Fill)
-                        .align_x(iced::alignment::Horizontal::Right)
+                        .align_x(iced::alignment::Horizontal::Right),
                 );
             }
 
             let milestone_bar = stack![
                 progress_line,
-                container(dots_row).width(Length::Fill).height(58.0).align_y(iced::alignment::Vertical::Center)
+                container(dots_row)
+                    .width(Length::Fill)
+                    .height(58.0)
+                    .align_y(iced::alignment::Vertical::Center)
             ]
             .width(Length::Fill);
 
@@ -1687,7 +1986,8 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
                         .size(11)
                         .color(theme::accent()),
                     Space::with_width(Length::Fill)
-                ].into()
+                ]
+                .into()
             } else if label_f >= 0.95 {
                 row![
                     Space::with_width(Length::Fill),
@@ -1695,15 +1995,22 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
                         .font(crate::ui::icons::UI_FONT_BOLD)
                         .size(11)
                         .color(theme::accent())
-                ].into()
+                ]
+                .into()
             } else {
                 row![
-                    Space::new(Length::FillPortion((label_f * 100.0) as u16), Length::Shrink),
+                    Space::new(
+                        Length::FillPortion((label_f * 100.0) as u16),
+                        Length::Shrink
+                    ),
                     text(format!("{} plays", item.plays))
                         .font(crate::ui::icons::UI_FONT_BOLD)
                         .size(11)
                         .color(theme::accent()),
-                    Space::new(Length::FillPortion(((1.0 - label_f) * 100.0) as u16), Length::Shrink)
+                    Space::new(
+                        Length::FillPortion(((1.0 - label_f) * 100.0) as u16),
+                        Length::Shrink
+                    )
                 ]
                 .width(Length::Fill)
                 .into()
@@ -1732,7 +2039,7 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
                     Space::with_width(8),
                 ]
                 .align_y(Alignment::Center)
-                .width(Length::Fill)
+                .width(Length::Fill),
             )
             .padding([16, 16])
             .width(Length::Fill)
@@ -1750,11 +2057,16 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
                 .on_press(Message::Noop)
                 .padding(0)
                 .style(|_, status| {
-                    let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
+                    let is_hovered = status == iced::widget::button::Status::Hovered
+                        || status == iced::widget::button::Status::Pressed;
                     iced::widget::button::Style {
                         background: None,
                         border: iced::Border {
-                            color: if is_hovered { theme::accent() } else { iced::Color::TRANSPARENT },
+                            color: if is_hovered {
+                                theme::accent()
+                            } else {
+                                iced::Color::TRANSPARENT
+                            },
                             width: 1.0,
                             radius: 8.0.into(),
                         },
@@ -1770,31 +2082,47 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
     let has_next = state.achievements_offset + 5 < total_items;
 
     let prev_btn = if has_previous {
-        button(text("Previous Page").font(crate::ui::icons::UI_FONT_BOLD).size(13))
-            .on_press(Message::ShowPreviousAchievements)
-            .padding([6, 12])
-            .style(crate::ui::theme::secondary_button)
+        button(
+            text("Previous Page")
+                .font(crate::ui::icons::UI_FONT_BOLD)
+                .size(13),
+        )
+        .on_press(Message::ShowPreviousAchievements)
+        .padding([6, 12])
+        .style(crate::ui::theme::secondary_button)
     } else {
-        button(text("Previous Page").font(crate::ui::icons::UI_FONT_BOLD).size(13))
-            .padding([6, 12])
-            .style(|_, _| iced::widget::button::Style {
-                text_color: theme::overlay0(),
-                ..Default::default()
-            })
+        button(
+            text("Previous Page")
+                .font(crate::ui::icons::UI_FONT_BOLD)
+                .size(13),
+        )
+        .padding([6, 12])
+        .style(|_, _| iced::widget::button::Style {
+            text_color: theme::overlay0(),
+            ..Default::default()
+        })
     };
 
     let next_btn = if has_next {
-        button(text("Next Page").font(crate::ui::icons::UI_FONT_BOLD).size(13))
-            .on_press(Message::ShowMoreAchievements)
-            .padding([6, 12])
-            .style(crate::ui::theme::secondary_button)
+        button(
+            text("Next Page")
+                .font(crate::ui::icons::UI_FONT_BOLD)
+                .size(13),
+        )
+        .on_press(Message::ShowMoreAchievements)
+        .padding([6, 12])
+        .style(crate::ui::theme::secondary_button)
     } else {
-        button(text("Next Page").font(crate::ui::icons::UI_FONT_BOLD).size(13))
-            .padding([6, 12])
-            .style(|_, _| iced::widget::button::Style {
-                text_color: theme::overlay0(),
-                ..Default::default()
-            })
+        button(
+            text("Next Page")
+                .font(crate::ui::icons::UI_FONT_BOLD)
+                .size(13),
+        )
+        .padding([6, 12])
+        .style(|_, _| iced::widget::button::Style {
+            text_color: theme::overlay0(),
+            ..Default::default()
+        })
     };
 
     let page_num = (state.achievements_offset / 5) + 1;
@@ -1830,8 +2158,6 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
     .height(Length::Fill)
     .into()
 }
-
-
 
 pub fn song_breakdown_view(
     category: &str,
@@ -1878,13 +2204,18 @@ pub fn song_breakdown_view(
             _ => item.artist.clone(),
         };
 
-        let duration_mins = all_tracks.iter()
+        let duration_mins = all_tracks
+            .iter()
             .find(|t| t.path == item.track_path)
             .map(|t| t.duration.as_secs_f64() / 60.0)
             .unwrap_or(4.0);
 
         let total_mins = item.play_count as f64 * duration_mins;
-        let stats_text = format!("{} plays \u{2022} {}", item.play_count, format_song_mins(total_mins));
+        let stats_text = format!(
+            "{} plays \u{2022} {}",
+            item.play_count,
+            format_song_mins(total_mins)
+        );
 
         let row_item = row![
             text(format!("{:>2}", rank))
@@ -1940,22 +2271,33 @@ pub fn song_breakdown_view(
         button(
             text("\u{f00d}")
                 .font(crate::ui::icons::NERD_FONT_MONO)
-                .size(18)
+                .size(18),
         )
         .on_press(msg)
         .padding(6)
-        .style(move |_theme: &iced::Theme, status: iced::widget::button::Status| {
-            let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-            iced::widget::button::Style {
-                background: if is_hovered { Some(iced::Background::Color(theme::surface0())) } else { None },
-                text_color: if is_hovered { theme::accent() } else { theme::text() },
-                border: iced::Border {
-                    radius: 4.0.into(),
+        .style(
+            move |_theme: &iced::Theme, status: iced::widget::button::Status| {
+                let is_hovered = status == iced::widget::button::Status::Hovered
+                    || status == iced::widget::button::Status::Pressed;
+                iced::widget::button::Style {
+                    background: if is_hovered {
+                        Some(iced::Background::Color(theme::surface0()))
+                    } else {
+                        None
+                    },
+                    text_color: if is_hovered {
+                        theme::accent()
+                    } else {
+                        theme::text()
+                    },
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
                     ..Default::default()
-                },
-                ..Default::default()
-            }
-        })
+                }
+            },
+        )
     };
 
     let back_btn = |msg: Message| {
@@ -1967,18 +2309,29 @@ pub fn song_breakdown_view(
         )
         .on_press(msg)
         .padding(6)
-        .style(move |_theme: &iced::Theme, status: iced::widget::button::Status| {
-            let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-            iced::widget::button::Style {
-                background: if is_hovered { Some(iced::Background::Color(theme::surface0())) } else { None },
-                text_color: if is_hovered { theme::accent() } else { theme::text() },
-                border: iced::Border {
-                    radius: 4.0.into(),
+        .style(
+            move |_theme: &iced::Theme, status: iced::widget::button::Status| {
+                let is_hovered = status == iced::widget::button::Status::Hovered
+                    || status == iced::widget::button::Status::Pressed;
+                iced::widget::button::Style {
+                    background: if is_hovered {
+                        Some(iced::Background::Color(theme::surface0()))
+                    } else {
+                        None
+                    },
+                    text_color: if is_hovered {
+                        theme::accent()
+                    } else {
+                        theme::text()
+                    },
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
                     ..Default::default()
-                },
-                ..Default::default()
-            }
-        })
+                }
+            },
+        )
     };
 
     let content = column![
@@ -2022,7 +2375,10 @@ pub fn song_breakdown_view(
         .center_x(Length::Fill)
         .center_y(Length::Fill)
         .style(|_| iced::widget::container::Style {
-            background: Some(iced::Background::Color(theme::with_alpha(theme::base(), 0.8))),
+            background: Some(iced::Background::Color(theme::with_alpha(
+                theme::base(),
+                0.8,
+            ))),
             ..Default::default()
         });
 

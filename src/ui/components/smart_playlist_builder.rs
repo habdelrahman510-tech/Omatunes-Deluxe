@@ -1,10 +1,14 @@
-use iced::widget::{button, column, container, row, text_input, Space, checkbox, pick_list, scrollable};
-use iced::{Alignment, Element, Length};
-use crate::ui::txt::text;
 use crate::app::{Message, SmartPlaylistBuilderEvent};
-use crate::ui::theme;
-use crate::library::smart_playlist::{RuleField, RuleOperator, DateUnit, SmartPlaylistOrder, SmartPlaylistRule, SmartPlaylist};
+use crate::library::smart_playlist::{
+    DateUnit, RuleField, RuleOperator, SmartPlaylist, SmartPlaylistOrder, SmartPlaylistRule,
+};
 use crate::ui::components::autocomplete::{get_suggestions, render_suggestions};
+use crate::ui::theme;
+use crate::ui::txt::text;
+use iced::widget::{
+    button, checkbox, column, container, pick_list, row, scrollable, text_input, Space,
+};
+use iced::{Alignment, Element, Length};
 
 #[derive(Debug, Clone)]
 pub struct RuleRowState {
@@ -43,8 +47,20 @@ impl RuleRowState {
 
     pub fn to_rule(&self) -> SmartPlaylistRule {
         let val = match self.field {
-            RuleField::Liked => if self.boolean_value { "Liked".to_string() } else { "Not Liked".to_string() },
-            RuleField::HasLyrics => if self.boolean_value { "Yes".to_string() } else { "No".to_string() },
+            RuleField::Liked => {
+                if self.boolean_value {
+                    "Liked".to_string()
+                } else {
+                    "Not Liked".to_string()
+                }
+            }
+            RuleField::HasLyrics => {
+                if self.boolean_value {
+                    "Yes".to_string()
+                } else {
+                    "No".to_string()
+                }
+            }
             _ => self.value.clone(),
         };
 
@@ -52,15 +68,25 @@ impl RuleRowState {
             field: self.field,
             operator: self.operator,
             value: val,
-            value2: if self.operator == RuleOperator::Between { Some(self.value2.clone()) } else { None },
-            date_unit: if self.field == RuleField::LastPlayed { Some(self.date_unit) } else { None },
+            value2: if self.operator == RuleOperator::Between {
+                Some(self.value2.clone())
+            } else {
+                None
+            },
+            date_unit: if self.field == RuleField::LastPlayed {
+                Some(self.date_unit)
+            } else {
+                None
+            },
         }
     }
 
     pub fn from_rule(rule: &SmartPlaylistRule) -> Self {
         let boolean_value = match rule.field {
             RuleField::Liked => rule.value.to_lowercase() == "liked",
-            RuleField::HasLyrics => rule.value.to_lowercase() == "yes" || rule.value.to_lowercase() == "true",
+            RuleField::HasLyrics => {
+                rule.value.to_lowercase() == "yes" || rule.value.to_lowercase() == "true"
+            }
             _ => false,
         };
 
@@ -194,10 +220,7 @@ pub fn valid_operators(field: RuleField) -> Vec<RuleOperator> {
             RuleOperator::Is,
             RuleOperator::IsNot,
         ],
-        RuleField::Genre => vec![
-            RuleOperator::Is,
-            RuleOperator::IsNot,
-        ],
+        RuleField::Genre => vec![RuleOperator::Is, RuleOperator::IsNot],
         RuleField::Year => vec![
             RuleOperator::Is,
             RuleOperator::Before,
@@ -209,19 +232,10 @@ pub fn valid_operators(field: RuleField) -> Vec<RuleOperator> {
             RuleOperator::GreaterThan,
             RuleOperator::LessThan,
         ],
-        RuleField::Duration => vec![
-            RuleOperator::GreaterThan,
-            RuleOperator::LessThan,
-        ],
-        RuleField::DiscNumber => vec![
-            RuleOperator::Is,
-        ],
-        RuleField::Liked | RuleField::HasLyrics => vec![
-            RuleOperator::Is,
-        ],
-        RuleField::LastPlayed => vec![
-            RuleOperator::WithinLast,
-        ],
+        RuleField::Duration => vec![RuleOperator::GreaterThan, RuleOperator::LessThan],
+        RuleField::DiscNumber => vec![RuleOperator::Is],
+        RuleField::Liked | RuleField::HasLyrics => vec![RuleOperator::Is],
+        RuleField::LastPlayed => vec![RuleOperator::WithinLast],
     }
 }
 
@@ -231,10 +245,14 @@ pub fn view<'a>(
     unique_albums: &[String],
     unique_genres: &[String],
 ) -> Element<'a, Message> {
-    let title_text = text(if state.editing_name.is_some() { "Edit Smart Playlist" } else { "Create Smart Playlist" })
-        .size(20)
-        .font(crate::ui::icons::UI_FONT_BOLD)
-        .color(theme::text());
+    let title_text = text(if state.editing_name.is_some() {
+        "Edit Smart Playlist"
+    } else {
+        "Create Smart Playlist"
+    })
+    .size(20)
+    .font(crate::ui::icons::UI_FONT_BOLD)
+    .color(theme::text());
 
     let name_field = column![
         text("Playlist Name")
@@ -242,7 +260,9 @@ pub fn view<'a>(
             .color(theme::subtext())
             .font(crate::ui::icons::UI_FONT_BOLD),
         text_input("Name", &state.name)
-            .on_input(|s| Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::NameChanged(s)))
+            .on_input(
+                |s| Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::NameChanged(s))
+            )
             .padding(8)
             .width(Length::Fill),
     ]
@@ -251,19 +271,15 @@ pub fn view<'a>(
     let mut rules_col = column![].spacing(12);
 
     for (idx, row_state) in state.rules.iter().enumerate() {
-        let field_pick = pick_list(
-            RuleField::all().to_vec(),
-            Some(row_state.field),
-            move |f| Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::UpdateRuleField(idx, f))
-        )
+        let field_pick = pick_list(RuleField::all().to_vec(), Some(row_state.field), move |f| {
+            Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::UpdateRuleField(idx, f))
+        })
         .width(Length::Fixed(120.0));
 
         let valid_ops = valid_operators(row_state.field);
-        let op_pick = pick_list(
-            valid_ops,
-            Some(row_state.operator),
-            move |o| Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::UpdateRuleOperator(idx, o))
-        )
+        let op_pick = pick_list(valid_ops, Some(row_state.operator), move |o| {
+            Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::UpdateRuleOperator(idx, o))
+        })
         .width(Length::Fixed(140.0));
 
         let mut value_container = column![].spacing(4).width(Length::Fill);
@@ -271,11 +287,15 @@ pub fn view<'a>(
         match row_state.field {
             RuleField::Liked => {
                 let label_fn = |b: bool| if b { "Liked" } else { "Not Liked" };
-                
+
                 let view_liked_pick: Element<'a, Message> = pick_list(
                     vec!["Liked", "Not Liked"],
                     Some(label_fn(row_state.boolean_value)),
-                    move |s| Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::UpdateRuleBoolean(idx, s == "Liked"))
+                    move |s| {
+                        Message::SmartPlaylistBuilderMsg(
+                            SmartPlaylistBuilderEvent::UpdateRuleBoolean(idx, s == "Liked"),
+                        )
+                    },
                 )
                 .width(Length::Fixed(120.0))
                 .into();
@@ -286,7 +306,11 @@ pub fn view<'a>(
                 let view_lyrics_pick: Element<'a, Message> = pick_list(
                     vec!["Yes", "No"],
                     Some(if row_state.boolean_value { "Yes" } else { "No" }),
-                    move |s| Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::UpdateRuleBoolean(idx, s == "Yes"))
+                    move |s| {
+                        Message::SmartPlaylistBuilderMsg(
+                            SmartPlaylistBuilderEvent::UpdateRuleBoolean(idx, s == "Yes"),
+                        )
+                    },
                 )
                 .width(Length::Fixed(100.0))
                 .into();
@@ -295,31 +319,47 @@ pub fn view<'a>(
             }
             RuleField::LastPlayed => {
                 let days_input = text_input("number", &row_state.value)
-                    .on_input(move |s| Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::UpdateRuleValue(idx, s)))
+                    .on_input(move |s| {
+                        Message::SmartPlaylistBuilderMsg(
+                            SmartPlaylistBuilderEvent::UpdateRuleValue(idx, s),
+                        )
+                    })
                     .padding(6)
                     .width(Length::Fixed(60.0));
 
                 let unit_pick = pick_list(
                     DateUnit::all().to_vec(),
                     Some(row_state.date_unit),
-                    move |u| Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::UpdateRuleDateUnit(idx, u))
+                    move |u| {
+                        Message::SmartPlaylistBuilderMsg(
+                            SmartPlaylistBuilderEvent::UpdateRuleDateUnit(idx, u),
+                        )
+                    },
                 )
                 .width(Length::Fixed(100.0));
 
-                let content = row![days_input, Space::with_width(6), unit_pick]
-                    .align_y(Alignment::Center);
+                let content =
+                    row![days_input, Space::with_width(6), unit_pick].align_y(Alignment::Center);
 
                 value_container = value_container.push(content);
             }
             _ => {
                 if row_state.operator == RuleOperator::Between {
                     let input1 = text_input("start", &row_state.value)
-                        .on_input(move |s| Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::UpdateRuleValue(idx, s)))
+                        .on_input(move |s| {
+                            Message::SmartPlaylistBuilderMsg(
+                                SmartPlaylistBuilderEvent::UpdateRuleValue(idx, s),
+                            )
+                        })
                         .padding(6)
                         .width(Length::Fill);
 
                     let input2 = text_input("end", &row_state.value2)
-                        .on_input(move |s| Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::UpdateRuleValue2(idx, s)))
+                        .on_input(move |s| {
+                            Message::SmartPlaylistBuilderMsg(
+                                SmartPlaylistBuilderEvent::UpdateRuleValue2(idx, s),
+                            )
+                        })
                         .padding(6)
                         .width(Length::Fill);
 
@@ -337,7 +377,11 @@ pub fn view<'a>(
                     };
 
                     let text_field = text_input(placeholder, &row_state.value)
-                        .on_input(move |s| Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::UpdateRuleValue(idx, s)))
+                        .on_input(move |s| {
+                            Message::SmartPlaylistBuilderMsg(
+                                SmartPlaylistBuilderEvent::UpdateRuleValue(idx, s),
+                            )
+                        })
                         .padding(6)
                         .width(Length::Fill);
 
@@ -355,7 +399,9 @@ pub fn view<'a>(
                         let suggestions = get_suggestions(&row_state.value, items);
                         if !suggestions.is_empty() {
                             let rendered = render_suggestions(&suggestions, move |s| {
-                                Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::UpdateRuleValue(idx, s))
+                                Message::SmartPlaylistBuilderMsg(
+                                    SmartPlaylistBuilderEvent::UpdateRuleValue(idx, s),
+                                )
                             });
                             value_container = value_container.push(rendered);
                         }
@@ -368,9 +414,11 @@ pub fn view<'a>(
             text("\u{f00d}") // X icon
                 .font(crate::ui::icons::NERD_FONT_MONO)
                 .color(theme::red())
-                .size(12)
+                .size(12),
         )
-        .on_press(Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::RemoveRule(idx)))
+        .on_press(Message::SmartPlaylistBuilderMsg(
+            SmartPlaylistBuilderEvent::RemoveRule(idx),
+        ))
         .style(iced::widget::button::text)
         .padding(4);
 
@@ -389,15 +437,13 @@ pub fn view<'a>(
         rules_col = rules_col.push(row_content);
     }
 
-    let add_rule_btn = button(
-        row![
-            text("+ Add Rule")
-                .size(12)
-                .font(crate::ui::icons::UI_FONT_BOLD)
-                .color(theme::accent())
-        ]
-    )
-    .on_press(Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::AddRule))
+    let add_rule_btn = button(row![text("+ Add Rule")
+        .size(12)
+        .font(crate::ui::icons::UI_FONT_BOLD)
+        .color(theme::accent())])
+    .on_press(Message::SmartPlaylistBuilderMsg(
+        SmartPlaylistBuilderEvent::AddRule,
+    ))
     .style(theme::secondary_button)
     .padding([6, 12]);
 
@@ -411,14 +457,16 @@ pub fn view<'a>(
         .size(16);
 
     let limit_input = text_input("X", &state.limit_str)
-        .on_input(|s| Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::LimitStrChanged(s)))
+        .on_input(|s| {
+            Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::LimitStrChanged(s))
+        })
         .padding(4)
         .width(Length::Fixed(60.0));
 
     let order_pick = pick_list(
         SmartPlaylistOrder::all().to_vec(),
         Some(state.order_by),
-        |o| Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::UpdateOrderBy(o))
+        |o| Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::UpdateOrderBy(o)),
     )
     .width(Length::Fixed(140.0));
 
@@ -441,20 +489,20 @@ pub fn view<'a>(
         text("Save")
             .size(13)
             .color(theme::base())
-            .font(crate::ui::icons::UI_FONT_BOLD)
+            .font(crate::ui::icons::UI_FONT_BOLD),
     )
-    .on_press(Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::Save))
+    .on_press(Message::SmartPlaylistBuilderMsg(
+        SmartPlaylistBuilderEvent::Save,
+    ))
     .style(theme::primary_button)
     .padding([8, 16]);
 
-    let cancel_btn = button(
-        text("Cancel")
-            .size(13)
-            .color(theme::text())
-    )
-    .on_press(Message::SmartPlaylistBuilderMsg(SmartPlaylistBuilderEvent::Cancel))
-    .style(theme::secondary_button)
-    .padding([8, 16]);
+    let cancel_btn = button(text("Cancel").size(13).color(theme::text()))
+        .on_press(Message::SmartPlaylistBuilderMsg(
+            SmartPlaylistBuilderEvent::Cancel,
+        ))
+        .style(theme::secondary_button)
+        .padding([8, 16]);
 
     let action_row = row![
         Space::with_width(Length::Fill),

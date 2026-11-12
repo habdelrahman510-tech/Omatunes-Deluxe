@@ -82,8 +82,7 @@ impl EqSettings {
 
     /// True when the equalizer would not alter the signal at all.
     pub fn is_flat(&self) -> bool {
-        self.bands_db.iter().all(|g| g.abs() < 0.001)
-            && self.effective_preamp().abs() < 0.001
+        self.bands_db.iter().all(|g| g.abs() < 0.001) && self.effective_preamp().abs() < 0.001
     }
 
     /// True when audio should actually be filtered.

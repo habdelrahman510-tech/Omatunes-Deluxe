@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
-use iced::widget::Text;
 use iced::widget::text::{IntoFragment, Shaping};
+use iced::widget::Text;
 
 pub fn text<'a>(fragment: impl IntoFragment<'a>) -> Text<'a> {
     Text::new(ltr_guard(fragment.into_fragment())).shaping(Shaping::Advanced)

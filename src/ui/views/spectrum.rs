@@ -1,4 +1,4 @@
-use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path, Stroke, LineCap};
+use iced::widget::canvas::{self, Canvas, Frame, Geometry, LineCap, Path, Stroke};
 use iced::{Color, Element, Length, Point, Rectangle, Size};
 
 use crate::app::Message;
@@ -37,8 +37,10 @@ impl<'a, Message> canvas::Program<Message> for SpectrumView<'a> {
         let bg_fill = match self.bg_mode {
             1 => theme::hex_to_color(self.bg_color).unwrap_or(Color::TRANSPARENT),
             2 => {
-                let bass = (self.bands[..10].iter().sum::<f32>() / 10.0 * self.sensitivity).clamp(0.0, 1.0);
-                let mid = (self.bands[10..50].iter().sum::<f32>() / 40.0 * self.sensitivity).clamp(0.0, 1.0);
+                let bass = (self.bands[..10].iter().sum::<f32>() / 10.0 * self.sensitivity)
+                    .clamp(0.0, 1.0);
+                let mid = (self.bands[10..50].iter().sum::<f32>() / 40.0 * self.sensitivity)
+                    .clamp(0.0, 1.0);
                 let t_shift = (self.tick as f32 * 0.005) % 1.0;
 
                 // Subtle muted shifting palette
@@ -50,11 +52,7 @@ impl<'a, Message> canvas::Program<Message> for SpectrumView<'a> {
             _ => Color::TRANSPARENT,
         };
 
-        frame.fill_rectangle(
-            Point::ORIGIN,
-            bounds.size(),
-            bg_fill,
-        );
+        frame.fill_rectangle(Point::ORIGIN, bounds.size(), bg_fill);
 
         // Render historical ghost frames ONLY for modes where ghosting is active (modes other than 0 and 1)
         if self.mode != 0 && self.mode != 1 {
@@ -63,11 +61,21 @@ impl<'a, Message> canvas::Program<Message> for SpectrumView<'a> {
                 for (idx, hist_bands) in self.history.iter().enumerate() {
                     let age = hist_len - idx;
                     let age_factor = age as f32 / (hist_len as f32 + 1.0);
-                    let alpha = (1.0 - age_factor * 0.85) * (1.0 - self.decay * 0.65).clamp(0.15, 0.95);
+                    let alpha =
+                        (1.0 - age_factor * 0.85) * (1.0 - self.decay * 0.65).clamp(0.15, 0.95);
                     let shift = age as f32 * self.color_shift * 0.7;
 
                     if alpha > 0.01 {
-                        self.render_ghost_mode(&mut frame, bounds, hist_bands, age, age_factor, alpha, shift, self.tick.saturating_sub(age as u32));
+                        self.render_ghost_mode(
+                            &mut frame,
+                            bounds,
+                            hist_bands,
+                            age,
+                            age_factor,
+                            alpha,
+                            shift,
+                            self.tick.saturating_sub(age as u32),
+                        );
                     }
                 }
             }
@@ -81,12 +89,22 @@ impl<'a, Message> canvas::Program<Message> for SpectrumView<'a> {
 }
 
 impl<'a> SpectrumView<'a> {
-    fn render_mode(&self, frame: &mut Frame, bounds: Rectangle, bands: &[f32; NUM_BANDS], alpha: f32, shift: f32, tick: u32) {
+    fn render_mode(
+        &self,
+        frame: &mut Frame,
+        bounds: Rectangle,
+        bands: &[f32; NUM_BANDS],
+        alpha: f32,
+        shift: f32,
+        tick: u32,
+    ) {
         match self.mode {
             0 => self.draw_mirrored_bars_with_peaks(frame, bounds, bands, alpha, shift, tick),
             1 => self.draw_radial_pulse_expanding_waves(frame, bounds, bands, alpha, shift, tick),
             2 => self.draw_liquid_ribbon(frame, bounds, bands, alpha, shift, tick, 0, 0.0),
-            3 => self.draw_particle_constellation_extended(frame, bounds, bands, alpha, shift, tick, 0, 0.0),
+            3 => self.draw_particle_constellation_extended(
+                frame, bounds, bands, alpha, shift, tick, 0, 0.0,
+            ),
             4 => self.draw_depth_tunnel(frame, bounds, bands, alpha, shift, tick, 0, 0.0),
             5 => self.draw_3d_wireframe_grid(frame, bounds, bands, alpha, shift, tick),
             6 => self.draw_kaleidoscope(frame, bounds, bands, alpha, shift, tick),
@@ -96,21 +114,41 @@ impl<'a> SpectrumView<'a> {
         }
     }
 
-    fn render_ghost_mode(&self, frame: &mut Frame, bounds: Rectangle, bands: &[f32; NUM_BANDS], age: usize, age_factor: f32, alpha: f32, shift: f32, tick: u32) {
+    fn render_ghost_mode(
+        &self,
+        frame: &mut Frame,
+        bounds: Rectangle,
+        bands: &[f32; NUM_BANDS],
+        age: usize,
+        age_factor: f32,
+        alpha: f32,
+        shift: f32,
+        tick: u32,
+    ) {
         match self.mode {
             2 => self.draw_liquid_ribbon(frame, bounds, bands, alpha, shift, tick, age, age_factor),
-            3 => self.draw_particle_constellation_extended(frame, bounds, bands, alpha, shift, tick, age, age_factor),
+            3 => self.draw_particle_constellation_extended(
+                frame, bounds, bands, alpha, shift, tick, age, age_factor,
+            ),
             4 => self.draw_depth_tunnel(frame, bounds, bands, alpha, shift, tick, age, age_factor),
             5 => self.draw_3d_wireframe_grid(frame, bounds, bands, alpha, shift, tick),
             6 => self.draw_kaleidoscope(frame, bounds, bands, alpha, shift, tick),
             7 => self.draw_cosmic_aurora(frame, bounds, bands, alpha, shift, tick),
             8 => self.draw_synthwave_horizon(frame, bounds, bands, alpha, shift, tick),
-            _ => {},
+            _ => {}
         }
     }
 
     // Mode 0: Live Mirrored Spectrograph Bars with Downsampling & Gravity Bouncing Peak Limiters
-    fn draw_mirrored_bars_with_peaks(&self, frame: &mut Frame, bounds: Rectangle, bands: &[f32; NUM_BANDS], alpha: f32, shift: f32, tick: u32) {
+    fn draw_mirrored_bars_with_peaks(
+        &self,
+        frame: &mut Frame,
+        bounds: Rectangle,
+        bands: &[f32; NUM_BANDS],
+        alpha: f32,
+        shift: f32,
+        tick: u32,
+    ) {
         let width = bounds.width;
         let height = bounds.height;
         let num_bars = self.bar_count.clamp(10, NUM_BANDS);
@@ -124,7 +162,8 @@ impl<'a> SpectrumView<'a> {
         for i in 0..num_bars {
             let start_band = (i as f32 * bands_per_bar) as usize;
             let end_band = ((i as f32 + 1.0) * bands_per_bar) as usize;
-            let slice = &bands[start_band.min(NUM_BANDS - 1)..end_band.min(NUM_BANDS).max(start_band + 1)];
+            let slice =
+                &bands[start_band.min(NUM_BANDS - 1)..end_band.min(NUM_BANDS).max(start_band + 1)];
             let raw_amp = slice.iter().sum::<f32>() / slice.len() as f32;
 
             let amp = (raw_amp * self.sensitivity).clamp(0.0, 1.0);
@@ -137,10 +176,7 @@ impl<'a> SpectrumView<'a> {
             let color = apply_ghost_style(base_color, alpha, shift);
 
             // Live spectrograph bar
-            let path = Path::rectangle(
-                Point::new(x, y),
-                Size::new(bar_width.max(1.0), bar_height),
-            );
+            let path = Path::rectangle(Point::new(x, y), Size::new(bar_width.max(1.0), bar_height));
             frame.fill(&path, color);
 
             // Floating peak limiter with realistic gravity bounce off rising spectrograph bars
@@ -149,9 +185,11 @@ impl<'a> SpectrumView<'a> {
 
             // Trace history to compute peak trajectory with gravity acceleration and restitution bounce
             for (hist_idx, hist_bands) in self.history.iter().enumerate().take(16) {
-                let h_slice = &hist_bands[start_band.min(NUM_BANDS - 1)..end_band.min(NUM_BANDS).max(start_band + 1)];
-                let h_amp = (h_slice.iter().sum::<f32>() / h_slice.len() as f32 * self.sensitivity).clamp(0.0, 1.0);
-                
+                let h_slice = &hist_bands
+                    [start_band.min(NUM_BANDS - 1)..end_band.min(NUM_BANDS).max(start_band + 1)];
+                let h_amp = (h_slice.iter().sum::<f32>() / h_slice.len() as f32 * self.sensitivity)
+                    .clamp(0.0, 1.0);
+
                 // Gravity acceleration over history frames
                 let dt = (hist_idx + 1) as f32 * 0.05;
                 let gravity_fall = 0.5 * 9.8 * dt * dt * 0.08;
@@ -163,7 +201,11 @@ impl<'a> SpectrumView<'a> {
             }
 
             // Add subtle sine oscillation bounce when peak touches rising bar surface
-            let bounce_mod = if (peak_amp - amp).abs() < 0.02 { (tick_f * 0.3 + i as f32).sin() * 0.015 } else { 0.0 };
+            let bounce_mod = if (peak_amp - amp).abs() < 0.02 {
+                (tick_f * 0.3 + i as f32).sin() * 0.015
+            } else {
+                0.0
+            };
             let final_peak_amp = (peak_amp + bounce_mod).max(amp);
 
             let peak_half_h = (final_peak_amp * height * 0.48).max(half_h);
@@ -172,8 +214,10 @@ impl<'a> SpectrumView<'a> {
 
             let cap_base_color = theme::spectrum_bar_color(final_peak_amp);
             let cap_color = apply_ghost_style(cap_base_color, alpha * 0.95, shift + 0.1);
-            let cap_top = Path::rectangle(Point::new(x, cap_y_top), Size::new(bar_width.max(1.0), 2.5));
-            let cap_bot = Path::rectangle(Point::new(x, cap_y_bot), Size::new(bar_width.max(1.0), 2.5));
+            let cap_top =
+                Path::rectangle(Point::new(x, cap_y_top), Size::new(bar_width.max(1.0), 2.5));
+            let cap_bot =
+                Path::rectangle(Point::new(x, cap_y_bot), Size::new(bar_width.max(1.0), 2.5));
 
             frame.fill(&cap_top, cap_color);
             frame.fill(&cap_bot, cap_color);
@@ -181,17 +225,29 @@ impl<'a> SpectrumView<'a> {
     }
 
     // Mode 1: Radial Pulse with Clean Spike-Triggered Infinite Shockwaves & Radial Bass Sparks
-    fn draw_radial_pulse_expanding_waves(&self, frame: &mut Frame, bounds: Rectangle, bands: &[f32; NUM_BANDS], alpha: f32, shift: f32, tick: u32) {
+    fn draw_radial_pulse_expanding_waves(
+        &self,
+        frame: &mut Frame,
+        bounds: Rectangle,
+        bands: &[f32; NUM_BANDS],
+        alpha: f32,
+        shift: f32,
+        tick: u32,
+    ) {
         let cx = bounds.width / 2.0;
         let cy = bounds.height / 2.0;
         let max_r = (cx.min(cy) * 0.85).max(20.0);
         let base_r = max_r * 0.20;
         let tick_f = tick as f32;
 
-        let bass_energy = (bands[..10].iter().sum::<f32>() / 10.0 * self.sensitivity).clamp(0.0, 1.0);
-        let low_mid_energy = (bands[10..35].iter().sum::<f32>() / 25.0 * self.sensitivity).clamp(0.0, 1.0);
-        let high_mid_energy = (bands[35..75].iter().sum::<f32>() / 40.0 * self.sensitivity).clamp(0.0, 1.0);
-        let treble_energy = (bands[75..144].iter().sum::<f32>() / 69.0 * self.sensitivity).clamp(0.0, 1.0);
+        let bass_energy =
+            (bands[..10].iter().sum::<f32>() / 10.0 * self.sensitivity).clamp(0.0, 1.0);
+        let low_mid_energy =
+            (bands[10..35].iter().sum::<f32>() / 25.0 * self.sensitivity).clamp(0.0, 1.0);
+        let high_mid_energy =
+            (bands[35..75].iter().sum::<f32>() / 40.0 * self.sensitivity).clamp(0.0, 1.0);
+        let treble_energy =
+            (bands[75..144].iter().sum::<f32>() / 69.0 * self.sensitivity).clamp(0.0, 1.0);
 
         let group_energies = [
             (bass_energy, theme::accent(), 0.0_f32),
@@ -216,14 +272,19 @@ impl<'a> SpectrumView<'a> {
                         } * self.sensitivity;
 
                         if range_energy > 0.50 {
-                            let ring_r = base_r + (age as f32 * 24.0 * (1.0 + group_idx as f32 * 0.2));
-                            let opacity = (1.0 - (ring_r / (cx.max(cy) * 1.3))).clamp(0.0, 0.90) * alpha;
+                            let ring_r =
+                                base_r + (age as f32 * 24.0 * (1.0 + group_idx as f32 * 0.2));
+                            let opacity =
+                                (1.0 - (ring_r / (cx.max(cy) * 1.3))).clamp(0.0, 0.90) * alpha;
                             if opacity > 0.02 {
                                 let ring_path = Path::circle(Point::new(cx, cy), ring_r);
-                                let ring_color = apply_ghost_style(color, opacity, shift + color_offset);
+                                let ring_color =
+                                    apply_ghost_style(color, opacity, shift + color_offset);
                                 frame.stroke(
                                     &ring_path,
-                                    Stroke::default().with_color(ring_color).with_width(2.0 + range_energy * 3.0),
+                                    Stroke::default()
+                                        .with_color(ring_color)
+                                        .with_width(2.0 + range_energy * 3.0),
                                 );
                             }
                         }
@@ -236,13 +297,15 @@ impl<'a> SpectrumView<'a> {
         if bass_energy > 0.6 {
             let spark_count = 12;
             for s in 0..spark_count {
-                let spark_angle = (s as f32 / spark_count as f32) * std::f32::consts::TAU + (tick_f * 0.05);
+                let spark_angle =
+                    (s as f32 / spark_count as f32) * std::f32::consts::TAU + (tick_f * 0.05);
                 let spark_dist = base_r + bass_energy * max_r * 0.65;
                 let sx = cx + spark_dist * spark_angle.cos();
                 let sy = cy + spark_dist * spark_angle.sin();
 
                 let spark_path = Path::circle(Point::new(sx, sy), 2.5 + bass_energy * 3.5);
-                let spark_color = apply_ghost_style(theme::accent(), alpha * 0.85, shift + s as f32 * 0.05);
+                let spark_color =
+                    apply_ghost_style(theme::accent(), alpha * 0.85, shift + s as f32 * 0.05);
                 frame.fill(&spark_path, spark_color);
             }
         }
@@ -252,7 +315,8 @@ impl<'a> SpectrumView<'a> {
         let core_r = base_r;
         for (i, &raw_amp) in bands.iter().enumerate() {
             let amp = (raw_amp * self.sensitivity).clamp(0.0, 1.0);
-            let angle = (i as f32 / num as f32) * std::f32::consts::TAU - (std::f32::consts::FRAC_PI_2);
+            let angle =
+                (i as f32 / num as f32) * std::f32::consts::TAU - (std::f32::consts::FRAC_PI_2);
             let spoke_len = amp * (max_r - core_r);
 
             let inner_x = cx + core_r * angle.cos();
@@ -274,7 +338,17 @@ impl<'a> SpectrumView<'a> {
     }
 
     // Mode 2: Liquid Rainbow Ribbon Stream
-    fn draw_liquid_ribbon(&self, frame: &mut Frame, bounds: Rectangle, bands: &[f32; NUM_BANDS], alpha: f32, shift: f32, tick: u32, age: usize, age_factor: f32) {
+    fn draw_liquid_ribbon(
+        &self,
+        frame: &mut Frame,
+        bounds: Rectangle,
+        bands: &[f32; NUM_BANDS],
+        alpha: f32,
+        shift: f32,
+        tick: u32,
+        age: usize,
+        age_factor: f32,
+    ) {
         let width = bounds.width;
         let height = bounds.height;
         let cy = height / 2.0;
@@ -288,7 +362,11 @@ impl<'a> SpectrumView<'a> {
 
         let num_points = 64;
         let step_x = width / (num_points - 1) as f32;
-        let y_drift = if age > 0 { (age as f32 * 5.0) * (if age % 2 == 0 { 1.0 } else { -1.0 }) } else { 0.0 };
+        let y_drift = if age > 0 {
+            (age as f32 * 5.0) * (if age % 2 == 0 { 1.0 } else { -1.0 })
+        } else {
+            0.0
+        };
 
         for (l_idx, &(amp_scale, freq_scale, color, stroke_w)) in layers.iter().enumerate() {
             let mut builder = iced::widget::canvas::path::Builder::new();
@@ -296,7 +374,8 @@ impl<'a> SpectrumView<'a> {
 
             for i in 0..num_points {
                 let x = i as f32 * step_x;
-                let band_idx = ((i as f32 / num_points as f32) * NUM_BANDS as f32) as usize % NUM_BANDS;
+                let band_idx =
+                    ((i as f32 / num_points as f32) * NUM_BANDS as f32) as usize % NUM_BANDS;
                 let amp = (bands[band_idx] * self.sensitivity).clamp(0.0, 1.0);
 
                 let sine = ((i as f32 * freq_scale * 10.0) + phase).sin();
@@ -311,7 +390,8 @@ impl<'a> SpectrumView<'a> {
 
             let path = builder.build();
             let rainbow_shift = shift + (l_idx as f32 * 0.4) + (age as f32 * 0.35);
-            let wave_color = apply_ghost_style(color, alpha * (0.85 - (l_idx as f32 * 0.2)), rainbow_shift);
+            let wave_color =
+                apply_ghost_style(color, alpha * (0.85 - (l_idx as f32 * 0.2)), rainbow_shift);
 
             frame.stroke(
                 &path,
@@ -324,7 +404,17 @@ impl<'a> SpectrumView<'a> {
     }
 
     // Mode 3: Extended Multi-Loop Lissajous Constellation Web
-    fn draw_particle_constellation_extended(&self, frame: &mut Frame, bounds: Rectangle, bands: &[f32; NUM_BANDS], alpha: f32, shift: f32, tick: u32, age: usize, age_factor: f32) {
+    fn draw_particle_constellation_extended(
+        &self,
+        frame: &mut Frame,
+        bounds: Rectangle,
+        bands: &[f32; NUM_BANDS],
+        alpha: f32,
+        shift: f32,
+        tick: u32,
+        age: usize,
+        age_factor: f32,
+    ) {
         let cx = bounds.width / 2.0;
         let cy = bounds.height / 2.0;
         let tick_f = tick as f32;
@@ -338,7 +428,9 @@ impl<'a> SpectrumView<'a> {
             let amp = (bands[band_idx] * self.sensitivity).clamp(0.0, 1.0);
 
             // 3x Lissajous winding loops across full canvas
-            let t = (i as f32 / num_particles as f32) * std::f32::consts::TAU * 3.0 + (tick_f * 0.008) - (age_factor * 0.2);
+            let t = (i as f32 / num_particles as f32) * std::f32::consts::TAU * 3.0
+                + (tick_f * 0.008)
+                - (age_factor * 0.2);
 
             let scale_x = bounds.width * 0.42 + amp * 40.0;
             let scale_y = bounds.height * 0.38 + bass * 30.0;
@@ -362,13 +454,17 @@ impl<'a> SpectrumView<'a> {
                 let dist_sq = dx * dx + dy * dy;
 
                 if dist_sq < 14400.0 {
-                    let line_alpha = (1.0 - (dist_sq.sqrt() / 120.0)) * ((a1 + a2) * 0.5) * 0.55 * alpha;
+                    let line_alpha =
+                        (1.0 - (dist_sq.sqrt() / 120.0)) * ((a1 + a2) * 0.5) * 0.55 * alpha;
                     if line_alpha > 0.02 {
                         let line_path = Path::line(p1, p2);
                         frame.stroke(
                             &line_path,
                             Stroke::default()
-                                .with_color(Color { a: line_alpha, ..c1 })
+                                .with_color(Color {
+                                    a: line_alpha,
+                                    ..c1
+                                })
                                 .with_width(if age > 0 { 0.8 } else { 1.1 }),
                         );
                     }
@@ -378,14 +474,28 @@ impl<'a> SpectrumView<'a> {
 
         // Draw particle nodes
         for (pt, amp, color) in points {
-            let radius = if age > 0 { (1.8 + amp * 3.0) * (1.0 - age_factor * 0.4) } else { 2.5 + amp * 4.5 };
-        let particle_path = Path::circle(pt, radius.max(1.0));
+            let radius = if age > 0 {
+                (1.8 + amp * 3.0) * (1.0 - age_factor * 0.4)
+            } else {
+                2.5 + amp * 4.5
+            };
+            let particle_path = Path::circle(pt, radius.max(1.0));
             frame.fill(&particle_path, color);
         }
     }
 
     // Mode 4: Hyperdrive Warp Depth Tunnel Flight (Infinite Unconstrained Perspective)
-    fn draw_depth_tunnel(&self, frame: &mut Frame, bounds: Rectangle, bands: &[f32; NUM_BANDS], alpha: f32, shift: f32, tick: u32, age: usize, age_factor: f32) {
+    fn draw_depth_tunnel(
+        &self,
+        frame: &mut Frame,
+        bounds: Rectangle,
+        bands: &[f32; NUM_BANDS],
+        alpha: f32,
+        shift: f32,
+        tick: u32,
+        age: usize,
+        age_factor: f32,
+    ) {
         let cx = bounds.width / 2.0;
         let cy = bounds.height / 2.0;
         let diag_corner = (cx * cx + cy * cy).sqrt();
@@ -404,7 +514,9 @@ impl<'a> SpectrumView<'a> {
         for k in 0..ring_count {
             // Unconstrained z-depth: expand smoothly from 0.02 out to 1.15
             let depth = ((k as f32 + warp_phase) / ring_count as f32) * 1.15;
-            if depth < 0.03 { continue; } // Center tunnel spawn point
+            if depth < 0.03 {
+                continue;
+            } // Center tunnel spawn point
 
             let scale_r = base_perspective(depth) * max_r * (1.0 - age_factor * 0.4);
             let ring_alpha = (depth * 0.95).min(1.0) * alpha;
@@ -413,7 +525,8 @@ impl<'a> SpectrumView<'a> {
             let mut current_ring_pts = Vec::with_capacity(num_vertices);
 
             for v in 0..num_vertices {
-                let angle = (v as f32 / num_vertices as f32) * std::f32::consts::TAU + (tick_f * 0.006 * (k as f32 + 1.0));
+                let angle = (v as f32 / num_vertices as f32) * std::f32::consts::TAU
+                    + (tick_f * 0.006 * (k as f32 + 1.0));
                 let band_idx = (v * (NUM_BANDS / num_vertices)) % NUM_BANDS;
                 let amp = (bands[band_idx] * self.sensitivity).clamp(0.0, 1.0);
 
@@ -439,9 +552,11 @@ impl<'a> SpectrumView<'a> {
 
             frame.stroke(
                 &path,
-                Stroke::default()
-                    .with_color(color)
-                    .with_width(if age > 0 { 1.0 } else { 1.2 + depth * 3.5 }),
+                Stroke::default().with_color(color).with_width(if age > 0 {
+                    1.0
+                } else {
+                    1.2 + depth * 3.5
+                }),
             );
 
             ring_pts.push(current_ring_pts);
@@ -453,7 +568,8 @@ impl<'a> SpectrumView<'a> {
                 let inner_pts = &ring_pts[k];
 
                 let waterfall_shift = shift + (k as f32 * 0.18);
-                let waterfall_color = apply_ghost_style(theme::accent(), alpha * 0.35, waterfall_shift);
+                let waterfall_color =
+                    apply_ghost_style(theme::accent(), alpha * 0.35, waterfall_shift);
 
                 for v in (0..num_vertices).step_by(2) {
                     if v < outer_pts.len() && v < inner_pts.len() {
@@ -473,7 +589,15 @@ impl<'a> SpectrumView<'a> {
     }
 
     // Mode 5: Rolling Plains (Dense Rolling Audio Fields with Twilight Sky Backdrop)
-    fn draw_3d_wireframe_grid(&self, frame: &mut Frame, bounds: Rectangle, bands: &[f32; NUM_BANDS], alpha: f32, shift: f32, tick: u32) {
+    fn draw_3d_wireframe_grid(
+        &self,
+        frame: &mut Frame,
+        bounds: Rectangle,
+        bands: &[f32; NUM_BANDS],
+        alpha: f32,
+        shift: f32,
+        tick: u32,
+    ) {
         let width = bounds.width;
         let height = bounds.height;
         let horizon_y = height * 0.45;
@@ -485,7 +609,13 @@ impl<'a> SpectrumView<'a> {
         // 1. Twilight Sky Backdrop (Atmospheric Gradient with Shifting Stars)
         let sky_gradient = Path::rectangle(Point::ORIGIN, Size::new(width, horizon_y));
         let sky_color = Color::from_rgb(0.04, 0.06, 0.14);
-        frame.fill(&sky_gradient, Color { a: alpha * 0.9, ..sky_color });
+        frame.fill(
+            &sky_gradient,
+            Color {
+                a: alpha * 0.9,
+                ..sky_color
+            },
+        );
 
         // Distant twinkling sky stars
         for i in 0..25 {
@@ -493,7 +623,13 @@ impl<'a> SpectrumView<'a> {
             let sy = (i as f32 * 23.0) % (horizon_y * 0.85);
             let s_alpha = (0.3 + (tick_f * 0.05 + i as f32).sin() * 0.2) * alpha;
             let star = Path::circle(Point::new(sx, sy), 1.2);
-            frame.fill(&star, Color { a: s_alpha.clamp(0.1, 0.8), ..Color::WHITE });
+            frame.fill(
+                &star,
+                Color {
+                    a: s_alpha.clamp(0.1, 0.8),
+                    ..Color::WHITE
+                },
+            );
         }
 
         // Distant horizon mountain silhouette for Rolling Plains
@@ -517,7 +653,10 @@ impl<'a> SpectrumView<'a> {
 
             let col_line = Path::line(Point::new(start_x, horizon_y), Point::new(end_x, height));
             let col_color = apply_ghost_style(theme::accent(), alpha * 0.40, shift + col_t * 0.2);
-            frame.stroke(&col_line, Stroke::default().with_color(col_color).with_width(0.9));
+            frame.stroke(
+                &col_line,
+                Stroke::default().with_color(col_color).with_width(0.9),
+            );
         }
 
         // 3. Dense Rolling Audio Field Waves
@@ -542,13 +681,30 @@ impl<'a> SpectrumView<'a> {
                 }
             }
 
-            let line_color = apply_ghost_style(theme::accent(), alpha * row_t * 0.95, shift + (r as f32 * 0.06));
-            frame.stroke(&builder.build(), Stroke::default().with_color(line_color).with_width(1.3 * row_t + 0.6));
+            let line_color = apply_ghost_style(
+                theme::accent(),
+                alpha * row_t * 0.95,
+                shift + (r as f32 * 0.06),
+            );
+            frame.stroke(
+                &builder.build(),
+                Stroke::default()
+                    .with_color(line_color)
+                    .with_width(1.3 * row_t + 0.6),
+            );
         }
     }
 
     // Mode 6: NEW - Kaleidoscope / Sacred Geometry Mirror
-    fn draw_kaleidoscope(&self, frame: &mut Frame, bounds: Rectangle, bands: &[f32; NUM_BANDS], alpha: f32, shift: f32, tick: u32) {
+    fn draw_kaleidoscope(
+        &self,
+        frame: &mut Frame,
+        bounds: Rectangle,
+        bands: &[f32; NUM_BANDS],
+        alpha: f32,
+        shift: f32,
+        tick: u32,
+    ) {
         let cx = bounds.width / 2.0;
         let cy = bounds.height / 2.0;
         let max_r = cx.min(cy) * 0.85;
@@ -556,11 +712,14 @@ impl<'a> SpectrumView<'a> {
         let tick_f = tick as f32;
 
         for axis in 0..num_axes {
-            let axis_angle = (axis as f32 / num_axes as f32) * std::f32::consts::TAU + (tick_f * 0.005);
+            let axis_angle =
+                (axis as f32 / num_axes as f32) * std::f32::consts::TAU + (tick_f * 0.005);
 
             for (i, &raw_amp) in bands.iter().step_by(3).enumerate() {
                 let amp = (raw_amp * self.sensitivity).clamp(0.0, 1.0);
-                if amp < 0.05 { continue; }
+                if amp < 0.05 {
+                    continue;
+                }
 
                 let r = (i as f32 / (NUM_BANDS / 3) as f32) * max_r;
                 let offset_angle = axis_angle + (amp * 0.3 * (if i % 2 == 0 { 1.0 } else { -1.0 }));
@@ -568,7 +727,11 @@ impl<'a> SpectrumView<'a> {
                 let px = cx + r * offset_angle.cos();
                 let py = cy + r * offset_angle.sin();
 
-                let color = apply_ghost_style(theme::spectrum_bar_color(amp), alpha, shift + (axis as f32 * 0.12));
+                let color = apply_ghost_style(
+                    theme::spectrum_bar_color(amp),
+                    alpha,
+                    shift + (axis as f32 * 0.12),
+                );
                 let poly = Path::circle(Point::new(px, py), 2.0 + amp * 5.0);
                 frame.fill(&poly, color);
             }
@@ -576,7 +739,15 @@ impl<'a> SpectrumView<'a> {
     }
 
     // Mode 7: Cosmic Aurora Borealis & Draped Plasma Curtains
-    fn draw_cosmic_aurora(&self, frame: &mut Frame, bounds: Rectangle, bands: &[f32; NUM_BANDS], alpha: f32, shift: f32, tick: u32) {
+    fn draw_cosmic_aurora(
+        &self,
+        frame: &mut Frame,
+        bounds: Rectangle,
+        bands: &[f32; NUM_BANDS],
+        alpha: f32,
+        shift: f32,
+        tick: u32,
+    ) {
         let width = bounds.width;
         let height = bounds.height;
         let tick_f = tick as f32;
@@ -593,15 +764,27 @@ impl<'a> SpectrumView<'a> {
             let base_aurora_color = match self.aurora_preset {
                 1 => {
                     // Preset 1: Solar Flare (Warm Orange & Gold)
-                    if c % 2 == 0 { Color::from_rgb(1.0, 0.45, 0.0) } else { Color::from_rgb(1.0, 0.80, 0.0) }
+                    if c % 2 == 0 {
+                        Color::from_rgb(1.0, 0.45, 0.0)
+                    } else {
+                        Color::from_rgb(1.0, 0.80, 0.0)
+                    }
                 }
                 2 => {
                     // Preset 2: Polar Pink & Ice Blue
-                    if c % 2 == 0 { Color::from_rgb(1.0, 0.05, 0.65) } else { Color::from_rgb(0.0, 0.80, 1.0) }
+                    if c % 2 == 0 {
+                        Color::from_rgb(1.0, 0.05, 0.65)
+                    } else {
+                        Color::from_rgb(0.0, 0.80, 1.0)
+                    }
                 }
                 _ => {
                     // Preset 0 (Default): Emerald Glow & Aurora Magenta
-                    if c % 2 == 0 { Color::from_rgb(0.0, 0.95, 0.55) } else { Color::from_rgb(0.95, 0.10, 0.75) }
+                    if c % 2 == 0 {
+                        Color::from_rgb(0.0, 0.95, 0.55)
+                    } else {
+                        Color::from_rgb(0.95, 0.10, 0.75)
+                    }
                 }
             };
 
@@ -610,13 +793,16 @@ impl<'a> SpectrumView<'a> {
                 let band_idx = (c * 20 + i * 2) % NUM_BANDS;
                 let amp = (bands[band_idx] * self.sensitivity).clamp(0.0, 1.0);
 
-                let x = curtain_x_start + pt_t * curtain_width + ((tick_f * 0.02 + c as f32).sin() * 20.0);
+                let x = curtain_x_start
+                    + pt_t * curtain_width
+                    + ((tick_f * 0.02 + c as f32).sin() * 20.0);
                 let top_y = height * 0.05 + ((pt_t * 5.0 + tick_f * 0.03).cos() * 15.0);
                 let curtain_h = height * 0.55 + amp * 120.0;
                 let bot_y = top_y + curtain_h;
 
                 let curtain_alpha = (0.30 + amp * 0.55) * alpha * (1.0 - (c as f32 * 0.1));
-                let line_color = apply_ghost_style(base_aurora_color, curtain_alpha, shift + c as f32 * 0.15);
+                let line_color =
+                    apply_ghost_style(base_aurora_color, curtain_alpha, shift + c as f32 * 0.15);
 
                 let ray = Path::line(Point::new(x, top_y), Point::new(x, bot_y));
                 frame.stroke(
@@ -630,7 +816,15 @@ impl<'a> SpectrumView<'a> {
     }
 
     // Mode 8: Retro Synthwave Horizon (Smooth Progressive Sky Gradient, Sun Occlusion, Progressive Blind Cuts)
-    fn draw_synthwave_horizon(&self, frame: &mut Frame, bounds: Rectangle, bands: &[f32; NUM_BANDS], alpha: f32, _shift: f32, tick: u32) {
+    fn draw_synthwave_horizon(
+        &self,
+        frame: &mut Frame,
+        bounds: Rectangle,
+        bands: &[f32; NUM_BANDS],
+        alpha: f32,
+        _shift: f32,
+        tick: u32,
+    ) {
         let width = bounds.width;
         let height = bounds.height;
         let horizon_y = height * 0.55;
@@ -641,8 +835,8 @@ impl<'a> SpectrumView<'a> {
 
         // Neon Synthwave Color Tokens
         let neon_magenta = Color::from_rgb(1.0, 0.0, 0.50); // #ff007f
-        let neon_cyan = Color::from_rgb(0.0, 0.95, 1.0);     // #00f3ff
-        let neon_purple = Color::from_rgb(0.50, 0.0, 0.85);   // #8000d9
+        let neon_cyan = Color::from_rgb(0.0, 0.95, 1.0); // #00f3ff
+        let neon_purple = Color::from_rgb(0.50, 0.0, 0.85); // #8000d9
         let sunset_orange = Color::from_rgb(1.0, 0.40, 0.0); // #ff6600
         let sunset_yellow = Color::from_rgb(1.0, 0.85, 0.10); // #ffdc1a
 
@@ -680,7 +874,13 @@ impl<'a> SpectrumView<'a> {
             };
 
             let rect = Path::rectangle(Point::new(0.0, sy), Size::new(width, step_h + 0.5));
-            frame.fill(&rect, Color { a: alpha * 0.95, ..c });
+            frame.fill(
+                &rect,
+                Color {
+                    a: alpha * 0.95,
+                    ..c
+                },
+            );
         }
 
         // 2. Synthwave Sunset Sun (STRICTLY CLIPPED ABOVE HORIZON)
@@ -691,7 +891,7 @@ impl<'a> SpectrumView<'a> {
         for r_step in (0..=28).rev() {
             let step_r = sun_r * (r_step as f32 / 28.0);
             let y_top = sun_cy - step_r;
-            
+
             // Only draw portion strictly above horizon
             if y_top < horizon_y {
                 let sun_path = Path::circle(Point::new(cx, sun_cy), step_r);
@@ -699,8 +899,16 @@ impl<'a> SpectrumView<'a> {
                 let c_r = neon_magenta.r * (1.0 - sun_blend) + sunset_yellow.r * sun_blend;
                 let c_g = neon_magenta.g * (1.0 - sun_blend) + sunset_yellow.g * sun_blend;
                 let c_b = neon_magenta.b * (1.0 - sun_blend) + sunset_yellow.b * sun_blend;
-                
-                frame.fill(&sun_path, Color { r: c_r, g: c_g, b: c_b, a: alpha * 0.95 });
+
+                frame.fill(
+                    &sun_path,
+                    Color {
+                        r: c_r,
+                        g: c_g,
+                        b: c_b,
+                        a: alpha * 0.95,
+                    },
+                );
             }
         }
 
@@ -712,10 +920,10 @@ impl<'a> SpectrumView<'a> {
         for c in 0..cut_count {
             let cut_t = (c as f32 + 1.0) / (cut_count as f32 + 1.0);
             let cut_y = sun_top_y + cut_t * sun_visible_height;
-            
+
             // Progressive thickness: thin at top (1.0px), thicker near bottom (4.5px)
             let cut_thickness = 1.0 + cut_t * 3.5;
-            
+
             if cut_y + cut_thickness < horizon_y && cut_y > (sun_cy - sun_r) {
                 // Calculate horizontal chord length across sun at cut_y
                 let dy = (cut_y - sun_cy).abs();
@@ -734,14 +942,26 @@ impl<'a> SpectrumView<'a> {
                         Color::from_rgb(0.33 + 0.55 * blend, 0.25 * blend, 0.53 * (1.0 - blend))
                     };
 
-                    let cut_rect = Path::rectangle(Point::new(cut_start_x, cut_y), Size::new(cut_width, cut_thickness));
-                    frame.fill(&cut_rect, Color { a: alpha, ..bg_cut_color });
+                    let cut_rect = Path::rectangle(
+                        Point::new(cut_start_x, cut_y),
+                        Size::new(cut_width, cut_thickness),
+                    );
+                    frame.fill(
+                        &cut_rect,
+                        Color {
+                            a: alpha,
+                            ..bg_cut_color
+                        },
+                    );
                 }
             }
         }
 
         // 3. Lower Half Occlusion Layer (Ensures no sun graphics bled below horizon line)
-        let ground_bg = Path::rectangle(Point::new(0.0, horizon_y), Size::new(width, height - horizon_y));
+        let ground_bg = Path::rectangle(
+            Point::new(0.0, horizon_y),
+            Size::new(width, height - horizon_y),
+        );
         frame.fill(&ground_bg, Color::from_rgb(0.04, 0.01, 0.08));
 
         // 4. Static Notch Mountain Silhouette (Center valley framing sun)
@@ -752,7 +972,7 @@ impl<'a> SpectrumView<'a> {
         for m in 0..=mtn_pts {
             let mx = (m as f32 / mtn_pts as f32) * width;
             let center_dist = ((mx - cx) / width).abs(); // 0.0 at center, 0.5 at edges
-            
+
             // Low notch in center, higher peaks on far left/right
             let base_h = 12.0 + (center_dist * 2.5) * 48.0;
             let ridge = ((m as f32 * 1.7).sin().abs()) * 18.0;
@@ -775,7 +995,10 @@ impl<'a> SpectrumView<'a> {
             let bar_h = e_amp * 40.0;
 
             let eq_line = Path::line(Point::new(ex, horizon_y), Point::new(ex, horizon_y - bar_h));
-            frame.stroke(&eq_line, Stroke::default().with_color(neon_cyan).with_width(2.0));
+            frame.stroke(
+                &eq_line,
+                Stroke::default().with_color(neon_cyan).with_width(2.0),
+            );
         }
 
         // 6. Perspective Horizon Ground Floor Grid (Matched Magenta Color)
@@ -786,7 +1009,10 @@ impl<'a> SpectrumView<'a> {
             let end_x = cx + (t - 0.5) * width * 1.6;
 
             let line_path = Path::line(Point::new(start_x, horizon_y), Point::new(end_x, height));
-            frame.stroke(&line_path, Stroke::default().with_color(neon_magenta).with_width(1.3));
+            frame.stroke(
+                &line_path,
+                Stroke::default().with_color(neon_magenta).with_width(1.3),
+            );
         }
 
         // Horizontal forward moving grid lines
@@ -799,7 +1025,15 @@ impl<'a> SpectrumView<'a> {
 
             let row_line = Path::line(Point::new(0.0, hy), Point::new(width, hy));
             let h_alpha = row_t * alpha * 0.85;
-            frame.stroke(&row_line, Stroke::default().with_color(Color { a: h_alpha, ..neon_magenta }).with_width(1.0 + row_t * 1.4));
+            frame.stroke(
+                &row_line,
+                Stroke::default()
+                    .with_color(Color {
+                        a: h_alpha,
+                        ..neon_magenta
+                    })
+                    .with_width(1.0 + row_t * 1.4),
+            );
         }
     }
 }

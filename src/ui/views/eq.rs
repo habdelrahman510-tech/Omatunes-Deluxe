@@ -59,9 +59,13 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             .size(11)
             .color(theme::subtext())
             .width(Length::Fixed(44.0)),
-        slider(PREAMP_MIN..=PREAMP_MAX, settings.preamp_db, Message::EqPreampChanged)
-            .step(0.5_f32)
-            .width(Length::Fill),
+        slider(
+            PREAMP_MIN..=PREAMP_MAX,
+            settings.preamp_db,
+            Message::EqPreampChanged
+        )
+        .step(0.5_f32)
+        .width(Length::Fill),
         text(format!("{:+.1}", settings.effective_preamp()))
             .size(11)
             .color(theme::text())
@@ -128,7 +132,11 @@ fn power_button(enabled: bool) -> Element<'static, Message> {
 
             iced::widget::button::Style {
                 background: Some(iced::Background::Color(background)),
-                text_color: if enabled { theme::base() } else { theme::subtext() },
+                text_color: if enabled {
+                    theme::base()
+                } else {
+                    theme::subtext()
+                },
                 border: iced::Border {
                     radius: 4.0.into(),
                     ..Default::default()

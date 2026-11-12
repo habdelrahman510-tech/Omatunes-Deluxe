@@ -36,7 +36,11 @@ impl SpectrumAnalyzer {
             buf.iter().rev().take(FFT_SIZE).cloned().collect()
         };
 
-        let peak = samples.iter().cloned().map(f32::abs).fold(1e-6f32, f32::max);
+        let peak = samples
+            .iter()
+            .cloned()
+            .map(f32::abs)
+            .fold(1e-6f32, f32::max);
         let samples: Vec<f32> = samples.iter().map(|s| s / peak).collect();
 
         let fft = self.planner.plan_fft_forward(FFT_SIZE);
@@ -46,11 +50,11 @@ impl SpectrumAnalyzer {
             .enumerate()
             .map(|(i, &s)| {
                 let window = 0.5
-                    * (1.0
-                        - (2.0 * std::f32::consts::PI * i as f32
-                            / (FFT_SIZE - 1) as f32)
-                            .cos());
-                Complex { re: s * window, im: 0.0 }
+                    * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / (FFT_SIZE - 1) as f32).cos());
+                Complex {
+                    re: s * window,
+                    im: 0.0,
+                }
             })
             .collect();
 
@@ -62,9 +66,7 @@ impl SpectrumAnalyzer {
             .map(|c| (c.re * c.re + c.im * c.im).sqrt() / FFT_SIZE as f32)
             .collect();
 
-        let hz_to_bin = |hz: f32| -> usize {
-            ((hz / SAMPLE_RATE) * FFT_SIZE as f32) as usize
-        };
+        let hz_to_bin = |hz: f32| -> usize { ((hz / SAMPLE_RATE) * FFT_SIZE as f32) as usize };
 
         let mut bands = [0.0f32; NUM_BANDS];
         let log_min = FREQ_MIN.log2();
@@ -73,10 +75,11 @@ impl SpectrumAnalyzer {
         let mut last_idx_lo = 0;
         for (i, band) in bands.iter_mut().enumerate() {
             let lo_hz = 2f32.powf(log_min + (log_max - log_min) * i as f32 / NUM_BANDS as f32);
-            let hi_hz = 2f32.powf(log_min + (log_max - log_min) * (i + 1) as f32 / NUM_BANDS as f32);
+            let hi_hz =
+                2f32.powf(log_min + (log_max - log_min) * (i + 1) as f32 / NUM_BANDS as f32);
 
             let mut idx_lo = hz_to_bin(lo_hz).clamp(0, half - 1);
-            
+
             if i > 0 && idx_lo <= last_idx_lo {
                 idx_lo = (last_idx_lo + 1).clamp(0, half - 1);
             }
@@ -99,10 +102,10 @@ impl SpectrumAnalyzer {
             if *band > self.peak_hold[i] {
                 self.peak_hold[i] = *band;
             }
-            
+
             let raw_energy = *band;
             *band = (raw_energy / self.peak_hold[i]).clamp(0.0, AMPLITUDE_CAP);
-            
+
             if raw_energy < MIN_VISUAL_THRESHOLD {
                 let scaling_factor = raw_energy / MIN_VISUAL_THRESHOLD;
                 *band *= scaling_factor;
@@ -110,7 +113,7 @@ impl SpectrumAnalyzer {
         }
 
         const ATTACK: f32 = 0.6;
-        const DECAY: f32  = 0.12;
+        const DECAY: f32 = 0.12;
 
         for (i, band) in bands.iter().enumerate() {
             let prev = self.smoothed[i];

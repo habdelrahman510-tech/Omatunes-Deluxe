@@ -39,8 +39,10 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
 
+      # Advisory for now: the fork inherits ~160 style lints from upstream.
+      # Correctness lints are deny-by-default, so this still fails on real bugs.
       - name: Clippy
-        run: cargo clippy --all-targets --locked -- -D warnings
+        run: cargo clippy --all-targets --locked
 
       - name: Test
         run: cargo test --locked

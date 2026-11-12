@@ -1,54 +1,72 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use iced::widget::{button, column, container, mouse_area, row, scrollable, Space, checkbox, text_input, stack, tooltip};
-use iced::{Alignment, Element, Length};
 use crate::ui::txt::text;
+use iced::widget::{
+    button, checkbox, column, container, mouse_area, row, scrollable, stack, text_input, tooltip,
+    Space,
+};
+use iced::{Alignment, Element, Length};
 
-use crate::app::{AppState, Message, ViewMode, SortColumn, PlaylistDialogMode};
+use crate::app::{AppState, Message, PlaylistDialogMode, SortColumn, ViewMode};
 use crate::ui::theme;
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
     let sidebar = folder_sidebar(state);
-    let main_content: Element<'_, Message> = if let Some(ref builder_state) = state.smart_playlist_builder {
-        let mut unique_artists: Vec<String> = state.all_tracks.iter().map(|t| t.artist.clone()).collect();
-        unique_artists.sort();
-        unique_artists.dedup();
+    let main_content: Element<'_, Message> =
+        if let Some(ref builder_state) = state.smart_playlist_builder {
+            let mut unique_artists: Vec<String> =
+                state.all_tracks.iter().map(|t| t.artist.clone()).collect();
+            unique_artists.sort();
+            unique_artists.dedup();
 
-        let mut unique_albums: Vec<String> = state.all_tracks.iter().map(|t| t.album.clone()).collect();
-        unique_albums.sort();
-        unique_albums.dedup();
+            let mut unique_albums: Vec<String> =
+                state.all_tracks.iter().map(|t| t.album.clone()).collect();
+            unique_albums.sort();
+            unique_albums.dedup();
 
-        let mut unique_genres: Vec<String> = state.all_tracks.iter()
-            .flat_map(|t| {
-                if t.genre.contains("; ") {
-                    t.genre.split("; ").map(|g| g.trim().to_string()).collect::<Vec<_>>()
-                } else {
-                    vec![t.genre.clone()]
-                }
-            })
-            .filter(|s| !s.trim().is_empty())
-            .collect();
-        unique_genres.sort();
-        unique_genres.dedup();
+            let mut unique_genres: Vec<String> = state
+                .all_tracks
+                .iter()
+                .flat_map(|t| {
+                    if t.genre.contains("; ") {
+                        t.genre
+                            .split("; ")
+                            .map(|g| g.trim().to_string())
+                            .collect::<Vec<_>>()
+                    } else {
+                        vec![t.genre.clone()]
+                    }
+                })
+                .filter(|s| !s.trim().is_empty())
+                .collect();
+            unique_genres.sort();
+            unique_genres.dedup();
 
-        crate::ui::components::smart_playlist_builder::view(
-            builder_state,
-            &unique_artists,
-            &unique_albums,
-            &unique_genres,
-        )
-    } else {
-        track_list_view(state)
-    };
+            crate::ui::components::smart_playlist_builder::view(
+                builder_state,
+                &unique_artists,
+                &unique_albums,
+                &unique_genres,
+            )
+        } else {
+            track_list_view(state)
+        };
 
     let drag_handle = mouse_area(
         container(
-            container(Space::new(Length::Fixed(2.0), Length::Fill))
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(iced::Background::Color(if state.dragging_sidebar || state.is_hovering_sidebar_resizer { theme::accent() } else { theme::surface0() })),
+            container(Space::new(Length::Fixed(2.0), Length::Fill)).style(move |_| {
+                iced::widget::container::Style {
+                    background: Some(iced::Background::Color(
+                        if state.dragging_sidebar || state.is_hovering_sidebar_resizer {
+                            theme::accent()
+                        } else {
+                            theme::surface0()
+                        },
+                    )),
                     ..Default::default()
-                })
+                }
+            }),
         )
         .width(6.0)
         .height(Length::Fill)
@@ -56,7 +74,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         .style(|_| iced::widget::container::Style {
             background: Some(iced::Background::Color(theme::base())),
             ..Default::default()
-        })
+        }),
     )
     .on_press(Message::SidebarDragStart)
     .on_enter(Message::HoverSidebarResizer(true))
@@ -78,16 +96,20 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
 
     let tab_btn = |mode: ViewMode, icon: &'static str, label: &'static str, width: f32| {
         let is_active = state.view_mode == mode && state.selected_playlist.is_none();
-        let btn_icon = text(icon)
-            .size(18)
-            .font(crate::ui::icons::NERD_FONT_MONO);
-        
-        let btn = button(container(btn_icon).center_x(Length::Fill).center_y(Length::Fill))
-            .on_press(Message::SelectViewMode(mode))
-            .width(width)
-            .height(27.0)
-            .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
-                let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
+        let btn_icon = text(icon).size(18).font(crate::ui::icons::NERD_FONT_MONO);
+
+        let btn = button(
+            container(btn_icon)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill),
+        )
+        .on_press(Message::SelectViewMode(mode))
+        .width(width)
+        .height(27.0)
+        .style(
+            move |theme: &iced::Theme, status: iced::widget::button::Status| {
+                let is_hovered = status == iced::widget::button::Status::Hovered
+                    || status == iced::widget::button::Status::Pressed;
                 iced::widget::button::Style {
                     background: Some(iced::Background::Color(if is_hovered {
                         theme::lerp_color(theme::mantle(), theme::surface0(), 0.65)
@@ -95,25 +117,34 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
                         theme::lerp_color(theme::mantle(), theme::surface0(), 0.30)
                     })),
                     border: iced::Border {
-                        color: if is_active { theme::accent() } else { theme::surface0() },
+                        color: if is_active {
+                            theme::accent()
+                        } else {
+                            theme::surface0()
+                        },
                         width: 1.0,
                         radius: 8.0.into(),
                     },
-                    text_color: if is_active { theme::accent() } else { theme::subtext() },
+                    text_color: if is_active {
+                        theme::accent()
+                    } else {
+                        theme::subtext()
+                    },
                     shadow: iced::Shadow {
                         color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.3),
                         offset: [0.0, 2.0].into(),
                         blur_radius: 6.0,
                     },
                 }
-            })
-            .padding(0);
+            },
+        )
+        .padding(0);
 
         let tooltip_content = container(
             text(label)
                 .size(11)
                 .font(crate::ui::icons::UI_FONT)
-                .color(theme::text())
+                .color(theme::text()),
         )
         .padding([4, 8])
         .style(|_| iced::widget::container::Style {
@@ -130,9 +161,24 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
     };
 
     let filter_tabs = row![
-        tab_btn(ViewMode::Artists, crate::ui::icons::ICON_PERSON, "Artists", tab_width_1),
-        tab_btn(ViewMode::Albums, crate::ui::icons::ICON_CD, "Albums", tab_width_2),
-        tab_btn(ViewMode::Genres, crate::ui::icons::ICON_TAG, "Genres", tab_width_3),
+        tab_btn(
+            ViewMode::Artists,
+            crate::ui::icons::ICON_PERSON,
+            "Artists",
+            tab_width_1
+        ),
+        tab_btn(
+            ViewMode::Albums,
+            crate::ui::icons::ICON_CD,
+            "Albums",
+            tab_width_2
+        ),
+        tab_btn(
+            ViewMode::Genres,
+            crate::ui::icons::ICON_TAG,
+            "Genres",
+            tab_width_3
+        ),
     ]
     .spacing(6.0)
     .align_y(Alignment::Center)
@@ -149,22 +195,25 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
             text("\u{f00d}")
                 .font(crate::ui::icons::NERD_FONT_MONO)
                 .size(13)
-                .color(theme::red())
+                .color(theme::red()),
         )
         .on_press(Message::SidebarSearchChanged(String::new()))
-        .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
-            let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-            iced::widget::button::Style {
-                background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
-                text_color: if is_hovered {
-                    theme::text()
-                } else {
-                    theme::red()
-                },
-                border: iced::Border::default(),
-                shadow: iced::Shadow::default(),
-            }
-        })
+        .style(
+            move |theme: &iced::Theme, status: iced::widget::button::Status| {
+                let is_hovered = status == iced::widget::button::Status::Hovered
+                    || status == iced::widget::button::Status::Pressed;
+                iced::widget::button::Style {
+                    background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
+                    text_color: if is_hovered {
+                        theme::text()
+                    } else {
+                        theme::red()
+                    },
+                    border: iced::Border::default(),
+                    shadow: iced::Shadow::default(),
+                }
+            },
+        )
         .padding([2, 4])
         .into()
     } else {
@@ -190,7 +239,7 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
         ]
         .align_y(Alignment::Center)
         .padding([2, 8])
-        .width(Length::Fill)
+        .width(Length::Fill),
     )
     .width(Length::Fill)
     .height(34.0)
@@ -208,289 +257,342 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
 
     let sidebar_items: Element<Message> = match state.view_mode {
         ViewMode::Artists | ViewMode::NowPlaying => {
-            let mut list_items: Vec<Element<'_, Message>> = state.artists().into_iter().map(|artist| {
-                let is_selected = state.selected_artist.as_ref() == Some(&artist) && state.selected_playlist.is_none();
+            let mut list_items: Vec<Element<'_, Message>> = state
+                .artists()
+                .into_iter()
+                .map(|artist| {
+                    let is_selected = state.selected_artist.as_ref() == Some(&artist)
+                        && state.selected_playlist.is_none();
 
-                let label_color = if is_selected { theme::accent() } else { theme::text() };
-                
-                let badge_el: Element<'_, Message> = if state.show_achievements_in_ui() {
-                    if let Some(a) = crate::stats::get_highest_achievement("Artist", &artist) {
-                        row![
-                            Space::with_width(6),
-                            iced::widget::image(iced::widget::image::Handle::from_bytes(crate::ui::icons::get_award_image_bytes("All-Time", &a.tier).to_vec()))
+                    let label_color = if is_selected {
+                        theme::accent()
+                    } else {
+                        theme::text()
+                    };
+
+                    let badge_el: Element<'_, Message> = if state.show_achievements_in_ui() {
+                        if let Some(a) = crate::stats::get_highest_achievement("Artist", &artist) {
+                            row![
+                                Space::with_width(6),
+                                iced::widget::image(iced::widget::image::Handle::from_bytes(
+                                    crate::ui::icons::get_award_image_bytes("All-Time", &a.tier)
+                                        .to_vec()
+                                ))
                                 .width(iced::Length::Fixed(12.0))
                                 .height(iced::Length::Fixed(12.0)),
-                        ].into()
+                            ]
+                            .into()
+                        } else {
+                            Space::with_width(0).into()
+                        }
                     } else {
                         Space::with_width(0).into()
-                    }
-                } else {
-                    Space::with_width(0).into()
-                };
+                    };
 
-                let mut label_row = row![
-                    text(crate::ui::icons::ICON_PERSON)
-                        .font(crate::ui::icons::NERD_FONT_MONO)
-                        .size(13)
-                        .color(label_color),
-                    Space::with_width(6),
-                    text(artist.clone())
-                        .color(label_color)
-                        .size(13),
-                ].align_y(Alignment::Center);
-
-                label_row = label_row.push(badge_el);
-                let label: Element<Message> = label_row.into();
-
-                let context_btn = button(
-                    text("\u{f142}")
-                        .font(crate::ui::icons::NERD_FONT_MONO)
-                        .color(theme::overlay0())
-                        .size(13)
-                )
-                .on_press(Message::ToggleContextMenu(Some(crate::app::ContextMenuTarget::Artist(artist.clone()))))
-                .style(iced::widget::button::text);
-
-                let btn_row = row![
-                    button(label)
-                        .on_press(Message::SelectArtist(artist.clone()))
-                        .style(iced::widget::button::text)
-                        .width(Length::Fill)
-                        .padding([6, 12]),
-                    context_btn,
-                    Space::with_width(4),
-                ]
-                .align_y(Alignment::Center);
-
-                let row_widget = mouse_area(btn_row)
-                    .on_right_press(Message::ToggleContextMenu(Some(crate::app::ContextMenuTarget::Artist(artist.clone()))));
-
-                if is_selected {
-                    container(row_widget).style(theme::selected_row).width(Length::Fill).into()
-                } else {
-                    container(row_widget).width(Length::Fill).into()
-                }
-            })
-            .collect();
-
-            let is_all_selected = state.selected_artist.is_none() && state.selected_playlist.is_none();
-            let label_color = theme::accent();
-            let all_btn_row = row![
-                button(
-                    row![
+                    let mut label_row = row![
                         text(crate::ui::icons::ICON_PERSON)
                             .font(crate::ui::icons::NERD_FONT_MONO)
                             .size(13)
                             .color(label_color),
                         Space::with_width(6),
-                        text("All Artists")
-                            .color(label_color)
-                            .size(13)
-                            .font(crate::ui::icons::UI_FONT_BOLD),
-                    ].align_y(Alignment::Center)
-                )
-                .on_press(Message::SelectAllArtists)
-                .style(iced::widget::button::text)
-                .width(Length::Fill)
-                .padding([6, 12])
-            ].align_y(Alignment::Center);
+                        text(artist.clone()).color(label_color).size(13),
+                    ]
+                    .align_y(Alignment::Center);
+
+                    label_row = label_row.push(badge_el);
+                    let label: Element<Message> = label_row.into();
+
+                    let context_btn = button(
+                        text("\u{f142}")
+                            .font(crate::ui::icons::NERD_FONT_MONO)
+                            .color(theme::overlay0())
+                            .size(13),
+                    )
+                    .on_press(Message::ToggleContextMenu(Some(
+                        crate::app::ContextMenuTarget::Artist(artist.clone()),
+                    )))
+                    .style(iced::widget::button::text);
+
+                    let btn_row = row![
+                        button(label)
+                            .on_press(Message::SelectArtist(artist.clone()))
+                            .style(iced::widget::button::text)
+                            .width(Length::Fill)
+                            .padding([6, 12]),
+                        context_btn,
+                        Space::with_width(4),
+                    ]
+                    .align_y(Alignment::Center);
+
+                    let row_widget =
+                        mouse_area(btn_row).on_right_press(Message::ToggleContextMenu(Some(
+                            crate::app::ContextMenuTarget::Artist(artist.clone()),
+                        )));
+
+                    if is_selected {
+                        container(row_widget)
+                            .style(theme::selected_row)
+                            .width(Length::Fill)
+                            .into()
+                    } else {
+                        container(row_widget).width(Length::Fill).into()
+                    }
+                })
+                .collect();
+
+            let is_all_selected =
+                state.selected_artist.is_none() && state.selected_playlist.is_none();
+            let label_color = theme::accent();
+            let all_btn_row = row![button(
+                row![
+                    text(crate::ui::icons::ICON_PERSON)
+                        .font(crate::ui::icons::NERD_FONT_MONO)
+                        .size(13)
+                        .color(label_color),
+                    Space::with_width(6),
+                    text("All Artists")
+                        .color(label_color)
+                        .size(13)
+                        .font(crate::ui::icons::UI_FONT_BOLD),
+                ]
+                .align_y(Alignment::Center)
+            )
+            .on_press(Message::SelectAllArtists)
+            .style(iced::widget::button::text)
+            .width(Length::Fill)
+            .padding([6, 12])]
+            .align_y(Alignment::Center);
 
             let all_row_widget: Element<'_, Message> = if is_all_selected {
-                container(all_btn_row).style(theme::selected_row).width(Length::Fill).into()
+                container(all_btn_row)
+                    .style(theme::selected_row)
+                    .width(Length::Fill)
+                    .into()
             } else {
                 container(all_btn_row).width(Length::Fill).into()
             };
             list_items.push(all_row_widget);
 
-            column(list_items)
-                .spacing(2)
-                .into()
+            column(list_items).spacing(2).into()
         }
         ViewMode::Albums => {
-            let mut list_items: Vec<Element<'_, Message>> = state.albums().into_iter().map(|album| {
-                let is_selected = state.selected_album.as_ref() == Some(&album) && state.selected_playlist.is_none();
+            let mut list_items: Vec<Element<'_, Message>> = state
+                .albums()
+                .into_iter()
+                .map(|album| {
+                    let is_selected = state.selected_album.as_ref() == Some(&album)
+                        && state.selected_playlist.is_none();
 
-                let label_color = if is_selected { theme::accent() } else { theme::text() };
-                
-                let badge_el: Element<'_, Message> = if state.show_achievements_in_ui() {
-                    if let Some(a) = crate::stats::get_highest_achievement("Album", &album) {
-                        row![
-                            Space::with_width(6),
-                            iced::widget::image(iced::widget::image::Handle::from_bytes(crate::ui::icons::get_award_image_bytes("All-Time", &a.tier).to_vec()))
+                    let label_color = if is_selected {
+                        theme::accent()
+                    } else {
+                        theme::text()
+                    };
+
+                    let badge_el: Element<'_, Message> = if state.show_achievements_in_ui() {
+                        if let Some(a) = crate::stats::get_highest_achievement("Album", &album) {
+                            row![
+                                Space::with_width(6),
+                                iced::widget::image(iced::widget::image::Handle::from_bytes(
+                                    crate::ui::icons::get_award_image_bytes("All-Time", &a.tier)
+                                        .to_vec()
+                                ))
                                 .width(iced::Length::Fixed(12.0))
                                 .height(iced::Length::Fixed(12.0)),
-                        ].into()
+                            ]
+                            .into()
+                        } else {
+                            Space::with_width(0).into()
+                        }
                     } else {
                         Space::with_width(0).into()
-                    }
-                } else {
-                    Space::with_width(0).into()
-                };
+                    };
 
-                let mut label_row = row![
-                    text(crate::ui::icons::ICON_CD)
-                        .font(crate::ui::icons::NERD_FONT_MONO)
-                        .size(13)
-                        .color(label_color),
-                    Space::with_width(6),
-                    text(album.clone())
-                        .color(label_color)
-                        .size(13),
-                ].align_y(Alignment::Center);
-
-                label_row = label_row.push(badge_el);
-                let label: Element<Message> = label_row.into();
-
-                let context_btn = button(
-                    text("\u{f142}")
-                        .font(crate::ui::icons::NERD_FONT_MONO)
-                        .color(theme::overlay0())
-                        .size(13)
-                )
-                .on_press(Message::ToggleContextMenu(Some(crate::app::ContextMenuTarget::Album(album.clone()))))
-                .style(iced::widget::button::text);
-
-                let btn_row = row![
-                    button(label)
-                        .on_press(Message::SelectAlbum(album.clone()))
-                        .style(iced::widget::button::text)
-                        .width(Length::Fill)
-                        .padding([6, 12]),
-                    context_btn,
-                    Space::with_width(4),
-                ]
-                .align_y(Alignment::Center);
-
-                let row_widget = mouse_area(btn_row)
-                    .on_right_press(Message::ToggleContextMenu(Some(crate::app::ContextMenuTarget::Album(album.clone()))));
-
-                if is_selected {
-                    container(row_widget).style(theme::selected_row).width(Length::Fill).into()
-                } else {
-                    container(row_widget).width(Length::Fill).into()
-                }
-            })
-            .collect();
-
-            let is_all_selected = state.selected_album.is_none() && state.selected_playlist.is_none();
-            let label_color = theme::accent();
-            let all_btn_row = row![
-                button(
-                    row![
+                    let mut label_row = row![
                         text(crate::ui::icons::ICON_CD)
                             .font(crate::ui::icons::NERD_FONT_MONO)
                             .size(13)
                             .color(label_color),
                         Space::with_width(6),
-                        text("All Albums")
-                            .color(label_color)
-                            .size(13)
-                            .font(crate::ui::icons::UI_FONT_BOLD),
-                    ].align_y(Alignment::Center)
-                )
-                .on_press(Message::SelectAllAlbums)
-                .style(iced::widget::button::text)
-                .width(Length::Fill)
-                .padding([6, 12])
-            ].align_y(Alignment::Center);
+                        text(album.clone()).color(label_color).size(13),
+                    ]
+                    .align_y(Alignment::Center);
+
+                    label_row = label_row.push(badge_el);
+                    let label: Element<Message> = label_row.into();
+
+                    let context_btn = button(
+                        text("\u{f142}")
+                            .font(crate::ui::icons::NERD_FONT_MONO)
+                            .color(theme::overlay0())
+                            .size(13),
+                    )
+                    .on_press(Message::ToggleContextMenu(Some(
+                        crate::app::ContextMenuTarget::Album(album.clone()),
+                    )))
+                    .style(iced::widget::button::text);
+
+                    let btn_row = row![
+                        button(label)
+                            .on_press(Message::SelectAlbum(album.clone()))
+                            .style(iced::widget::button::text)
+                            .width(Length::Fill)
+                            .padding([6, 12]),
+                        context_btn,
+                        Space::with_width(4),
+                    ]
+                    .align_y(Alignment::Center);
+
+                    let row_widget =
+                        mouse_area(btn_row).on_right_press(Message::ToggleContextMenu(Some(
+                            crate::app::ContextMenuTarget::Album(album.clone()),
+                        )));
+
+                    if is_selected {
+                        container(row_widget)
+                            .style(theme::selected_row)
+                            .width(Length::Fill)
+                            .into()
+                    } else {
+                        container(row_widget).width(Length::Fill).into()
+                    }
+                })
+                .collect();
+
+            let is_all_selected =
+                state.selected_album.is_none() && state.selected_playlist.is_none();
+            let label_color = theme::accent();
+            let all_btn_row = row![button(
+                row![
+                    text(crate::ui::icons::ICON_CD)
+                        .font(crate::ui::icons::NERD_FONT_MONO)
+                        .size(13)
+                        .color(label_color),
+                    Space::with_width(6),
+                    text("All Albums")
+                        .color(label_color)
+                        .size(13)
+                        .font(crate::ui::icons::UI_FONT_BOLD),
+                ]
+                .align_y(Alignment::Center)
+            )
+            .on_press(Message::SelectAllAlbums)
+            .style(iced::widget::button::text)
+            .width(Length::Fill)
+            .padding([6, 12])]
+            .align_y(Alignment::Center);
 
             let all_row_widget: Element<'_, Message> = if is_all_selected {
-                container(all_btn_row).style(theme::selected_row).width(Length::Fill).into()
+                container(all_btn_row)
+                    .style(theme::selected_row)
+                    .width(Length::Fill)
+                    .into()
             } else {
                 container(all_btn_row).width(Length::Fill).into()
             };
             list_items.push(all_row_widget);
 
-            column(list_items)
-                .spacing(2)
-                .into()
+            column(list_items).spacing(2).into()
         }
         ViewMode::Genres => {
-            let mut list_items: Vec<Element<'_, Message>> = state.genres().into_iter().map(|genre| {
-                let is_selected = state.selected_genre.as_ref() == Some(&genre) && state.selected_playlist.is_none();
+            let mut list_items: Vec<Element<'_, Message>> = state
+                .genres()
+                .into_iter()
+                .map(|genre| {
+                    let is_selected = state.selected_genre.as_ref() == Some(&genre)
+                        && state.selected_playlist.is_none();
 
-                let label_color = if is_selected { theme::accent() } else { theme::text() };
-                
-                let badge_el: Element<'_, Message> = if state.show_achievements_in_ui() {
-                    if let Some(a) = crate::stats::get_highest_achievement("Genre", &genre) {
-                        row![
-                            Space::with_width(6),
-                            iced::widget::image(iced::widget::image::Handle::from_bytes(crate::ui::icons::get_award_image_bytes("All-Time", &a.tier).to_vec()))
+                    let label_color = if is_selected {
+                        theme::accent()
+                    } else {
+                        theme::text()
+                    };
+
+                    let badge_el: Element<'_, Message> = if state.show_achievements_in_ui() {
+                        if let Some(a) = crate::stats::get_highest_achievement("Genre", &genre) {
+                            row![
+                                Space::with_width(6),
+                                iced::widget::image(iced::widget::image::Handle::from_bytes(
+                                    crate::ui::icons::get_award_image_bytes("All-Time", &a.tier)
+                                        .to_vec()
+                                ))
                                 .width(iced::Length::Fixed(12.0))
                                 .height(iced::Length::Fixed(12.0)),
-                        ].into()
+                            ]
+                            .into()
+                        } else {
+                            Space::with_width(0).into()
+                        }
                     } else {
                         Space::with_width(0).into()
-                    }
-                } else {
-                    Space::with_width(0).into()
-                };
+                    };
 
-                let mut label_row = row![
-                    text(crate::ui::icons::ICON_TAG)
-                        .font(crate::ui::icons::NERD_FONT_MONO)
-                        .size(13)
-                        .color(label_color),
-                    Space::with_width(6),
-                    text(genre.clone())
-                        .color(label_color)
-                        .size(13),
-                ].align_y(Alignment::Center);
-
-                label_row = label_row.push(badge_el);
-                let label: Element<Message> = label_row.into();
-
-                let btn = button(label)
-                    .on_press(Message::SelectGenre(genre.clone()))
-                    .style(iced::widget::button::text)
-                    .width(Length::Fill)
-                    .padding([6, 12]);
-
-                if is_selected {
-                    container(btn).style(theme::selected_row).width(Length::Fill).into()
-                } else {
-                    container(btn).width(Length::Fill).into()
-                }
-            })
-            .collect();
-
-            let is_all_selected = state.selected_genre.is_none() && state.selected_playlist.is_none();
-            let label_color = theme::accent();
-            let all_btn_row = row![
-                button(
-                    row![
+                    let mut label_row = row![
                         text(crate::ui::icons::ICON_TAG)
                             .font(crate::ui::icons::NERD_FONT_MONO)
                             .size(13)
                             .color(label_color),
                         Space::with_width(6),
-                        text("All Genres")
-                            .color(label_color)
-                            .size(13)
-                            .font(crate::ui::icons::UI_FONT_BOLD),
-                    ].align_y(Alignment::Center)
-                )
-                .on_press(Message::SelectAllGenres)
-                .style(iced::widget::button::text)
-                .width(Length::Fill)
-                .padding([6, 12])
-            ].align_y(Alignment::Center);
+                        text(genre.clone()).color(label_color).size(13),
+                    ]
+                    .align_y(Alignment::Center);
+
+                    label_row = label_row.push(badge_el);
+                    let label: Element<Message> = label_row.into();
+
+                    let btn = button(label)
+                        .on_press(Message::SelectGenre(genre.clone()))
+                        .style(iced::widget::button::text)
+                        .width(Length::Fill)
+                        .padding([6, 12]);
+
+                    if is_selected {
+                        container(btn)
+                            .style(theme::selected_row)
+                            .width(Length::Fill)
+                            .into()
+                    } else {
+                        container(btn).width(Length::Fill).into()
+                    }
+                })
+                .collect();
+
+            let is_all_selected =
+                state.selected_genre.is_none() && state.selected_playlist.is_none();
+            let label_color = theme::accent();
+            let all_btn_row = row![button(
+                row![
+                    text(crate::ui::icons::ICON_TAG)
+                        .font(crate::ui::icons::NERD_FONT_MONO)
+                        .size(13)
+                        .color(label_color),
+                    Space::with_width(6),
+                    text("All Genres")
+                        .color(label_color)
+                        .size(13)
+                        .font(crate::ui::icons::UI_FONT_BOLD),
+                ]
+                .align_y(Alignment::Center)
+            )
+            .on_press(Message::SelectAllGenres)
+            .style(iced::widget::button::text)
+            .width(Length::Fill)
+            .padding([6, 12])]
+            .align_y(Alignment::Center);
 
             let all_row_widget: Element<'_, Message> = if is_all_selected {
-                container(all_btn_row).style(theme::selected_row).width(Length::Fill).into()
+                container(all_btn_row)
+                    .style(theme::selected_row)
+                    .width(Length::Fill)
+                    .into()
             } else {
                 container(all_btn_row).width(Length::Fill).into()
             };
             list_items.push(all_row_widget);
 
-            column(list_items)
-                .spacing(2)
-                .into()
+            column(list_items).spacing(2).into()
         }
     };
-
-
-
 
     let render_playlist_item = |name: String, is_auto: bool| -> Element<'_, Message> {
         let is_selected = state.selected_playlist.as_ref() == Some(&name);
@@ -508,18 +610,30 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
         let is_custom = !is_auto;
 
         let label_text = text(name.clone())
-            .color(if is_selected { theme::accent() } else if is_auto { theme::subtext() } else { theme::text() })
-            .font(if is_auto { crate::ui::icons::UI_FONT_BOLD } else { crate::ui::icons::UI_FONT })
+            .color(if is_selected {
+                theme::accent()
+            } else if is_auto {
+                theme::subtext()
+            } else {
+                theme::text()
+            })
+            .font(if is_auto {
+                crate::ui::icons::UI_FONT_BOLD
+            } else {
+                crate::ui::icons::UI_FONT
+            })
             .size(14);
 
-        let label_container = container(label_text)
-            .width(Length::Fill)
-            .clip(true);
+        let label_container = container(label_text).width(Length::Fill).clip(true);
 
         let label_row = row![
             text(icon_str)
                 .font(crate::ui::icons::NERD_FONT_MONO)
-                .color(if is_selected { theme::accent() } else { theme::overlay0() })
+                .color(if is_selected {
+                    theme::accent()
+                } else {
+                    theme::overlay0()
+                })
                 .size(14),
             Space::with_width(8),
             label_container,
@@ -534,46 +648,50 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
                 text("\u{f044}")
                     .font(crate::ui::icons::NERD_FONT_MONO)
                     .color(theme::overlay0())
-                    .size(12)
+                    .size(12),
             )
-            .on_press(Message::OpenPlaylistDialog(PlaylistDialogMode::Rename(name.clone())))
+            .on_press(Message::OpenPlaylistDialog(PlaylistDialogMode::Rename(
+                name.clone(),
+            )))
             .style(iced::widget::button::text);
 
             let delete_btn = button(
                 text("\u{f1f8}")
                     .font(crate::ui::icons::NERD_FONT_MONO)
                     .color(theme::red())
-                    .size(12)
+                    .size(12),
             )
             .on_press(Message::DeletePlaylist(name.clone()))
             .style(iced::widget::button::text);
 
-            let mut action_row = row![
-                button(label_row)
-                    .on_press(Message::SelectPlaylist(name.clone()))
-                    .style(iced::widget::button::text)
-                    .width(Length::Fill)
-                    .padding([6, 12])
-            ];
+            let mut action_row = row![button(label_row)
+                .on_press(Message::SelectPlaylist(name.clone()))
+                .style(iced::widget::button::text)
+                .width(Length::Fill)
+                .padding([6, 12])];
 
             if is_hovered {
-                action_row = action_row.push(rename_btn).push(Space::with_width(4)).push(delete_btn).push(Space::with_width(6));
+                action_row = action_row
+                    .push(rename_btn)
+                    .push(Space::with_width(4))
+                    .push(delete_btn)
+                    .push(Space::with_width(6));
             }
 
             action_row.align_y(Alignment::Center).width(Length::Fill)
         } else {
-            row![
-                button(label_row)
-                    .on_press(Message::SelectPlaylist(name.clone()))
-                    .style(iced::widget::button::text)
-                    .width(Length::Fill)
-                    .padding([6, 12])
-            ]
+            row![button(label_row)
+                .on_press(Message::SelectPlaylist(name.clone()))
+                .style(iced::widget::button::text)
+                .width(Length::Fill)
+                .padding([6, 12])]
             .width(Length::Fill)
         };
 
         let row_container = if is_selected {
-            container(btn).style(theme::selected_row).width(Length::Fill)
+            container(btn)
+                .style(theme::selected_row)
+                .width(Length::Fill)
         } else {
             container(btn).width(Length::Fill)
         };
@@ -581,7 +699,9 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
         mouse_area(row_container)
             .on_enter(Message::HoverPlaylist(Some(name.clone())))
             .on_exit(Message::HoverPlaylist(None))
-            .on_right_press(Message::ToggleContextMenu(Some(crate::app::ContextMenuTarget::Playlist(name.clone()))))
+            .on_right_press(Message::ToggleContextMenu(Some(
+                crate::app::ContextMenuTarget::Playlist(name.clone()),
+            )))
             .into()
     };
 
@@ -590,18 +710,24 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
         let icon_str = "\u{ebcf}";
 
         let label_text = text(name.clone())
-            .color(if is_selected { theme::accent() } else { theme::text() })
+            .color(if is_selected {
+                theme::accent()
+            } else {
+                theme::text()
+            })
             .font(crate::ui::icons::UI_FONT)
             .size(14);
 
-        let label_container = container(label_text)
-            .width(Length::Fill)
-            .clip(true);
+        let label_container = container(label_text).width(Length::Fill).clip(true);
 
         let label_row = row![
             text(icon_str)
                 .font(crate::ui::icons::NERD_FONT_MONO)
-                .color(if is_selected { theme::accent() } else { theme::overlay0() })
+                .color(if is_selected {
+                    theme::accent()
+                } else {
+                    theme::overlay0()
+                })
                 .size(14),
             Space::with_width(8),
             label_container,
@@ -615,7 +741,7 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
             text("\u{f044}")
                 .font(crate::ui::icons::NERD_FONT_MONO)
                 .color(theme::overlay0())
-                .size(12)
+                .size(12),
         )
         .on_press(Message::EditSmartPlaylist(name.clone()))
         .style(iced::widget::button::text);
@@ -624,27 +750,31 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
             text("\u{f1f8}")
                 .font(crate::ui::icons::NERD_FONT_MONO)
                 .color(theme::red())
-                .size(12)
+                .size(12),
         )
         .on_press(Message::DeleteSmartPlaylist(name.clone()))
         .style(iced::widget::button::text);
 
-        let mut action_row = row![
-            button(label_row)
-                .on_press(Message::SelectPlaylist(name.clone()))
-                .style(iced::widget::button::text)
-                .width(Length::Fill)
-                .padding([6, 12])
-        ];
+        let mut action_row = row![button(label_row)
+            .on_press(Message::SelectPlaylist(name.clone()))
+            .style(iced::widget::button::text)
+            .width(Length::Fill)
+            .padding([6, 12])];
 
         if is_hovered {
-            action_row = action_row.push(edit_btn).push(Space::with_width(4)).push(delete_btn).push(Space::with_width(6));
+            action_row = action_row
+                .push(edit_btn)
+                .push(Space::with_width(4))
+                .push(delete_btn)
+                .push(Space::with_width(6));
         }
 
         let btn = action_row.align_y(Alignment::Center).width(Length::Fill);
 
         let row_container = if is_selected {
-            container(btn).style(theme::selected_row).width(Length::Fill)
+            container(btn)
+                .style(theme::selected_row)
+                .width(Length::Fill)
         } else {
             container(btn).width(Length::Fill)
         };
@@ -652,7 +782,9 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
         mouse_area(row_container)
             .on_enter(Message::HoverPlaylist(Some(name.clone())))
             .on_exit(Message::HoverPlaylist(None))
-            .on_right_press(Message::ToggleContextMenu(Some(crate::app::ContextMenuTarget::SmartPlaylist(name.clone()))))
+            .on_right_press(Message::ToggleContextMenu(Some(
+                crate::app::ContextMenuTarget::SmartPlaylist(name.clone()),
+            )))
             .into()
     };
 
@@ -660,20 +792,29 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
     let playlist_available_width = playlist_total_width - 12.0;
     let playlist_tab_width_1 = (playlist_available_width / 3.0).floor();
     let playlist_tab_width_2 = (playlist_available_width / 3.0).floor();
-    let playlist_tab_width_3 = playlist_available_width - playlist_tab_width_1 - playlist_tab_width_2;
+    let playlist_tab_width_3 =
+        playlist_available_width - playlist_tab_width_1 - playlist_tab_width_2;
 
-    let playlist_tab_btn = |tab: crate::app::PlaylistTab, icon: &'static str, width: f32, tooltip_text: &'static str| {
-        let is_active = state.playlist_tab == tab && (state.selected_playlist.is_some() || tab == crate::app::PlaylistTab::Smart);
-        let btn_icon = text(icon)
-            .size(18)
-            .font(crate::ui::icons::NERD_FONT_MONO);
-        
-        let btn = button(container(btn_icon).center_x(Length::Fill).center_y(Length::Fill))
-            .on_press(Message::SelectPlaylistTab(tab))
-            .width(width)
-            .height(28.0)
-            .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
-                let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
+    let playlist_tab_btn = |tab: crate::app::PlaylistTab,
+                            icon: &'static str,
+                            width: f32,
+                            tooltip_text: &'static str| {
+        let is_active = state.playlist_tab == tab
+            && (state.selected_playlist.is_some() || tab == crate::app::PlaylistTab::Smart);
+        let btn_icon = text(icon).size(18).font(crate::ui::icons::NERD_FONT_MONO);
+
+        let btn = button(
+            container(btn_icon)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill),
+        )
+        .on_press(Message::SelectPlaylistTab(tab))
+        .width(width)
+        .height(28.0)
+        .style(
+            move |theme: &iced::Theme, status: iced::widget::button::Status| {
+                let is_hovered = status == iced::widget::button::Status::Hovered
+                    || status == iced::widget::button::Status::Pressed;
                 iced::widget::button::Style {
                     background: Some(iced::Background::Color(if is_hovered {
                         theme::lerp_color(theme::mantle(), theme::surface0(), 0.65)
@@ -681,25 +822,34 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
                         theme::lerp_color(theme::mantle(), theme::surface0(), 0.30)
                     })),
                     border: iced::Border {
-                        color: if is_active { theme::accent() } else { theme::surface0() },
+                        color: if is_active {
+                            theme::accent()
+                        } else {
+                            theme::surface0()
+                        },
                         width: 1.0,
                         radius: 8.0.into(),
                     },
-                    text_color: if is_active { theme::accent() } else { theme::subtext() },
+                    text_color: if is_active {
+                        theme::accent()
+                    } else {
+                        theme::subtext()
+                    },
                     shadow: iced::Shadow {
                         color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.3),
                         offset: [0.0, 2.0].into(),
                         blur_radius: 6.0,
                     },
                 }
-            })
-            .padding(0);
+            },
+        )
+        .padding(0);
 
         let tooltip_content = container(
             text(tooltip_text)
                 .size(11)
                 .font(crate::ui::icons::UI_FONT)
-                .color(theme::text())
+                .color(theme::text()),
         )
         .padding([4, 8])
         .style(|_| iced::widget::container::Style {
@@ -716,40 +866,76 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
     };
 
     let playlist_tabs = row![
-        playlist_tab_btn(crate::app::PlaylistTab::Playlists, crate::ui::icons::ICON_LIST, playlist_tab_width_1, "User Playlists"),
-        playlist_tab_btn(crate::app::PlaylistTab::Autoplaylists, crate::ui::icons::ICON_BOLT, playlist_tab_width_2, "Auto Playlists"),
-        playlist_tab_btn(crate::app::PlaylistTab::Smart, crate::ui::icons::ICON_WAND, playlist_tab_width_3, "Smart Playlists"),
+        playlist_tab_btn(
+            crate::app::PlaylistTab::Playlists,
+            crate::ui::icons::ICON_LIST,
+            playlist_tab_width_1,
+            "User Playlists"
+        ),
+        playlist_tab_btn(
+            crate::app::PlaylistTab::Autoplaylists,
+            crate::ui::icons::ICON_BOLT,
+            playlist_tab_width_2,
+            "Auto Playlists"
+        ),
+        playlist_tab_btn(
+            crate::app::PlaylistTab::Smart,
+            crate::ui::icons::ICON_WAND,
+            playlist_tab_width_3,
+            "Smart Playlists"
+        ),
     ]
     .spacing(6.0)
     .align_y(Alignment::Center);
 
-    let mut playlists_area_col = column![].spacing(6).height(Length::Fill).width(Length::Fill);
-    
+    let mut playlists_area_col = column![]
+        .spacing(6)
+        .height(Length::Fill)
+        .width(Length::Fill);
+
     if state.playlist_tab == crate::app::PlaylistTab::Playlists {
         let mut user_playlists_col = column![].spacing(2).width(Length::Fill);
         let playlist_order = crate::db::get(|db| db.playlist_order.clone());
-        let is_sidebar_dragging = matches!(state.dragging_playlist_sidebar, Some((crate::app::PlaylistTab::Playlists, _)));
-        
+        let is_sidebar_dragging = matches!(
+            state.dragging_playlist_sidebar,
+            Some((crate::app::PlaylistTab::Playlists, _))
+        );
+
         for (idx, name) in playlist_order.iter().enumerate() {
             let handle: Element<'_, Message> = mouse_area(
                 container(
                     text("\u{f0c9}")
                         .font(crate::ui::icons::NERD_FONT_MONO)
-                        .color(if state.dragging_playlist_sidebar == Some((crate::app::PlaylistTab::Playlists, idx)) { theme::accent() } else { theme::overlay0() })
-                        .size(12)
-                ).padding([4, 8])
+                        .color(
+                            if state.dragging_playlist_sidebar
+                                == Some((crate::app::PlaylistTab::Playlists, idx))
+                            {
+                                theme::accent()
+                            } else {
+                                theme::overlay0()
+                            },
+                        )
+                        .size(12),
+                )
+                .padding([4, 8]),
             )
-            .on_press(Message::PlaylistSidebarDragStart(crate::app::PlaylistTab::Playlists, idx))
+            .on_press(Message::PlaylistSidebarDragStart(
+                crate::app::PlaylistTab::Playlists,
+                idx,
+            ))
             .on_release(Message::PlaylistSidebarDragEnd)
             .interaction(iced::mouse::Interaction::Grab)
             .into();
 
-            let row_content = row![handle, render_playlist_item(name.clone(), false)]
-                .align_y(Alignment::Center);
+            let row_content =
+                row![handle, render_playlist_item(name.clone(), false)].align_y(Alignment::Center);
 
             let row_el: Element<'_, Message> = if is_sidebar_dragging {
                 mouse_area(row_content)
-                    .on_enter(Message::PlaylistSidebarDragOver(crate::app::PlaylistTab::Playlists, idx))
+                    .on_enter(Message::PlaylistSidebarDragOver(
+                        crate::app::PlaylistTab::Playlists,
+                        idx,
+                    ))
                     .into()
             } else {
                 row_content.into()
@@ -757,21 +943,27 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
 
             user_playlists_col = user_playlists_col.push(row_el);
         }
-        
+
         playlists_area_col = playlists_area_col.push(
             container(scrollable(user_playlists_col).width(Length::Fill))
                 .width(Length::Fill)
-                .height(Length::Fill)
+                .height(Length::Fill),
         );
 
         let add_playlist_btn = button(
             container(
                 row![
-                    text("\u{f07b}\u{f067}").font(crate::ui::icons::NERD_FONT_MONO).size(11),
+                    text("\u{f07b}\u{f067}")
+                        .font(crate::ui::icons::NERD_FONT_MONO)
+                        .size(11),
                     Space::with_width(6),
-                    text("Create Playlist").size(11).font(crate::ui::icons::UI_FONT_BOLD)
-                ].align_y(Alignment::Center)
-            ).center_x(Length::Fill)
+                    text("Create Playlist")
+                        .size(11)
+                        .font(crate::ui::icons::UI_FONT_BOLD)
+                ]
+                .align_y(Alignment::Center),
+            )
+            .center_x(Length::Fill),
         )
         .on_press(Message::OpenPlaylistDialog(PlaylistDialogMode::Create))
         .style(theme::secondary_button)
@@ -781,41 +973,63 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
         playlists_area_col = playlists_area_col.push(add_playlist_btn);
     } else if state.playlist_tab == crate::app::PlaylistTab::Autoplaylists {
         let mut auto_playlists_col = column![].spacing(2).width(Length::Fill);
-        auto_playlists_col = auto_playlists_col.push(render_playlist_item("Liked Songs".to_string(), true));
-        auto_playlists_col = auto_playlists_col.push(render_playlist_item("Recently Played".to_string(), true));
-        auto_playlists_col = auto_playlists_col.push(render_playlist_item("Most Played".to_string(), true));
-        auto_playlists_col = auto_playlists_col.push(render_playlist_item("New Music".to_string(), true));
+        auto_playlists_col =
+            auto_playlists_col.push(render_playlist_item("Liked Songs".to_string(), true));
+        auto_playlists_col =
+            auto_playlists_col.push(render_playlist_item("Recently Played".to_string(), true));
+        auto_playlists_col =
+            auto_playlists_col.push(render_playlist_item("Most Played".to_string(), true));
+        auto_playlists_col =
+            auto_playlists_col.push(render_playlist_item("New Music".to_string(), true));
 
         playlists_area_col = playlists_area_col.push(
             container(scrollable(auto_playlists_col).width(Length::Fill))
                 .width(Length::Fill)
-                .height(Length::Fill)
+                .height(Length::Fill),
         );
     } else {
         let mut smart_playlists_col = column![].spacing(2).width(Length::Fill);
         let smart_playlist_order = crate::db::get(|db| db.smart_playlist_order.clone());
-        let is_sidebar_dragging = matches!(state.dragging_playlist_sidebar, Some((crate::app::PlaylistTab::Smart, _)));
+        let is_sidebar_dragging = matches!(
+            state.dragging_playlist_sidebar,
+            Some((crate::app::PlaylistTab::Smart, _))
+        );
 
         for (idx, name) in smart_playlist_order.iter().enumerate() {
             let handle: Element<'_, Message> = mouse_area(
                 container(
                     text("\u{f0c9}")
                         .font(crate::ui::icons::NERD_FONT_MONO)
-                        .color(if state.dragging_playlist_sidebar == Some((crate::app::PlaylistTab::Smart, idx)) { theme::accent() } else { theme::overlay0() })
-                        .size(12)
-                ).padding([4, 8])
+                        .color(
+                            if state.dragging_playlist_sidebar
+                                == Some((crate::app::PlaylistTab::Smart, idx))
+                            {
+                                theme::accent()
+                            } else {
+                                theme::overlay0()
+                            },
+                        )
+                        .size(12),
+                )
+                .padding([4, 8]),
             )
-            .on_press(Message::PlaylistSidebarDragStart(crate::app::PlaylistTab::Smart, idx))
+            .on_press(Message::PlaylistSidebarDragStart(
+                crate::app::PlaylistTab::Smart,
+                idx,
+            ))
             .on_release(Message::PlaylistSidebarDragEnd)
             .interaction(iced::mouse::Interaction::Grab)
             .into();
 
-            let row_content = row![handle, render_smart_playlist_item(name.clone())]
-                .align_y(Alignment::Center);
+            let row_content =
+                row![handle, render_smart_playlist_item(name.clone())].align_y(Alignment::Center);
 
             let row_el: Element<'_, Message> = if is_sidebar_dragging {
                 mouse_area(row_content)
-                    .on_enter(Message::PlaylistSidebarDragOver(crate::app::PlaylistTab::Smart, idx))
+                    .on_enter(Message::PlaylistSidebarDragOver(
+                        crate::app::PlaylistTab::Smart,
+                        idx,
+                    ))
                     .into()
             } else {
                 row_content.into()
@@ -827,17 +1041,23 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
         playlists_area_col = playlists_area_col.push(
             container(scrollable(smart_playlists_col).width(Length::Fill))
                 .width(Length::Fill)
-                .height(Length::Fill)
+                .height(Length::Fill),
         );
 
         let add_smart_playlist_btn = button(
             container(
                 row![
-                    text("\u{ebcf}").font(crate::ui::icons::NERD_FONT_MONO).size(11),
+                    text("\u{ebcf}")
+                        .font(crate::ui::icons::NERD_FONT_MONO)
+                        .size(11),
                     Space::with_width(6),
-                    text("Create Smart Playlist").size(11).font(crate::ui::icons::UI_FONT_BOLD)
-                ].align_y(Alignment::Center)
-            ).center_x(Length::Fill)
+                    text("Create Smart Playlist")
+                        .size(11)
+                        .font(crate::ui::icons::UI_FONT_BOLD)
+                ]
+                .align_y(Alignment::Center),
+            )
+            .center_x(Length::Fill),
         )
         .on_press(Message::NewSmartPlaylist)
         .style(theme::secondary_button)
@@ -849,11 +1069,18 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
 
     let playlist_drag_handle = mouse_area(
         container(
-            container(Space::new(Length::Fill, Length::Fixed(2.0)))
-                .style(move |_| iced::widget::container::Style {
-                    background: Some(iced::Background::Color(if state.dragging_playlist_split || state.is_hovering_playlist_resizer { theme::accent() } else { theme::surface0() })),
+            container(Space::new(Length::Fill, Length::Fixed(2.0))).style(move |_| {
+                iced::widget::container::Style {
+                    background: Some(iced::Background::Color(
+                        if state.dragging_playlist_split || state.is_hovering_playlist_resizer {
+                            theme::accent()
+                        } else {
+                            theme::surface0()
+                        },
+                    )),
                     ..Default::default()
-                })
+                }
+            }),
         )
         .width(Length::Fill)
         .height(6.0)
@@ -861,7 +1088,7 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
         .style(|_| iced::widget::container::Style {
             background: Some(iced::Background::Color(theme::mantle())),
             ..Default::default()
-        })
+        }),
     )
     .on_press(Message::PlaylistDragStart)
     .on_enter(Message::HoverPlaylistResizer(true))
@@ -874,15 +1101,13 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
 
     let mut sidebar_items_col = column![sidebar_items_hover];
     if !state.hidden_artists_albums.is_empty() {
-        let restore_btn = button(
-            text("Restore Hidden Items")
-                .size(11)
-                .color(theme::accent())
-        )
-        .on_press(Message::RestoreHiddenItems)
-        .style(iced::widget::button::text)
-        .padding(4);
-        sidebar_items_col = sidebar_items_col.push(Space::with_height(4)).push(restore_btn);
+        let restore_btn = button(text("Restore Hidden Items").size(11).color(theme::accent()))
+            .on_press(Message::RestoreHiddenItems)
+            .style(iced::widget::button::text)
+            .padding(4);
+        sidebar_items_col = sidebar_items_col
+            .push(Space::with_height(4))
+            .push(restore_btn);
     }
 
     let all_category_row: Element<'_, Message> = Space::with_height(0.0).into();
@@ -902,13 +1127,9 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
             playlist_drag_handle,
             Space::with_height(8),
             container(
-                column![
-                    playlist_tabs,
-                    Space::with_height(6),
-                    playlists_area_col,
-                ]
-                .height(Length::Fill)
-                .width(Length::Fill)
+                column![playlist_tabs, Space::with_height(6), playlists_area_col,]
+                    .height(Length::Fill)
+                    .width(Length::Fill)
             )
             .width(Length::Fill)
             .height(Length::Fixed(state.playlist_height)),
@@ -966,21 +1187,32 @@ impl std::hash::Hash for TrackListDependency {
 
 pub fn get_available_track_list_width(state: &AppState) -> f32 {
     let sidebar_visible = state.selected_playlist.is_none();
-    let sidebar_w = if sidebar_visible { state.sidebar_width.round() + 6.0 } else { 0.0 };
-    
-    let is_right_open = state.right_panel_tab.is_some() && state.window_width >= (crate::app::MIN_NON_DRAWER_WIDTH + 600.0);
-    let right_w = if is_right_open { 6.0 + state.right_panel_width } else { 0.0 };
-    
+    let sidebar_w = if sidebar_visible {
+        state.sidebar_width.round() + 6.0
+    } else {
+        0.0
+    };
+
+    let is_right_open = state.right_panel_tab.is_some()
+        && state.window_width >= (crate::app::MIN_NON_DRAWER_WIDTH + 600.0);
+    let right_w = if is_right_open {
+        6.0 + state.right_panel_width
+    } else {
+        0.0
+    };
+
     state.window_width - sidebar_w - right_w
 }
 
 pub fn get_responsive_columns(state: &AppState) -> Vec<crate::db::TableColumn> {
-    let (saved_cols, hidden_cols) = crate::db::get(|db| (db.table_columns.clone(), db.hidden_columns.clone()));
-    let saved_cols: Vec<crate::db::TableColumn> = saved_cols.into_iter()
+    let (saved_cols, hidden_cols) =
+        crate::db::get(|db| (db.table_columns.clone(), db.hidden_columns.clone()));
+    let saved_cols: Vec<crate::db::TableColumn> = saved_cols
+        .into_iter()
         .filter(|c| !hidden_cols.contains(c))
         .collect();
     let available_width = get_available_track_list_width(state) - 24.0;
-    
+
     let hide_priority = &[
         crate::db::TableColumn::DiscNumber,
         crate::db::TableColumn::Plays,
@@ -992,9 +1224,9 @@ pub fn get_responsive_columns(state: &AppState) -> Vec<crate::db::TableColumn> {
         crate::db::TableColumn::Artist,
         crate::db::TableColumn::TrackNumber,
     ];
-    
+
     let mut visible_cols = saved_cols.clone();
-    
+
     let calc_width = |cols: &[crate::db::TableColumn]| -> f32 {
         let mut total_fixed = 0.0;
         let mut fill_count = 0;
@@ -1009,10 +1241,14 @@ pub fn get_responsive_columns(state: &AppState) -> Vec<crate::db::TableColumn> {
                 _ => fill_count += 1,
             }
         }
-        let spacing = if cols.is_empty() { 0.0 } else { (cols.len() - 1) as f32 * 12.0 };
+        let spacing = if cols.is_empty() {
+            0.0
+        } else {
+            (cols.len() - 1) as f32 * 12.0
+        };
         total_fixed + (fill_count as f32 * 80.0) + spacing
     };
-    
+
     for &col_to_hide in hide_priority {
         if calc_width(&visible_cols) <= available_width {
             break;
@@ -1021,7 +1257,7 @@ pub fn get_responsive_columns(state: &AppState) -> Vec<crate::db::TableColumn> {
             visible_cols.retain(|&c| c != col_to_hide);
         }
     }
-    
+
     if calc_width(&visible_cols) > available_width {
         let mut core_set = Vec::new();
         if saved_cols.contains(&crate::db::TableColumn::Title) {
@@ -1032,40 +1268,60 @@ pub fn get_responsive_columns(state: &AppState) -> Vec<crate::db::TableColumn> {
         }
         visible_cols = core_set;
     }
-    
+
     if state.is_draggable_playlist_view() {
         visible_cols.retain(|&c| c != crate::db::TableColumn::TrackNumber);
     }
-    
+
     visible_cols
 }
 
 fn track_list_view(state: &AppState) -> Element<'_, Message> {
     let is_recently_played = state.selected_playlist.as_deref() == Some("Recently Played");
-    let group_by = if is_recently_played { crate::db::GroupBy::None } else { state.group_by };
+    let group_by = if is_recently_played {
+        crate::db::GroupBy::None
+    } else {
+        state.group_by
+    };
 
     let table_columns = get_responsive_columns(state);
     let mut header_widgets: Vec<Element<'_, Message>> = Vec::new();
-    
+
     if state.is_draggable_playlist_view() {
         header_widgets.push(iced::widget::Space::with_width(iced::Length::Fixed(28.0)).into());
     }
-    
+
     for col in table_columns {
         let label = col.label();
         let width = col_width(col);
         let sort_col = table_col_to_sort_col(col);
-        
+
         let is_sorted = state.sort_column == Some(sort_col);
         let btn_content: Element<'_, Message> = if is_sorted {
-            let arrow = if state.sort_ascending { crate::ui::icons::ICON_SORT_UP } else { crate::ui::icons::ICON_SORT_DOWN };
+            let arrow = if state.sort_ascending {
+                crate::ui::icons::ICON_SORT_UP
+            } else {
+                crate::ui::icons::ICON_SORT_DOWN
+            };
             row![
-                text(label).size(11).font(crate::ui::icons::UI_FONT_BOLD).color(theme::accent()),
+                text(label)
+                    .size(11)
+                    .font(crate::ui::icons::UI_FONT_BOLD)
+                    .color(theme::accent()),
                 Space::with_width(4),
-                text(arrow).size(10).font(crate::ui::icons::NERD_FONT_MONO).color(theme::accent()),
-            ].align_y(Alignment::Center).into()
+                text(arrow)
+                    .size(10)
+                    .font(crate::ui::icons::NERD_FONT_MONO)
+                    .color(theme::accent()),
+            ]
+            .align_y(Alignment::Center)
+            .into()
         } else {
-            text(label).size(11).font(crate::ui::icons::UI_FONT_BOLD).color(theme::subtext()).into()
+            text(label)
+                .size(11)
+                .font(crate::ui::icons::UI_FONT_BOLD)
+                .color(theme::subtext())
+                .into()
         };
 
         let btn = button(btn_content)
@@ -1075,7 +1331,9 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
             .on_press(Message::ToggleColumnSort(col));
 
         let header_area: Element<'_, Message> = mouse_area(btn)
-            .on_right_press(Message::ToggleContextMenu(Some(crate::app::ContextMenuTarget::Header(col))))
+            .on_right_press(Message::ToggleContextMenu(Some(
+                crate::app::ContextMenuTarget::Header(col),
+            )))
             .into();
 
         header_widgets.push(header_area);
@@ -1085,7 +1343,7 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
         row(header_widgets)
             .spacing(12)
             .align_y(Alignment::Center)
-            .padding([8, 12])
+            .padding([8, 12]),
     )
     .style(|_| iced::widget::container::Style {
         background: Some(iced::Background::Color(theme::mantle())),
@@ -1099,7 +1357,11 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
     .width(Length::Fill);
 
     let pulse_tick = if matches!(state.playback_state, crate::audio::PlaybackState::Playing) {
-        (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() / 250) as u32
+        (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            / 250) as u32
     } else {
         0
     };
@@ -1127,203 +1389,232 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
         is_draggable: state.is_draggable_playlist_view(),
     };
 
-    let tracklist_scroll = iced::widget::lazy(track_list_dep, move |dep| -> Element<'static, Message> {
-        let current_id = dep.current_track_id;
-        let id_to_idx: HashMap<i64, usize> = dep.tracks.iter()
-            .enumerate()
-            .map(|(i, t)| (t.id, i))
-            .collect();
-        let selected_ids: HashSet<i64> = dep.selected_tracks.iter()
-            .map(|t| t.id)
-            .collect();
-        let mut rows: Vec<Element<Message>> = Vec::new();
+    let tracklist_scroll =
+        iced::widget::lazy(track_list_dep, move |dep| -> Element<'static, Message> {
+            let current_id = dep.current_track_id;
+            let id_to_idx: HashMap<i64, usize> = dep
+                .tracks
+                .iter()
+                .enumerate()
+                .map(|(i, t)| (t.id, i))
+                .collect();
+            let selected_ids: HashSet<i64> = dep.selected_tracks.iter().map(|t| t.id).collect();
+            let mut rows: Vec<Element<Message>> = Vec::new();
 
-        if dep.group_by != crate::db::GroupBy::None {
-            let start = dep.visible_start;
-            let end = dep.visible_end.min(dep.tracks.len());
-            let tracks_in_window = &dep.tracks[start..end];
+            if dep.group_by != crate::db::GroupBy::None {
+                let start = dep.visible_start;
+                let end = dep.visible_end.min(dep.tracks.len());
+                let tracks_in_window = &dep.tracks[start..end];
 
-            let mut groups: Vec<(String, Vec<&crate::library::models::Track>)> = Vec::new();
-            for track in tracks_in_window {
-                let group_key = match dep.group_by {
-                    crate::db::GroupBy::Album => track.album.clone(),
-                    crate::db::GroupBy::Artist => track.artist.clone(),
-                    crate::db::GroupBy::Genre => track.primary_genre().to_string(),
-                    crate::db::GroupBy::Year => track.year.map(|y| y.to_string()).unwrap_or_default(),
-                    crate::db::GroupBy::None => unreachable!(),
-                };
-                if let Some(last) = groups.last_mut() {
-                    if last.0 == group_key {
-                        last.1.push(track);
-                        continue;
+                let mut groups: Vec<(String, Vec<&crate::library::models::Track>)> = Vec::new();
+                for track in tracks_in_window {
+                    let group_key = match dep.group_by {
+                        crate::db::GroupBy::Album => track.album.clone(),
+                        crate::db::GroupBy::Artist => track.artist.clone(),
+                        crate::db::GroupBy::Genre => track.primary_genre().to_string(),
+                        crate::db::GroupBy::Year => {
+                            track.year.map(|y| y.to_string()).unwrap_or_default()
+                        }
+                        crate::db::GroupBy::None => unreachable!(),
+                    };
+                    if let Some(last) = groups.last_mut() {
+                        if last.0 == group_key {
+                            last.1.push(track);
+                            continue;
+                        }
                     }
+                    groups.push((group_key, vec![track]));
                 }
-                groups.push((group_key, vec![track]));
-            }
 
-            for (group_name, tracks) in groups.into_iter() {
-                let n = tracks.len();
-                let is_hovered = dep.hovered_album_header.as_ref() == Some(&group_name);
-                let is_current_album_playing = match dep.group_by {
-                    crate::db::GroupBy::Album => dep.current_track_album.as_deref() == Some(&group_name),
-                    _ => false,
-                };
-
-                let display_name = if group_name.trim().is_empty() {
-                    match dep.group_by {
-                        crate::db::GroupBy::Album => "Unknown Album".to_string(),
-                        crate::db::GroupBy::Artist => "Unknown Artist".to_string(),
-                        crate::db::GroupBy::Genre => "Unknown Genre".to_string(),
-                        crate::db::GroupBy::Year => "Unknown Year".to_string(),
-                        _ => "Unknown".to_string(),
-                    }
-                } else {
-                    group_name.clone()
-                };
-
-                let is_active_playing = is_current_album_playing && dep.is_playing;
-
-                let album_name_btn: Element<'static, Message> = if dep.group_by == crate::db::GroupBy::Album {
-                    button(
-                        text(display_name)
-                            .color(if is_active_playing {
-                                theme::accent()
-                            } else {
-                                theme::text()
-                            })
-                            .size(13)
-                            .font(crate::ui::icons::UI_FONT_BOLD)
-                    )
-                    .on_press(Message::ToggleAlbumPlayPause(group_name.clone()))
-                    .style(iced::widget::button::text)
-                    .padding(0)
-                    .into()
-                } else {
-                    container(
-                        text(display_name)
-                            .color(theme::text())
-                            .size(13)
-                            .font(crate::ui::icons::UI_FONT_BOLD)
-                    )
-                    .padding(0)
-                    .into()
-                };
-
-                let play_btn: Element<'static, Message> = if (dep.group_by == crate::db::GroupBy::Album) && (is_current_album_playing || is_hovered) {
-                    let btn_color = if is_active_playing {
-                        theme::accent()
-                    } else {
-                        theme::subtext()
+                for (group_name, tracks) in groups.into_iter() {
+                    let n = tracks.len();
+                    let is_hovered = dep.hovered_album_header.as_ref() == Some(&group_name);
+                    let is_current_album_playing = match dep.group_by {
+                        crate::db::GroupBy::Album => {
+                            dep.current_track_album.as_deref() == Some(&group_name)
+                        }
+                        _ => false,
                     };
 
-                    let (btn_icon, btn_label) = if is_current_album_playing {
-                        if dep.is_playing {
-                            if is_hovered {
-                                (crate::ui::icons::ICON_PAUSE, "  PAUSE ")
-                            } else {
-                                (crate::ui::icons::ICON_PAUSE, "  PLAYING ")
-                            }
-                        } else {
-                            if is_hovered {
-                                (crate::ui::icons::ICON_PLAY, "  PLAY ALBUM ")
-                            } else {
-                                (crate::ui::icons::ICON_PLAY, "  PAUSED ")
-                            }
+                    let display_name = if group_name.trim().is_empty() {
+                        match dep.group_by {
+                            crate::db::GroupBy::Album => "Unknown Album".to_string(),
+                            crate::db::GroupBy::Artist => "Unknown Artist".to_string(),
+                            crate::db::GroupBy::Genre => "Unknown Genre".to_string(),
+                            crate::db::GroupBy::Year => "Unknown Year".to_string(),
+                            _ => "Unknown".to_string(),
                         }
                     } else {
-                        (crate::ui::icons::ICON_PLAY, "  PLAY ALBUM ")
+                        group_name.clone()
                     };
 
-                    button(
-                        row![
-                            text(btn_icon)
-                                .font(crate::ui::icons::NERD_FONT_MONO)
-                                .size(13),
-                            text(btn_label)
-                                .size(13)
-                                .font(crate::ui::icons::UI_FONT_BOLD),
-                        ]
-                        .spacing(4)
-                        .align_y(Alignment::Center)
-                    )
-                    .on_press(Message::ToggleAlbumPlayPause(group_name.clone()))
-                    .style(move |_, _| iced::widget::button::Style {
-                        text_color: btn_color,
-                        background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
-                        ..Default::default()
-                    })
-                    .padding(0)
-                    .into()
-                } else {
-                    Space::with_width(0).into()
-                };
+                    let is_active_playing = is_current_album_playing && dep.is_playing;
 
-                let header = mouse_area(
-                    container(
-                        row![
-                            album_name_btn,
-                            Space::with_width(8),
-                            play_btn,
-                            Space::with_width(Length::Fill),
-                            text(dep.strings.track_count(n))
-                                .color(theme::overlay0())
-                                .size(11),
-                        ]
-                        .align_y(Alignment::Center)
-                        .padding([6, 12]),
-                    )
-                    .style(if is_active_playing {
-                        theme::album_header_active
+                    let album_name_btn: Element<'static, Message> =
+                        if dep.group_by == crate::db::GroupBy::Album {
+                            button(
+                                text(display_name)
+                                    .color(if is_active_playing {
+                                        theme::accent()
+                                    } else {
+                                        theme::text()
+                                    })
+                                    .size(13)
+                                    .font(crate::ui::icons::UI_FONT_BOLD),
+                            )
+                            .on_press(Message::ToggleAlbumPlayPause(group_name.clone()))
+                            .style(iced::widget::button::text)
+                            .padding(0)
+                            .into()
+                        } else {
+                            container(
+                                text(display_name)
+                                    .color(theme::text())
+                                    .size(13)
+                                    .font(crate::ui::icons::UI_FONT_BOLD),
+                            )
+                            .padding(0)
+                            .into()
+                        };
+
+                    let play_btn: Element<'static, Message> = if (dep.group_by
+                        == crate::db::GroupBy::Album)
+                        && (is_current_album_playing || is_hovered)
+                    {
+                        let btn_color = if is_active_playing {
+                            theme::accent()
+                        } else {
+                            theme::subtext()
+                        };
+
+                        let (btn_icon, btn_label) = if is_current_album_playing {
+                            if dep.is_playing {
+                                if is_hovered {
+                                    (crate::ui::icons::ICON_PAUSE, "  PAUSE ")
+                                } else {
+                                    (crate::ui::icons::ICON_PAUSE, "  PLAYING ")
+                                }
+                            } else {
+                                if is_hovered {
+                                    (crate::ui::icons::ICON_PLAY, "  PLAY ALBUM ")
+                                } else {
+                                    (crate::ui::icons::ICON_PLAY, "  PAUSED ")
+                                }
+                            }
+                        } else {
+                            (crate::ui::icons::ICON_PLAY, "  PLAY ALBUM ")
+                        };
+
+                        button(
+                            row![
+                                text(btn_icon)
+                                    .font(crate::ui::icons::NERD_FONT_MONO)
+                                    .size(13),
+                                text(btn_label)
+                                    .size(13)
+                                    .font(crate::ui::icons::UI_FONT_BOLD),
+                            ]
+                            .spacing(4)
+                            .align_y(Alignment::Center),
+                        )
+                        .on_press(Message::ToggleAlbumPlayPause(group_name.clone()))
+                        .style(move |_, _| iced::widget::button::Style {
+                            text_color: btn_color,
+                            background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
+                            ..Default::default()
+                        })
+                        .padding(0)
+                        .into()
                     } else {
-                        theme::album_header
-                    })
-                    .width(Length::Fill)
-                )
-                .on_enter(Message::HoverAlbumHeader(Some(group_name.clone())))
-                .on_exit(Message::HoverAlbumHeader(None));
+                        Space::with_width(0).into()
+                    };
 
-                rows.push(header.into());
+                    let header = mouse_area(
+                        container(
+                            row![
+                                album_name_btn,
+                                Space::with_width(8),
+                                play_btn,
+                                Space::with_width(Length::Fill),
+                                text(dep.strings.track_count(n))
+                                    .color(theme::overlay0())
+                                    .size(11),
+                            ]
+                            .align_y(Alignment::Center)
+                            .padding([6, 12]),
+                        )
+                        .style(if is_active_playing {
+                            theme::album_header_active
+                        } else {
+                            theme::album_header
+                        })
+                        .width(Length::Fill),
+                    )
+                    .on_enter(Message::HoverAlbumHeader(Some(group_name.clone())))
+                    .on_exit(Message::HoverAlbumHeader(None));
 
-                for track in tracks.into_iter() {
-                    let idx = id_to_idx.get(&track.id).copied().unwrap_or(0);
-                    rows.push(render_track_row(dep, track, idx, true, current_id, &id_to_idx, &selected_ids));
+                    rows.push(header.into());
+
+                    for track in tracks.into_iter() {
+                        let idx = id_to_idx.get(&track.id).copied().unwrap_or(0);
+                        rows.push(render_track_row(
+                            dep,
+                            track,
+                            idx,
+                            true,
+                            current_id,
+                            &id_to_idx,
+                            &selected_ids,
+                        ));
+                    }
+                    rows.push(Space::with_height(8).into());
                 }
-                rows.push(Space::with_height(8).into());
+            } else {
+                let start = dep.visible_start;
+                let end = dep.visible_end.min(dep.tracks.len());
+                let tracks_to_render = &dep.tracks[start..end];
+                for (offset, track) in tracks_to_render.iter().enumerate() {
+                    let idx = start + offset;
+                    rows.push(render_track_row(
+                        dep,
+                        track,
+                        idx,
+                        false,
+                        current_id,
+                        &id_to_idx,
+                        &selected_ids,
+                    ));
+                }
             }
-        } else {
-            let start = dep.visible_start;
-            let end = dep.visible_end.min(dep.tracks.len());
-            let tracks_to_render = &dep.tracks[start..end];
-            for (offset, track) in tracks_to_render.iter().enumerate() {
-                let idx = start + offset;
-                rows.push(render_track_row(dep, track, idx, false, current_id, &id_to_idx, &selected_ids));
-            }
-        }
 
-        mouse_area(
-            scrollable(column(rows).spacing(0))
-                .id(scrollable::Id::new("tracklist_scroll"))
-                .on_scroll(Message::TracklistScrolled)
-        )
-        .on_enter(Message::HoverTracklist(true))
-        .on_exit(Message::HoverTracklist(false))
-        .into()
-    });
-
-
-
-
+            mouse_area(
+                scrollable(column(rows).spacing(0))
+                    .id(scrollable::Id::new("tracklist_scroll"))
+                    .on_scroll(Message::TracklistScrolled),
+            )
+            .on_enter(Message::HoverTracklist(true))
+            .on_exit(Message::HoverTracklist(false))
+            .into()
+        });
 
     let filter_options: Element<'_, Message> = if !state.search_query.is_empty() {
         container(
             row![
-                checkbox("Title", state.filter_title).on_toggle(|_| Message::ToggleFilterTitle).size(14),
-                checkbox("Artist", state.filter_artist).on_toggle(|_| Message::ToggleFilterArtist).size(14),
-                checkbox("Album", state.filter_album).on_toggle(|_| Message::ToggleFilterAlbum).size(14),
-                checkbox("Genre", state.filter_genre).on_toggle(|_| Message::ToggleFilterGenre).size(14),
+                checkbox("Title", state.filter_title)
+                    .on_toggle(|_| Message::ToggleFilterTitle)
+                    .size(14),
+                checkbox("Artist", state.filter_artist)
+                    .on_toggle(|_| Message::ToggleFilterArtist)
+                    .size(14),
+                checkbox("Album", state.filter_album)
+                    .on_toggle(|_| Message::ToggleFilterAlbum)
+                    .size(14),
+                checkbox("Genre", state.filter_genre)
+                    .on_toggle(|_| Message::ToggleFilterGenre)
+                    .size(14),
             ]
             .spacing(12)
-            .align_y(Alignment::Center)
+            .align_y(Alignment::Center),
         )
         .padding([4, 12])
         .into()
@@ -1339,11 +1630,16 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
 
     let content_area: Element<'_, Message> = if state.tracks.is_empty() {
         container(
-            text(if state.selected_folder.is_some() || state.selected_playlist.is_some() || !state.search_query.is_empty() {
-                state.strings.no_tracks_found
-            } else {
-                state.strings.select_folder
-            })
+            text(
+                if state.selected_folder.is_some()
+                    || state.selected_playlist.is_some()
+                    || !state.search_query.is_empty()
+                {
+                    state.strings.no_tracks_found
+                } else {
+                    state.strings.select_folder
+                },
+            )
             .color(theme::overlay0())
             .size(15),
         )
@@ -1362,46 +1658,48 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
     // Animated Group By Control Overlay
     let hover_progress = state.group_by_state.hover_progress;
     let has_active_grouping = state.group_by != crate::db::GroupBy::None;
-    
+
     // GroupBy option button rendering function
-    let make_option_btn = |grouping: crate::db::GroupBy, icon: &'static str, name: &'static str| -> Element<'_, Message> {
+    let make_option_btn = |grouping: crate::db::GroupBy,
+                           icon: &'static str,
+                           name: &'static str|
+     -> Element<'_, Message> {
         let is_selected = state.group_by == grouping;
         let btn = button(
-            container(
-                text(icon)
-                    .font(crate::ui::icons::NERD_FONT_MONO)
-                    .size(22)
-            )
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
+            container(text(icon).font(crate::ui::icons::NERD_FONT_MONO).size(22))
+                .center_x(Length::Fill)
+                .center_y(Length::Fill),
         )
         .on_press(Message::GroupBySelected(grouping))
-        .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
-            let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-            let base_color = if is_selected {
-                theme::accent()
-            } else {
-                theme::subtext()
-            };
-            let text_color = if is_hovered {
-                theme::text()
-            } else {
-                base_color
-            };
-            iced::widget::button::Style {
-                text_color: theme::with_alpha(text_color, hover_progress),
-                background: Some(iced::Background::Color(if is_hovered {
-                    theme::with_alpha(theme::text(), 0.05)
+        .style(
+            move |theme: &iced::Theme, status: iced::widget::button::Status| {
+                let is_hovered = status == iced::widget::button::Status::Hovered
+                    || status == iced::widget::button::Status::Pressed;
+                let base_color = if is_selected {
+                    theme::accent()
                 } else {
-                    iced::Color::TRANSPARENT
-                })),
-                border: iced::Border {
-                    radius: 4.0.into(),
+                    theme::subtext()
+                };
+                let text_color = if is_hovered {
+                    theme::text()
+                } else {
+                    base_color
+                };
+                iced::widget::button::Style {
+                    text_color: theme::with_alpha(text_color, hover_progress),
+                    background: Some(iced::Background::Color(if is_hovered {
+                        theme::with_alpha(theme::text(), 0.05)
+                    } else {
+                        iced::Color::TRANSPARENT
+                    })),
+                    border: iced::Border {
+                        radius: 4.0.into(),
+                        ..Default::default()
+                    },
                     ..Default::default()
-                },
-                ..Default::default()
-            }
-        })
+                }
+            },
+        )
         .padding(0)
         .width(36.0)
         .height(36.0);
@@ -1422,9 +1720,21 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
 
     let option_tray: Element<'_, Message> = if hover_progress > 0.0 {
         let mut row = row![
-            make_option_btn(crate::db::GroupBy::Album, crate::ui::icons::ICON_CD, "Album"),
-            make_option_btn(crate::db::GroupBy::Artist, crate::ui::icons::ICON_PERSON, "Artist"),
-            make_option_btn(crate::db::GroupBy::Genre, crate::ui::icons::ICON_TAG, "Genre"),
+            make_option_btn(
+                crate::db::GroupBy::Album,
+                crate::ui::icons::ICON_CD,
+                "Album"
+            ),
+            make_option_btn(
+                crate::db::GroupBy::Artist,
+                crate::ui::icons::ICON_PERSON,
+                "Artist"
+            ),
+            make_option_btn(
+                crate::db::GroupBy::Genre,
+                crate::ui::icons::ICON_TAG,
+                "Genre"
+            ),
             make_option_btn(crate::db::GroupBy::Year, "\u{f073}", "Year"),
         ]
         .spacing(8.0 * hover_progress)
@@ -1439,7 +1749,7 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
             .height(20.0);
 
         row = row.push(separator);
-        
+
         container(row)
             .align_y(iced::alignment::Vertical::Center)
             .width(Length::Fixed(184.0 * hover_progress))
@@ -1450,7 +1760,12 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
 
     let (base_icon, base_color_normal, base_tooltip, base_action) = if has_active_grouping {
         if state.group_by_state.is_cluster_hovered {
-            ("\u{f00d}", theme::red(), "Remove grouping", Message::GroupByCleared)
+            (
+                "\u{f00d}",
+                theme::red(),
+                "Remove grouping",
+                Message::GroupByCleared,
+            )
         } else {
             let icon = match state.group_by {
                 crate::db::GroupBy::Album => crate::ui::icons::ICON_CD,
@@ -1469,44 +1784,52 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
             (icon, theme::accent(), label, Message::GroupByCleared)
         }
     } else {
-        ("\u{eea8}", theme::subtext(), "Group by...", Message::GroupByHoverEnter)
+        (
+            "\u{eea8}",
+            theme::subtext(),
+            "Group by...",
+            Message::GroupByHoverEnter,
+        )
     };
 
     let base_btn = button(
         container(
             text(base_icon)
                 .font(crate::ui::icons::NERD_FONT_MONO)
-                .size(22)
+                .size(22),
         )
         .center_x(Length::Fill)
-        .center_y(Length::Fill)
+        .center_y(Length::Fill),
     )
     .on_press(base_action)
-    .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
-        let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-        let final_color = if is_hovered {
-            if has_active_grouping {
-                theme::red()
+    .style(
+        move |theme: &iced::Theme, status: iced::widget::button::Status| {
+            let is_hovered = status == iced::widget::button::Status::Hovered
+                || status == iced::widget::button::Status::Pressed;
+            let final_color = if is_hovered {
+                if has_active_grouping {
+                    theme::red()
+                } else {
+                    theme::text()
+                }
             } else {
-                theme::text()
-            }
-        } else {
-            base_color_normal
-        };
-        iced::widget::button::Style {
-            text_color: final_color,
-            background: Some(iced::Background::Color(if is_hovered {
-                theme::with_alpha(theme::text(), 0.05)
-            } else {
-                iced::Color::TRANSPARENT
-            })),
-            border: iced::Border {
-                radius: 6.0.into(),
+                base_color_normal
+            };
+            iced::widget::button::Style {
+                text_color: final_color,
+                background: Some(iced::Background::Color(if is_hovered {
+                    theme::with_alpha(theme::text(), 0.05)
+                } else {
+                    iced::Color::TRANSPARENT
+                })),
+                border: iced::Border {
+                    radius: 6.0.into(),
+                    ..Default::default()
+                },
                 ..Default::default()
-            },
-            ..Default::default()
-        }
-    })
+            }
+        },
+    )
     .padding(0)
     .width(36.0)
     .height(36.0);
@@ -1525,12 +1848,9 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
 
     let group_by_control = mouse_area(
         container(
-            row![
-                option_tray,
-                base_tooltip_widget
-            ]
-            .align_y(Alignment::Center)
-            .spacing(0)
+            row![option_tray, base_tooltip_widget]
+                .align_y(Alignment::Center)
+                .spacing(0),
         )
         .padding(4)
         .style(move |_: &iced::Theme| iced::widget::container::Style {
@@ -1546,7 +1866,7 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
                 blur_radius: 6.0,
             },
             ..Default::default()
-        })
+        }),
     )
     .on_enter(Message::GroupByHoverEnter)
     .on_exit(Message::GroupByHoverExit);
@@ -1563,11 +1883,12 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
     };
 
     let bar = |h: f32| {
-        container(Space::new(Length::Fixed(3.0), Length::Fixed(h)))
-            .style(move |_| iced::widget::container::Style {
+        container(Space::new(Length::Fixed(3.0), Length::Fixed(h))).style(move |_| {
+            iced::widget::container::Style {
                 background: Some(iced::Background::Color(theme::accent())),
                 ..Default::default()
-            })
+            }
+        })
     };
 
     let eq = row![bar(h1), bar(h2), bar(h3)]
@@ -1579,72 +1900,80 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
         .on_press(Message::ToggleQueuePopover)
         .width(36.0)
         .height(36.0)
-        .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
-            let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-            iced::widget::button::Style {
-                background: Some(iced::Background::Color(if is_hovered {
-                    theme::with_alpha(theme::text(), 0.05)
-                } else {
-                    iced::Color::TRANSPARENT
-                })),
-                border: iced::Border {
-                    radius: 6.0.into(),
+        .style(
+            move |theme: &iced::Theme, status: iced::widget::button::Status| {
+                let is_hovered = status == iced::widget::button::Status::Hovered
+                    || status == iced::widget::button::Status::Pressed;
+                iced::widget::button::Style {
+                    background: Some(iced::Background::Color(if is_hovered {
+                        theme::with_alpha(theme::text(), 0.05)
+                    } else {
+                        iced::Color::TRANSPARENT
+                    })),
+                    border: iced::Border {
+                        radius: 6.0.into(),
+                        ..Default::default()
+                    },
                     ..Default::default()
-                },
-                ..Default::default()
-            }
-        });
+                }
+            },
+        );
 
-    let np_tooltip_widget = tooltip(np_btn, "Now Playing Queue", iced::widget::tooltip::Position::Top)
-        .gap(4.0)
-        .style(|theme: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(theme::surface0())),
+    let np_tooltip_widget = tooltip(
+        np_btn,
+        "Now Playing Queue",
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(4.0)
+    .style(|theme: &iced::Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(theme::surface0())),
+        border: iced::Border {
+            color: theme::overlay0(),
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        ..Default::default()
+    });
+
+    let now_playing_floating_control = mouse_area(container(np_tooltip_widget).padding(4).style(
+        move |_: &iced::Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(theme::mantle())),
             border: iced::Border {
-                color: theme::overlay0(),
+                color: theme::surface0(),
                 width: 1.0,
-                radius: 4.0.into(),
+                radius: 6.0.into(),
+            },
+            shadow: iced::Shadow {
+                color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.3),
+                offset: [0.0, 2.0].into(),
+                blur_radius: 6.0,
             },
             ..Default::default()
-        });
-
-    let now_playing_floating_control = mouse_area(
-        container(np_tooltip_widget)
-            .padding(4)
-            .style(move |_: &iced::Theme| iced::widget::container::Style {
-                background: Some(iced::Background::Color(theme::mantle())),
-                border: iced::Border {
-                    color: theme::surface0(),
-                    width: 1.0,
-                    radius: 6.0.into(),
-                },
-                shadow: iced::Shadow {
-                    color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.3),
-                    offset: [0.0, 2.0].into(),
-                    blur_radius: 6.0,
-                },
-                ..Default::default()
-            })
-    );
+        },
+    ));
 
     let floating_search_control: Element<'_, Message> = if state.show_song_search {
         let search_clear_btn: Element<'_, Message> = button(
             text("\u{f00d}")
                 .font(crate::ui::icons::NERD_FONT_MONO)
                 .size(13)
-                .color(theme::red())
+                .color(theme::red()),
         )
         .on_press(Message::ToggleSongSearch)
-        .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
-            let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-            iced::widget::button::Style {
-                text_color: if is_hovered {
-                    theme::text()
-                } else {
-                    theme::red()
-                },
-                ..Default::default()
-            }
-        })
+        .style(
+            move |theme: &iced::Theme, status: iced::widget::button::Status| {
+                let is_hovered = status == iced::widget::button::Status::Hovered
+                    || status == iced::widget::button::Status::Pressed;
+                iced::widget::button::Style {
+                    text_color: if is_hovered {
+                        theme::text()
+                    } else {
+                        theme::red()
+                    },
+                    ..Default::default()
+                }
+            },
+        )
         .padding(4)
         .into();
 
@@ -1665,7 +1994,12 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
             container(search_input)
                 .width(Length::Fixed(360.0))
                 .height(Length::Fixed(44.0))
-                .padding(iced::Padding { top: 4.0, right: 10.0, bottom: 4.0, left: 10.0 })
+                .padding(iced::Padding {
+                    top: 4.0,
+                    right: 10.0,
+                    bottom: 4.0,
+                    left: 10.0,
+                })
                 .align_y(iced::alignment::Vertical::Center)
                 .style(move |_: &iced::Theme| iced::widget::container::Style {
                     background: Some(iced::Background::Color(theme::mantle())),
@@ -1680,7 +2014,7 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
                         blur_radius: 6.0,
                     },
                     ..Default::default()
-                })
+                }),
         )
         .into()
     } else {
@@ -1688,42 +2022,53 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
             container(
                 text("\u{f002}")
                     .font(crate::ui::icons::NERD_FONT_MONO)
-                    .size(22)
+                    .size(22),
             )
             .center_x(Length::Fill)
-            .center_y(Length::Fill)
+            .center_y(Length::Fill),
         )
         .on_press(Message::ToggleSongSearch)
         .width(36.0)
         .height(36.0)
-        .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
-            let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-            iced::widget::button::Style {
-                background: Some(iced::Background::Color(if is_hovered {
-                    theme::with_alpha(theme::text(), 0.05)
-                } else {
-                    iced::Color::TRANSPARENT
-                })),
-                border: iced::Border {
-                    radius: 6.0.into(),
+        .style(
+            move |theme: &iced::Theme, status: iced::widget::button::Status| {
+                let is_hovered = status == iced::widget::button::Status::Hovered
+                    || status == iced::widget::button::Status::Pressed;
+                iced::widget::button::Style {
+                    background: Some(iced::Background::Color(if is_hovered {
+                        theme::with_alpha(theme::text(), 0.05)
+                    } else {
+                        iced::Color::TRANSPARENT
+                    })),
+                    border: iced::Border {
+                        radius: 6.0.into(),
+                        ..Default::default()
+                    },
+                    text_color: if is_hovered {
+                        theme::text()
+                    } else {
+                        theme::subtext()
+                    },
                     ..Default::default()
-                },
-                text_color: if is_hovered { theme::text() } else { theme::subtext() },
-                ..Default::default()
-            }
-        });
+                }
+            },
+        );
 
-        let search_tooltip_widget = tooltip(search_btn, "Search Songs", iced::widget::tooltip::Position::Top)
-            .gap(4.0)
-            .style(|theme: &iced::Theme| iced::widget::container::Style {
-                background: Some(iced::Background::Color(theme::surface0())),
-                border: iced::Border {
-                    color: theme::overlay0(),
-                    width: 1.0,
-                    radius: 4.0.into(),
-                },
-                ..Default::default()
-            });
+        let search_tooltip_widget = tooltip(
+            search_btn,
+            "Search Songs",
+            iced::widget::tooltip::Position::Top,
+        )
+        .gap(4.0)
+        .style(|theme: &iced::Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(theme::surface0())),
+            border: iced::Border {
+                color: theme::overlay0(),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        });
 
         mouse_area(
             container(search_tooltip_widget)
@@ -1741,7 +2086,7 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
                         blur_radius: 6.0,
                     },
                     ..Default::default()
-                })
+                }),
         )
         .into()
     };
@@ -1751,42 +2096,53 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
         container(
             text("\u{f013}")
                 .font(crate::ui::icons::NERD_FONT_MONO)
-                .size(22)
+                .size(22),
         )
         .center_x(Length::Fill)
-        .center_y(Length::Fill)
+        .center_y(Length::Fill),
     )
     .on_press(Message::OpenSettings)
     .width(36.0)
     .height(36.0)
-    .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
-        let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-        iced::widget::button::Style {
-            background: Some(iced::Background::Color(if is_hovered {
-                theme::with_alpha(theme::text(), 0.05)
-            } else {
-                iced::Color::TRANSPARENT
-            })),
-            border: iced::Border {
-                radius: 6.0.into(),
+    .style(
+        move |theme: &iced::Theme, status: iced::widget::button::Status| {
+            let is_hovered = status == iced::widget::button::Status::Hovered
+                || status == iced::widget::button::Status::Pressed;
+            iced::widget::button::Style {
+                background: Some(iced::Background::Color(if is_hovered {
+                    theme::with_alpha(theme::text(), 0.05)
+                } else {
+                    iced::Color::TRANSPARENT
+                })),
+                border: iced::Border {
+                    radius: 6.0.into(),
+                    ..Default::default()
+                },
+                text_color: if is_hovered {
+                    theme::text()
+                } else {
+                    theme::subtext()
+                },
                 ..Default::default()
-            },
-            text_color: if is_hovered { theme::text() } else { theme::subtext() },
-            ..Default::default()
-        }
-    });
+            }
+        },
+    );
 
-    let settings_tooltip_widget = tooltip(settings_btn, "Settings", iced::widget::tooltip::Position::Top)
-        .gap(4.0)
-        .style(|theme: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(theme::surface0())),
-            border: iced::Border {
-                color: theme::overlay0(),
-                width: 1.0,
-                radius: 4.0.into(),
-            },
-            ..Default::default()
-        });
+    let settings_tooltip_widget = tooltip(
+        settings_btn,
+        "Settings",
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(4.0)
+    .style(|theme: &iced::Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(theme::surface0())),
+        border: iced::Border {
+            color: theme::overlay0(),
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        ..Default::default()
+    });
 
     let floating_settings_control = mouse_area(
         container(settings_tooltip_widget)
@@ -1804,7 +2160,7 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
                     blur_radius: 6.0,
                 },
                 ..Default::default()
-            })
+            }),
     );
 
     // Achievements/Stats floating button
@@ -1812,61 +2168,70 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
         container(
             text(crate::ui::icons::ICON_TROPHY)
                 .font(crate::ui::icons::NERD_FONT_MONO)
-                .size(22)
+                .size(22),
         )
         .center_x(Length::Fill)
-        .center_y(Length::Fill)
+        .center_y(Length::Fill),
     )
     .on_press(Message::ShowPeriodBreakdown(0))
     .width(36.0)
     .height(36.0)
-    .style(move |theme: &iced::Theme, status: iced::widget::button::Status| {
-        let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
-        iced::widget::button::Style {
-            background: Some(iced::Background::Color(if is_hovered {
-                theme::with_alpha(theme::text(), 0.05)
-            } else {
-                iced::Color::TRANSPARENT
-            })),
-            border: iced::Border {
-                radius: 6.0.into(),
+    .style(
+        move |theme: &iced::Theme, status: iced::widget::button::Status| {
+            let is_hovered = status == iced::widget::button::Status::Hovered
+                || status == iced::widget::button::Status::Pressed;
+            iced::widget::button::Style {
+                background: Some(iced::Background::Color(if is_hovered {
+                    theme::with_alpha(theme::text(), 0.05)
+                } else {
+                    iced::Color::TRANSPARENT
+                })),
+                border: iced::Border {
+                    radius: 6.0.into(),
+                    ..Default::default()
+                },
+                text_color: if is_hovered {
+                    theme::text()
+                } else {
+                    theme::subtext()
+                },
                 ..Default::default()
-            },
-            text_color: if is_hovered { theme::text() } else { theme::subtext() },
-            ..Default::default()
-        }
+            }
+        },
+    );
+
+    let stats_tooltip_widget = tooltip(
+        stats_btn,
+        "Achievements & Listening Stats",
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(4.0)
+    .style(|theme: &iced::Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(theme::surface0())),
+        border: iced::Border {
+            color: theme::overlay0(),
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        ..Default::default()
     });
 
-    let stats_tooltip_widget = tooltip(stats_btn, "Achievements & Listening Stats", iced::widget::tooltip::Position::Top)
-        .gap(4.0)
-        .style(|theme: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(theme::surface0())),
+    let floating_stats_control = mouse_area(container(stats_tooltip_widget).padding(4).style(
+        move |_: &iced::Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(theme::mantle())),
             border: iced::Border {
-                color: theme::overlay0(),
+                color: theme::surface0(),
                 width: 1.0,
-                radius: 4.0.into(),
+                radius: 6.0.into(),
+            },
+            shadow: iced::Shadow {
+                color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.3),
+                offset: [0.0, 2.0].into(),
+                blur_radius: 6.0,
             },
             ..Default::default()
-        });
-
-    let floating_stats_control = mouse_area(
-        container(stats_tooltip_widget)
-            .padding(4)
-            .style(move |_: &iced::Theme| iced::widget::container::Style {
-                background: Some(iced::Background::Color(theme::mantle())),
-                border: iced::Border {
-                    color: theme::surface0(),
-                    width: 1.0,
-                    radius: 6.0.into(),
-                },
-                shadow: iced::Shadow {
-                    color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.3),
-                    offset: [0.0, 2.0].into(),
-                    blur_radius: 6.0,
-                },
-                ..Default::default()
-            })
-    );
+        },
+    ));
 
     let content_area: Element<'_, Message> = stack![
         content_area,
@@ -1875,44 +2240,65 @@ fn track_list_view(state: &AppState) -> Element<'_, Message> {
             .height(Length::Fill)
             .align_x(iced::alignment::Horizontal::Left)
             .align_y(iced::alignment::Vertical::Bottom)
-            .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 12.0, left: 12.0 }),
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 0.0,
+                bottom: 12.0,
+                left: 12.0
+            }),
         container(floating_search_control)
             .width(Length::Fill)
             .height(Length::Fill)
             .align_x(iced::alignment::Horizontal::Left)
             .align_y(iced::alignment::Vertical::Bottom)
-            .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 12.0, left: 64.0 }),
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 0.0,
+                bottom: 12.0,
+                left: 64.0
+            }),
         container(group_by_control)
             .width(Length::Fill)
             .height(Length::Fill)
             .align_x(iced::alignment::Horizontal::Right)
             .align_y(iced::alignment::Vertical::Bottom)
-            .padding(iced::Padding { top: 0.0, right: 116.0, bottom: 12.0, left: 0.0 }),
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 116.0,
+                bottom: 12.0,
+                left: 0.0
+            }),
         container(floating_stats_control)
             .width(Length::Fill)
             .height(Length::Fill)
             .align_x(iced::alignment::Horizontal::Right)
             .align_y(iced::alignment::Vertical::Bottom)
-            .padding(iced::Padding { top: 0.0, right: 64.0, bottom: 12.0, left: 0.0 }),
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 64.0,
+                bottom: 12.0,
+                left: 0.0
+            }),
         container(floating_settings_control)
             .width(Length::Fill)
             .height(Length::Fill)
             .align_x(iced::alignment::Horizontal::Right)
             .align_y(iced::alignment::Vertical::Bottom)
-            .padding(iced::Padding { top: 0.0, right: 12.0, bottom: 12.0, left: 0.0 }),
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 12.0,
+                bottom: 12.0,
+                left: 0.0
+            }),
     ]
     .width(Length::Fill)
     .height(Length::Fill)
     .into();
 
-    column![
-        filter_options,
-        headers,
-        content_area,
-    ]
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
+    column![filter_options, headers, content_area,]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }
 
 fn render_track_row(
@@ -1926,8 +2312,11 @@ fn render_track_row(
 ) -> Element<'static, Message> {
     let is_current = current_id == Some(track.id);
     let is_selected_track = selected_ids.contains(&track.id);
-    let row_color = if is_current { theme::accent() } else { theme::text() };
-
+    let row_color = if is_current {
+        theme::accent()
+    } else {
+        theme::text()
+    };
 
     let mut track_no_cover = track.clone();
     track_no_cover.cover_data = None;
@@ -1939,9 +2328,14 @@ fn render_track_row(
         let drag_handle = container(
             text("\u{f0c9}")
                 .font(crate::ui::icons::NERD_FONT_MONO)
-                .color(if dep.dragging_track_index == Some(idx) { theme::accent() } else { theme::overlay0() })
-                .size(12)
-        ).padding([4, 8]);
+                .color(if dep.dragging_track_index == Some(idx) {
+                    theme::accent()
+                } else {
+                    theme::overlay0()
+                })
+                .size(12),
+        )
+        .padding([4, 8]);
 
         let drag_handle_widget: Element<'static, Message> = mouse_area(drag_handle)
             .on_press(Message::TrackListDragStart(idx))
@@ -1956,55 +2350,92 @@ fn render_track_row(
         let width = col_width(col);
         let el: Element<'static, Message> = match col {
             crate::db::TableColumn::TrackNumber => {
-                let num_str = track.track_number.map(|n| n.to_string()).unwrap_or_else(|| "·".to_string());
-                text(num_str).color(theme::overlay0()).size(13).width(width).into()
+                let num_str = track
+                    .track_number
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "·".to_string());
+                text(num_str)
+                    .color(theme::overlay0())
+                    .size(13)
+                    .width(width)
+                    .into()
             }
-            crate::db::TableColumn::Title => {
-                text(track.title.clone()).color(row_color).size(14).width(width).into()
-            }
-            crate::db::TableColumn::Artist => {
-                text(track.artist.clone()).color(theme::subtext()).size(13).width(width).into()
-            }
-            crate::db::TableColumn::Album => {
-                text(track.album.clone()).color(theme::subtext()).size(13).width(width).into()
-            }
-            crate::db::TableColumn::Genre => {
-                text(track.genres().join(", "))
+            crate::db::TableColumn::Title => text(track.title.clone())
+                .color(row_color)
+                .size(14)
+                .width(width)
+                .into(),
+            crate::db::TableColumn::Artist => text(track.artist.clone())
+                .color(theme::subtext())
+                .size(13)
+                .width(width)
+                .into(),
+            crate::db::TableColumn::Album => text(track.album.clone())
+                .color(theme::subtext())
+                .size(13)
+                .width(width)
+                .into(),
+            crate::db::TableColumn::Genre => text(track.genres().join(", "))
+                .color(theme::subtext())
+                .size(13)
+                .width(width)
+                .wrapping(iced::widget::text::Wrapping::None)
+                .into(),
+            crate::db::TableColumn::Year => {
+                let yr_str = track
+                    .year
+                    .map(|y| y.to_string())
+                    .unwrap_or_else(|| "·".to_string());
+                text(yr_str)
                     .color(theme::subtext())
                     .size(13)
                     .width(width)
-                    .wrapping(iced::widget::text::Wrapping::None)
                     .into()
             }
-            crate::db::TableColumn::Year => {
-                let yr_str = track.year.map(|y| y.to_string()).unwrap_or_else(|| "·".to_string());
-                text(yr_str).color(theme::subtext()).size(13).width(width).into()
-            }
             crate::db::TableColumn::DiscNumber => {
-                let dc_str = track.disc_number.map(|d| d.to_string()).unwrap_or_else(|| "·".to_string());
-                text(dc_str).color(theme::subtext()).size(13).width(width).into()
+                let dc_str = track
+                    .disc_number
+                    .map(|d| d.to_string())
+                    .unwrap_or_else(|| "·".to_string());
+                text(dc_str)
+                    .color(theme::subtext())
+                    .size(13)
+                    .width(width)
+                    .into()
             }
-            crate::db::TableColumn::Duration => {
-                text(track.duration_str()).color(theme::subtext()).size(13).width(width).into()
-            }
-            crate::db::TableColumn::Plays => {
-                text(track.play_count.to_string()).color(theme::subtext()).size(13).width(width).into()
-            }
+            crate::db::TableColumn::Duration => text(track.duration_str())
+                .color(theme::subtext())
+                .size(13)
+                .width(width)
+                .into(),
+            crate::db::TableColumn::Plays => text(track.play_count.to_string())
+                .color(theme::subtext())
+                .size(13)
+                .width(width)
+                .into(),
             crate::db::TableColumn::DatePlayed => {
                 let dp_str = track.date_played.clone().unwrap_or_else(|| "·".to_string());
-                text(dp_str).color(theme::subtext()).size(13).width(width).into()
+                text(dp_str)
+                    .color(theme::subtext())
+                    .size(13)
+                    .width(width)
+                    .into()
             }
             crate::db::TableColumn::Liked => {
-                let like_color = if track.liked { theme::red() } else { theme::overlay0() };
+                let like_color = if track.liked {
+                    theme::red()
+                } else {
+                    theme::overlay0()
+                };
                 container(
                     button(
                         text(crate::ui::icons::ICON_HEART)
                             .font(crate::ui::icons::NERD_FONT_MONO)
                             .color(like_color)
-                            .size(13)
+                            .size(13),
                     )
                     .on_press(Message::ToggleLikeTrack(track.clone()))
-                    .style(iced::widget::button::text)
+                    .style(iced::widget::button::text),
                 )
                 .width(width)
                 .center_x(width)
@@ -2021,7 +2452,13 @@ fn render_track_row(
 
     let current_idx = id_to_idx.get(&track.id).copied();
     let prev_selected = current_idx
-        .and_then(|idx| if idx > 0 { dep.tracks.get(idx - 1) } else { None })
+        .and_then(|idx| {
+            if idx > 0 {
+                dep.tracks.get(idx - 1)
+            } else {
+                None
+            }
+        })
         .map(|prev_t| {
             let same_album = !grouped || prev_t.album == track.album;
             same_album && selected_ids.contains(&prev_t.id)
@@ -2044,17 +2481,18 @@ fn render_track_row(
         };
 
         // Base container with background
-        let content_container = container(track_row)
-            .width(Length::Fill)
-            .style(move |_: &iced::Theme| iced::widget::container::Style {
-                background: Some(iced::Background::Color(theme::surface0())),
-                border: iced::Border {
-                    color: iced::Color::TRANSPARENT,
-                    width: 0.0,
-                    radius,
-                },
-                ..Default::default()
-            });
+        let content_container =
+            container(track_row)
+                .width(Length::Fill)
+                .style(move |_: &iced::Theme| iced::widget::container::Style {
+                    background: Some(iced::Background::Color(theme::surface0())),
+                    border: iced::Border {
+                        color: iced::Color::TRANSPARENT,
+                        width: 0.0,
+                        radius,
+                    },
+                    ..Default::default()
+                });
 
         // Left border overlay
         let left_border_overlay = container(
@@ -2064,11 +2502,16 @@ fn render_track_row(
                     ..Default::default()
                 })
                 .width(1.0)
-                .height(Length::Fill)
+                .height(Length::Fill),
         )
         .width(Length::Fill)
         .height(Length::Fill)
-        .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 1.0 })
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 1.0,
+        })
         .align_x(iced::alignment::Horizontal::Left);
 
         // Right border overlay
@@ -2079,20 +2522,21 @@ fn render_track_row(
                     ..Default::default()
                 })
                 .width(1.0)
-                .height(Length::Fill)
+                .height(Length::Fill),
         )
         .width(Length::Fill)
         .height(Length::Fill)
-        .padding(iced::Padding { top: 0.0, right: 1.0, bottom: 0.0, left: 0.0 })
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 1.0,
+            bottom: 0.0,
+            left: 0.0,
+        })
         .align_x(iced::alignment::Horizontal::Right);
 
-        let mut s = stack![
-            content_container,
-            left_border_overlay,
-            right_border_overlay,
-        ]
-        .width(Length::Fill)
-        .height(Length::Shrink);
+        let mut s = stack![content_container, left_border_overlay, right_border_overlay,]
+            .width(Length::Fill)
+            .height(Length::Shrink);
 
         if !prev_selected {
             let top_border = container(
@@ -2102,13 +2546,18 @@ fn render_track_row(
                         ..Default::default()
                     })
                     .width(Length::Fill)
-                    .height(1.0)
+                    .height(1.0),
             )
             .width(Length::Fill)
             .height(Length::Fill)
-            .padding(iced::Padding { top: 1.0, right: 0.0, bottom: 0.0, left: 0.0 })
+            .padding(iced::Padding {
+                top: 1.0,
+                right: 0.0,
+                bottom: 0.0,
+                left: 0.0,
+            })
             .align_y(iced::alignment::Vertical::Top);
-            
+
             s = s.push(top_border);
         }
 
@@ -2120,25 +2569,34 @@ fn render_track_row(
                         ..Default::default()
                     })
                     .width(Length::Fill)
-                    .height(1.0)
+                    .height(1.0),
             )
             .width(Length::Fill)
             .height(Length::Fill)
-            .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 2.0, left: 0.0 })
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 0.0,
+                bottom: 2.0,
+                left: 0.0,
+            })
             .align_y(iced::alignment::Vertical::Bottom);
-            
+
             s = s.push(bottom_border);
         }
 
         container(s).width(Length::Fill)
     } else if is_current {
-        container(track_row).style(theme::selected_row).width(Length::Fill)
+        container(track_row)
+            .style(theme::selected_row)
+            .width(Length::Fill)
     } else if idx % 2 == 1 {
         container(track_row)
             .style(|_| iced::widget::container::Style {
-                background: Some(iced::Background::Color(
-                    theme::lerp_color(theme::mantle(), theme::surface0(), 0.08)
-                )),
+                background: Some(iced::Background::Color(theme::lerp_color(
+                    theme::mantle(),
+                    theme::surface0(),
+                    0.08,
+                ))),
                 ..Default::default()
             })
             .width(Length::Fill)
@@ -2158,8 +2616,8 @@ fn render_track_row(
         crate::app::ContextMenuTarget::Track(track_no_cover)
     };
 
-    let row_content = mouse_area(select_btn)
-        .on_right_press(Message::ToggleContextMenu(Some(row_target)));
+    let row_content =
+        mouse_area(select_btn).on_right_press(Message::ToggleContextMenu(Some(row_target)));
 
     if dep.dragging_track_index.is_some() && dep.is_draggable {
         mouse_area(row_content)
@@ -2201,5 +2659,3 @@ pub fn table_col_to_sort_col(col: crate::db::TableColumn) -> SortColumn {
         crate::db::TableColumn::Liked => SortColumn::Liked,
     }
 }
-
-

@@ -1,6 +1,6 @@
+use crate::ui::txt::text;
 use iced::widget::{button, container, row, tooltip};
 use iced::{Alignment, Border, Element};
-use crate::ui::txt::text;
 
 use crate::app::Message;
 use crate::audio::PlaybackState;
@@ -18,18 +18,17 @@ pub fn playback_controls<'a>(
         _ => icons::ICON_PLAY,
     };
 
-    let tooltip_style =
-        |_theme: &iced::Theme| -> iced::widget::container::Style {
-            iced::widget::container::Style {
-                background: Some(iced::Background::Color(theme::surface0())),
-                border: Border {
-                    color: theme::overlay0(),
-                    width: 1.0,
-                    radius: 4.0.into(),
-                },
-                ..Default::default()
-            }
-        };
+    let tooltip_style = |_theme: &iced::Theme| -> iced::widget::container::Style {
+        iced::widget::container::Style {
+            background: Some(iced::Background::Color(theme::surface0())),
+            border: Border {
+                color: theme::overlay0(),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        }
+    };
 
     let tip = |label: &'static str| {
         container(
@@ -54,8 +53,16 @@ pub fn playback_controls<'a>(
         .padding([8, 20])
     };
 
-    let shuffle_color = if shuffle { theme::accent() } else { theme::overlay0() };
-    let repeat_color = if repeat { theme::accent() } else { theme::overlay0() };
+    let shuffle_color = if shuffle {
+        theme::accent()
+    } else {
+        theme::overlay0()
+    };
+    let repeat_color = if repeat {
+        theme::accent()
+    } else {
+        theme::overlay0()
+    };
 
     let mut row_children = vec![
         // Previous
@@ -137,7 +144,11 @@ pub fn playback_controls<'a>(
         );
 
         // Like / Unlike
-        let like_color = if is_liked { theme::red() } else { theme::overlay0() };
+        let like_color = if is_liked {
+            theme::red()
+        } else {
+            theme::overlay0()
+        };
         row_children.push(
             tooltip(
                 button(

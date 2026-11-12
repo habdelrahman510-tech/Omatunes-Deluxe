@@ -15,9 +15,9 @@ fn main() -> iced::Result {
     if std::env::var_os("WGPU_BACKEND").is_none() {
         std::env::set_var("WGPU_BACKEND", "gl,vulkan");
     }
-    config::load();   // first: define music_dir, language, volume…
-    db::init();       // initialize local database
-    stats::init();    // initialize listening statistics
+    config::load(); // first: define music_dir, language, volume…
+    db::init(); // initialize local database
+    stats::init(); // initialize listening statistics
     locale::load();
     ui::theme::load_system_theme();
 

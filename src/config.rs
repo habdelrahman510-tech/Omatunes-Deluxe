@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::{OnceLock, Mutex};
+use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 
@@ -23,17 +23,17 @@ pub struct CustomThemeConfig {
 impl Default for CustomThemeConfig {
     fn default() -> Self {
         CustomThemeConfig {
-            base:     "#11111b".into(),
-            mantle:   "#181825".into(),
+            base: "#11111b".into(),
+            mantle: "#181825".into(),
             surface0: "#313244".into(),
             overlay0: "#6c7086".into(),
-            text:     "#cdd6f4".into(),
-            subtext:  "#a6adc8".into(),
-            accent:   "#cba6f7".into(),
-            green:    "#a6e3a1".into(),
-            red:      "#f38ba8".into(),
-            yellow:   "#f9e2af".into(),
-            blue:     "#89b4fa".into(),
+            text: "#cdd6f4".into(),
+            subtext: "#a6adc8".into(),
+            accent: "#cba6f7".into(),
+            green: "#a6e3a1".into(),
+            red: "#f38ba8".into(),
+            yellow: "#f9e2af".into(),
+            blue: "#89b4fa".into(),
         }
     }
 }
@@ -46,7 +46,10 @@ pub struct PlaybackDefault {
 
 impl Default for PlaybackDefault {
     fn default() -> Self {
-        Self { shuffle: false, repeat: false }
+        Self {
+            shuffle: false,
+            repeat: false,
+        }
     }
 }
 
@@ -62,11 +65,26 @@ pub struct PlaybackDefaults {
 impl Default for PlaybackDefaults {
     fn default() -> Self {
         Self {
-            album: PlaybackDefault { shuffle: false, repeat: false },
-            artist: PlaybackDefault { shuffle: true, repeat: false },
-            genre: PlaybackDefault { shuffle: true, repeat: false },
-            user_playlist: PlaybackDefault { shuffle: false, repeat: false },
-            smart_playlist: PlaybackDefault { shuffle: false, repeat: false },
+            album: PlaybackDefault {
+                shuffle: false,
+                repeat: false,
+            },
+            artist: PlaybackDefault {
+                shuffle: true,
+                repeat: false,
+            },
+            genre: PlaybackDefault {
+                shuffle: true,
+                repeat: false,
+            },
+            user_playlist: PlaybackDefault {
+                shuffle: false,
+                repeat: false,
+            },
+            smart_playlist: PlaybackDefault {
+                shuffle: false,
+                repeat: false,
+            },
         }
     }
 }
@@ -81,19 +99,22 @@ pub struct AutoScanConfig {
 
 impl Default for AutoScanConfig {
     fn default() -> Self {
-        Self { mode: "manual".into(), interval_minutes: 15 }
+        Self {
+            mode: "manual".into(),
+            interval_minutes: 15,
+        }
     }
 }
 
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct Config {
-    pub music_dir:   String,
-    pub volume:      f32,
-    pub language:    String,
-    pub seek_step:   u64,
+    pub music_dir: String,
+    pub volume: f32,
+    pub language: String,
+    pub seek_step: u64,
     pub volume_step: f32,
-    pub font_scale:  Option<f32>,
+    pub font_scale: Option<f32>,
     pub theme_source: String,
     pub theme_preset: String,
     pub custom_theme: Option<CustomThemeConfig>,
@@ -132,12 +153,12 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            music_dir:   "~/Music".into(),
-            volume:      0.8,
-            language:    "auto".into(),
-            seek_step:   5,
+            music_dir: "~/Music".into(),
+            volume: 0.8,
+            language: "auto".into(),
+            seek_step: 5,
             volume_step: 0.05,
-            font_scale:  Some(1.0),
+            font_scale: Some(1.0),
             theme_source: "System".into(),
             theme_preset: "Nord".into(),
             custom_theme: None,
@@ -177,12 +198,18 @@ pub fn load() {
 }
 
 pub fn get() -> Config {
-    let guard = CONFIG.get_or_init(|| Mutex::new(read_or_default())).lock().unwrap();
+    let guard = CONFIG
+        .get_or_init(|| Mutex::new(read_or_default()))
+        .lock()
+        .unwrap();
     guard.clone()
 }
 
 pub fn save(cfg: Config) {
-    let mut guard = CONFIG.get_or_init(|| Mutex::new(read_or_default())).lock().unwrap();
+    let mut guard = CONFIG
+        .get_or_init(|| Mutex::new(read_or_default()))
+        .lock()
+        .unwrap();
     *guard = cfg.clone();
     if let Ok(toml_str) = toml::to_string_pretty(&cfg) {
         let path = config_path();

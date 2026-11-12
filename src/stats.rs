@@ -1,8 +1,8 @@
-use std::collections::{HashMap, HashSet, BTreeMap};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use serde::{Serialize, Deserialize};
+use std::sync::Mutex;
 
 static STATS: std::sync::OnceLock<Mutex<StatsDb>> = std::sync::OnceLock::new();
 static STATS_DIRTY: AtomicBool = AtomicBool::new(false);
@@ -29,11 +29,11 @@ pub struct DayStats {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EarnedAchievement {
-    pub entity_type: String,     // "Artist", "Album", or "Genre"
+    pub entity_type: String, // "Artist", "Album", or "Genre"
     pub entity_name: String,
-    pub period: String,          // "Daily", "Weekly", "Monthly", "Yearly", "All-Time"
-    pub tier: String,            // "Bronze", "Silver", "Gold", "Platinum", "Legendary"
-    pub date_earned: String,     // "YYYY-MM-DD"
+    pub period: String,      // "Daily", "Weekly", "Monthly", "Yearly", "All-Time"
+    pub tier: String,        // "Bronze", "Silver", "Gold", "Platinum", "Legendary"
+    pub date_earned: String, // "YYYY-MM-DD"
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -41,7 +41,7 @@ pub struct RankChange {
     pub direction: String, // "up" or "down"
     pub timestamp: i64,    // Unix timestamp in seconds
     #[serde(default)]
-    pub date: String,      // "YYYY-MM-DD"
+    pub date: String, // "YYYY-MM-DD"
 }
 
 pub type YearlyStats = DayStats;
@@ -216,7 +216,10 @@ pub fn get<F, R>(f: F) -> R
 where
     F: FnOnce(&StatsDb) -> R,
 {
-    let guard = STATS.get_or_init(|| Mutex::new(StatsDb::load())).lock().unwrap();
+    let guard = STATS
+        .get_or_init(|| Mutex::new(StatsDb::load()))
+        .lock()
+        .unwrap();
     f(&guard)
 }
 
@@ -224,7 +227,10 @@ pub fn write<F, R>(f: F) -> R
 where
     F: FnOnce(&mut StatsDb) -> R,
 {
-    let mut guard = STATS.get_or_init(|| Mutex::new(StatsDb::load())).lock().unwrap();
+    let mut guard = STATS
+        .get_or_init(|| Mutex::new(StatsDb::load()))
+        .lock()
+        .unwrap();
     let res = f(&mut guard);
     STATS_DIRTY.store(true, Ordering::Release);
     res
@@ -284,7 +290,13 @@ pub const ARTIST_THRESHOLDS: [u32; 5] = [50, 150, 300, 500, 1000];
 pub const ALBUM_THRESHOLDS: [u32; 5] = [50, 150, 300, 500, 1000];
 pub const GENRE_THRESHOLDS: [u32; 5] = [100, 300, 600, 1000, 2000];
 
-pub const TIERS: [&str; 5] = ["Bronze Trophy", "Silver Trophy", "Gold Trophy", "Platinum Crown", "Legendary Gem"];
+pub const TIERS: [&str; 5] = [
+    "Bronze Trophy",
+    "Silver Trophy",
+    "Gold Trophy",
+    "Platinum Crown",
+    "Legendary Gem",
+];
 
 pub fn get_achievement_score(period: &str, tier: &str) -> u32 {
     match tier {
@@ -304,7 +316,8 @@ pub fn get_achievement_score(period: &str, tier: &str) -> u32 {
 
 pub fn get_highest_achievement(entity_type: &str, entity_name: &str) -> Option<EarnedAchievement> {
     get(|db| {
-        db.earned_achievements.iter()
+        db.earned_achievements
+            .iter()
             .filter(|a| a.entity_type == entity_type && a.entity_name == entity_name)
             .max_by_key(|a| get_achievement_score(&a.period, &a.tier))
             .cloned()
@@ -312,21 +325,24 @@ pub fn get_highest_achievement(entity_type: &str, entity_name: &str) -> Option<E
 }
 
 pub fn get_artist_play_count(artist: &str, tracks: &[crate::library::models::Track]) -> u32 {
-    tracks.iter()
+    tracks
+        .iter()
         .filter(|t| t.artist == artist)
         .map(|t| t.play_count)
         .sum()
 }
 
 pub fn get_album_play_count(album: &str, tracks: &[crate::library::models::Track]) -> u32 {
-    tracks.iter()
+    tracks
+        .iter()
         .filter(|t| t.album == album)
         .map(|t| t.play_count)
         .sum()
 }
 
 pub fn get_genre_play_count(genre: &str, tracks: &[crate::library::models::Track]) -> u32 {
-    tracks.iter()
+    tracks
+        .iter()
         .filter(|t| {
             if t.genre.contains("; ") {
                 t.genre.split("; ").any(|g| g.trim() == genre)
@@ -346,11 +362,21 @@ pub fn get_earned_tiers(entity_type: &str, play_count: u32) -> Vec<&'static str>
         _ => return Vec::new(),
     };
     let mut earned = Vec::new();
-    if play_count >= thresholds[0] { earned.push("Bronze Trophy"); }
-    if play_count >= thresholds[1] { earned.push("Silver Trophy"); }
-    if play_count >= thresholds[2] { earned.push("Gold Trophy"); }
-    if play_count >= thresholds[3] { earned.push("Platinum Crown"); }
-    if play_count >= thresholds[4] { earned.push("Legendary Gem"); }
+    if play_count >= thresholds[0] {
+        earned.push("Bronze Trophy");
+    }
+    if play_count >= thresholds[1] {
+        earned.push("Silver Trophy");
+    }
+    if play_count >= thresholds[2] {
+        earned.push("Gold Trophy");
+    }
+    if play_count >= thresholds[3] {
+        earned.push("Platinum Crown");
+    }
+    if play_count >= thresholds[4] {
+        earned.push("Legendary Gem");
+    }
     earned
 }
 
@@ -365,9 +391,7 @@ pub fn check_and_award_new_system(
     let earned = get_earned_tiers(entity_type, play_count);
     for tier in earned {
         let already = db.earned_achievements.iter().any(|a| {
-            a.entity_type == entity_type
-                && a.entity_name == entity_name
-                && a.tier == tier
+            a.entity_type == entity_type && a.entity_name == entity_name && a.tier == tier
         });
         if !already {
             let award = EarnedAchievement {
@@ -383,7 +407,9 @@ pub fn check_and_award_new_system(
     }
 }
 
-pub fn check_ladder_changes(db: &mut StatsDb) -> Vec<(String, String, Option<String>, String, usize)> {
+pub fn check_ladder_changes(
+    db: &mut StatsDb,
+) -> Vec<(String, String, Option<String>, String, usize)> {
     let mut toasts = Vec::new();
 
     let mut all_artist_minutes: HashMap<String, f64> = db.legacy_artist_minutes.clone();
@@ -402,7 +428,11 @@ pub fn check_ladder_changes(db: &mut StatsDb) -> Vec<(String, String, Option<Str
     }
 
     if db.previous_top_10_snapshot != ranked {
-        let prev_artists: Vec<&str> = db.previous_top_10_snapshot.iter().map(|(a, _)| a.as_str()).collect();
+        let prev_artists: Vec<&str> = db
+            .previous_top_10_snapshot
+            .iter()
+            .map(|(a, _)| a.as_str())
+            .collect();
         let cur_artists: Vec<&str> = ranked.iter().map(|(a, _)| a.as_str()).collect();
 
         for (i, artist_name) in cur_artists.iter().enumerate() {
@@ -413,10 +443,14 @@ pub fn check_ladder_changes(db: &mut StatsDb) -> Vec<(String, String, Option<Str
                 let new_pos = i + 1;
                 let displaced = prev_artists[i];
 
-                let old_pos = prev_artists.iter().position(|&a| a == *artist_name)
+                let old_pos = prev_artists
+                    .iter()
+                    .position(|&a| a == *artist_name)
                     .map(|p| p + 1);
 
-                let displaced_new_pos = cur_artists.iter().position(|&a| a == displaced)
+                let displaced_new_pos = cur_artists
+                    .iter()
+                    .position(|&a| a == displaced)
                     .map(|p| p + 1);
 
                 let mut msg_parts = Vec::new();
@@ -434,13 +468,21 @@ pub fn check_ladder_changes(db: &mut StatsDb) -> Vec<(String, String, Option<Str
                         ));
                         match displaced_new_pos {
                             Some(dp) => {
-                                msg_parts.push(format!("  \u{f063} **{}** \u{2192} #{}", displaced, dp));
+                                msg_parts
+                                    .push(format!("  \u{f063} **{}** \u{2192} #{}", displaced, dp));
                             }
                             None => {
-                                msg_parts.push(format!("  \u{f063} **{}** out of Top 10", displaced));
+                                msg_parts
+                                    .push(format!("  \u{f063} **{}** out of Top 10", displaced));
                             }
                         }
-                        toasts.push((ladder_title, msg_parts.join("\n"), Some(artist_name.to_string()), displaced.to_string(), new_pos));
+                        toasts.push((
+                            ladder_title,
+                            msg_parts.join("\n"),
+                            Some(artist_name.to_string()),
+                            displaced.to_string(),
+                            new_pos,
+                        ));
                     }
                     None => {
                         let entry_title = "ENTERED TOP 10!".to_string();
@@ -454,19 +496,21 @@ pub fn check_ladder_changes(db: &mut StatsDb) -> Vec<(String, String, Option<Str
                         ));
                         match displaced_new_pos {
                             Some(dp) => {
-                                msg_parts.push(format!(
-                                    "  \u{f063} **{}** \u{2192} #{}",
-                                    displaced, dp
-                                ));
+                                msg_parts
+                                    .push(format!("  \u{f063} **{}** \u{2192} #{}", displaced, dp));
                             }
                             None => {
-                                msg_parts.push(format!(
-                                    "  \u{f063} **{}** out of Top 10",
-                                    displaced
-                                ));
+                                msg_parts
+                                    .push(format!("  \u{f063} **{}** out of Top 10", displaced));
                             }
                         }
-                        toasts.push((entry_title, msg_parts.join("\n"), Some(artist_name.to_string()), displaced.to_string(), new_pos));
+                        toasts.push((
+                            entry_title,
+                            msg_parts.join("\n"),
+                            Some(artist_name.to_string()),
+                            displaced.to_string(),
+                            new_pos,
+                        ));
                     }
                 }
                 break; // Only one ladder toast per change
@@ -478,7 +522,15 @@ pub fn check_ladder_changes(db: &mut StatsDb) -> Vec<(String, String, Option<Str
     toasts
 }
 
-pub fn add_playback_time(artist: &str, album: &str, genre: &str, secs: f64) -> (Vec<EarnedAchievement>, Vec<(String, String, Option<String>, String, usize)>) {
+pub fn add_playback_time(
+    artist: &str,
+    album: &str,
+    genre: &str,
+    secs: f64,
+) -> (
+    Vec<EarnedAchievement>,
+    Vec<(String, String, Option<String>, String, usize)>,
+) {
     let now_dt = chrono::Local::now();
     let date_str = now_dt.format("%Y-%m-%d").to_string();
     use chrono::Datelike;
@@ -509,19 +561,34 @@ pub fn add_playback_time(artist: &str, album: &str, genre: &str, secs: f64) -> (
         let artist_entry = day.artist_minutes.entry(artist.to_string()).or_default();
         *artist_entry += minutes;
 
-        let clean_album = if album.trim().is_empty() { "Unknown".to_string() } else { album.trim().to_string() };
+        let clean_album = if album.trim().is_empty() {
+            "Unknown".to_string()
+        } else {
+            album.trim().to_string()
+        };
         let album_entry = day.album_minutes.entry(clean_album.clone()).or_default();
         *album_entry += minutes;
 
         if genre.contains("; ") {
             for g in genre.split("; ") {
-                let clean = if g.trim().is_empty() { "Unknown" } else { g.trim() };
+                let clean = if g.trim().is_empty() {
+                    "Unknown"
+                } else {
+                    g.trim()
+                };
                 let genre_entry = day.genre_minutes.entry(clean.to_string()).or_default();
                 *genre_entry += minutes;
             }
         } else {
-            let clean_genre = if genre.trim().is_empty() { "Unknown" } else { genre.trim() };
-            let genre_entry = day.genre_minutes.entry(clean_genre.to_string()).or_default();
+            let clean_genre = if genre.trim().is_empty() {
+                "Unknown"
+            } else {
+                genre.trim()
+            };
+            let genre_entry = day
+                .genre_minutes
+                .entry(clean_genre.to_string())
+                .or_default();
             *genre_entry += minutes;
         }
 
@@ -534,21 +601,38 @@ pub fn add_playback_time(artist: &str, album: &str, genre: &str, secs: f64) -> (
         let yr_stats = db.yearly_buckets.entry(current_year).or_default();
         yr_stats.total_minutes += minutes;
 
-        let yr_artist_entry = yr_stats.artist_minutes.entry(artist.to_string()).or_default();
+        let yr_artist_entry = yr_stats
+            .artist_minutes
+            .entry(artist.to_string())
+            .or_default();
         *yr_artist_entry += minutes;
 
-        let yr_album_entry = yr_stats.album_minutes.entry(clean_album.clone()).or_default();
+        let yr_album_entry = yr_stats
+            .album_minutes
+            .entry(clean_album.clone())
+            .or_default();
         *yr_album_entry += minutes;
 
         if genre.contains("; ") {
             for g in genre.split("; ") {
-                let clean = if g.trim().is_empty() { "Unknown" } else { g.trim() };
+                let clean = if g.trim().is_empty() {
+                    "Unknown"
+                } else {
+                    g.trim()
+                };
                 let yr_genre_entry = yr_stats.genre_minutes.entry(clean.to_string()).or_default();
                 *yr_genre_entry += minutes;
             }
         } else {
-            let clean_genre = if genre.trim().is_empty() { "Unknown" } else { genre.trim() };
-            let yr_genre_entry = yr_stats.genre_minutes.entry(clean_genre.to_string()).or_default();
+            let clean_genre = if genre.trim().is_empty() {
+                "Unknown"
+            } else {
+                genre.trim()
+            };
+            let yr_genre_entry = yr_stats
+                .genre_minutes
+                .entry(clean_genre.to_string())
+                .or_default();
             *yr_genre_entry += minutes;
         }
 
@@ -565,7 +649,11 @@ pub fn backfill_album_data(tracks: &[crate::library::models::Track]) {
     let mut artist_albums: HashMap<String, Vec<String>> = HashMap::new();
     for track in tracks {
         if !track.artist.is_empty() && !track.album.is_empty() {
-            let clean = if track.album.trim().is_empty() { "Unknown".to_string() } else { track.album.trim().to_string() };
+            let clean = if track.album.trim().is_empty() {
+                "Unknown".to_string()
+            } else {
+                track.album.trim().to_string()
+            };
             let albums = artist_albums.entry(track.artist.clone()).or_default();
             if !albums.contains(&clean) {
                 albums.push(clean);
@@ -596,7 +684,8 @@ pub fn backfill_album_data(tracks: &[crate::library::models::Track]) {
                 if !albums.is_empty() {
                     let per_album = *count as f64 / albums.len() as f64;
                     for album in albums {
-                        *db.legacy_album_tracks.entry(album.clone()).or_default() += per_album.round() as u32;
+                        *db.legacy_album_tracks.entry(album.clone()).or_default() +=
+                            per_album.round() as u32;
                     }
                 }
             }
@@ -622,7 +711,8 @@ pub fn backfill_album_data(tracks: &[crate::library::models::Track]) {
                         if !albums.is_empty() {
                             let per_album = *count as f64 / albums.len() as f64;
                             for album in albums {
-                                *day.album_track_counts.entry(album.clone()).or_default() += per_album.round() as u32;
+                                *day.album_track_counts.entry(album.clone()).or_default() +=
+                                    per_album.round() as u32;
                             }
                         }
                     }
@@ -655,9 +745,15 @@ pub fn backfill_album_data(tracks: &[crate::library::models::Track]) {
                                     let per_track = *count / track_paths.len() as u32;
                                     let remainder = *count % track_paths.len() as u32;
                                     for (j, path) in track_paths.iter().enumerate() {
-                                        let this_track = if (j as u32) < remainder { per_track + 1 } else { per_track };
+                                        let this_track = if (j as u32) < remainder {
+                                            per_track + 1
+                                        } else {
+                                            per_track
+                                        };
                                         if this_track > 0 {
-                                            *day.track_play_counts.entry(path.clone()).or_default() += this_track;
+                                            *day.track_play_counts
+                                                .entry(path.clone())
+                                                .or_default() += this_track;
                                         }
                                     }
                                 }
@@ -694,7 +790,11 @@ pub fn backfill_achievements(tracks: &[crate::library::models::Track]) {
             }
             if !track.genre.trim().is_empty() {
                 let genres: Vec<String> = if track.genre.contains("; ") {
-                    track.genre.split("; ").map(|g| g.trim().to_string()).collect()
+                    track
+                        .genre
+                        .split("; ")
+                        .map(|g| g.trim().to_string())
+                        .collect()
                 } else {
                     vec![track.genre.trim().to_string()]
                 };
@@ -737,29 +837,54 @@ pub fn on_track_play(
         // 1. Accumulate daily / yearly stats for leaderboards (minutes / count)
         let day = db.daily_buckets.entry(date_str.clone()).or_default();
         day.track_play_count += 1;
-        *day.artist_track_counts.entry(artist.to_string()).or_default() += 1;
+        *day.artist_track_counts
+            .entry(artist.to_string())
+            .or_default() += 1;
         *day.track_play_counts.entry(track_path.clone()).or_default() += 1;
 
         let yr_stats = db.yearly_buckets.entry(current_year).or_default();
         yr_stats.track_play_count += 1;
-        *yr_stats.artist_track_counts.entry(artist.to_string()).or_default() += 1;
-        *yr_stats.album_track_counts.entry(album.to_string()).or_default() += 1;
-        *yr_stats.track_play_counts.entry(track_path.clone()).or_default() += 1;
+        *yr_stats
+            .artist_track_counts
+            .entry(artist.to_string())
+            .or_default() += 1;
+        *yr_stats
+            .album_track_counts
+            .entry(album.to_string())
+            .or_default() += 1;
+        *yr_stats
+            .track_play_counts
+            .entry(track_path.clone())
+            .or_default() += 1;
 
         let _artist_total = {
-            let c = db.all_time_artist_tracks.entry(artist.to_string()).or_default();
+            let c = db
+                .all_time_artist_tracks
+                .entry(artist.to_string())
+                .or_default();
             *c += 1;
             *c
         };
 
         let genre_names: Vec<String> = if genre.contains("; ") {
-            genre.split("; ").map(|g| {
-                let clean = g.trim();
-                if clean.is_empty() { "Unknown".to_string() } else { clean.to_string() }
-            }).collect()
+            genre
+                .split("; ")
+                .map(|g| {
+                    let clean = g.trim();
+                    if clean.is_empty() {
+                        "Unknown".to_string()
+                    } else {
+                        clean.to_string()
+                    }
+                })
+                .collect()
         } else {
             let clean = genre.trim();
-            vec![if clean.is_empty() { "Unknown".to_string() } else { clean.to_string() }]
+            vec![if clean.is_empty() {
+                "Unknown".to_string()
+            } else {
+                clean.to_string()
+            }]
         };
         for gn in &genre_names {
             let c = db.all_time_genre_tracks.entry(gn.clone()).or_default();
@@ -769,29 +894,55 @@ pub fn on_track_play(
         }
         let clean_album = album.trim();
         if !clean_album.is_empty() {
-            *day.album_track_counts.entry(clean_album.to_string()).or_default() += 1;
+            *day.album_track_counts
+                .entry(clean_album.to_string())
+                .or_default() += 1;
         }
 
         // 2. Check and award new system achievements
         let artist_plays = get_artist_play_count(artist, all_tracks);
         let album_plays = get_album_play_count(album, all_tracks);
-        
+
         let mut new_awards = Vec::new();
-        check_and_award_new_system(db, "Artist", artist, artist_plays, &date_str, &mut new_awards);
+        check_and_award_new_system(
+            db,
+            "Artist",
+            artist,
+            artist_plays,
+            &date_str,
+            &mut new_awards,
+        );
         if !clean_album.is_empty() {
-            check_and_award_new_system(db, "Album", clean_album, album_plays, &date_str, &mut new_awards);
+            check_and_award_new_system(
+                db,
+                "Album",
+                clean_album,
+                album_plays,
+                &date_str,
+                &mut new_awards,
+            );
         }
         for gn in &genre_names {
             if gn != "Unknown" {
                 let genre_plays = get_genre_play_count(gn, all_tracks);
-                check_and_award_new_system(db, "Genre", gn, genre_plays, &date_str, &mut new_awards);
+                check_and_award_new_system(
+                    db,
+                    "Genre",
+                    gn,
+                    genre_plays,
+                    &date_str,
+                    &mut new_awards,
+                );
             }
         }
 
         for award in new_awards {
             toasts.push((
                 "ACHIEVEMENT UNLOCKED!".to_string(),
-                format!("You've earned the {} for **{}**!", award.tier, award.entity_name),
+                format!(
+                    "You've earned the {} for **{}**!",
+                    award.tier, award.entity_name
+                ),
                 None,
                 String::new(),
                 0,
@@ -817,13 +968,21 @@ pub fn ladder_title_for_tier(positions: u32) -> String {
     }
 }
 
-pub fn generate_ladder_message(artist: &str, positions: u32, new_pos: usize, overtaken: &[String]) -> String {
+pub fn generate_ladder_message(
+    artist: &str,
+    positions: u32,
+    new_pos: usize,
+    overtaken: &[String],
+) -> String {
     let movement = match positions {
         1 => format!("**{}** has climbed to #{}", artist, new_pos),
         2 => format!("**{}** is on the move! Up 2 to #{}", artist, new_pos),
         3 => format!("**{}** is climbing fast! Up 3 to #{}", artist, new_pos),
         4 => format!("**{}** is on a rampage! Up 4 to #{}", artist, new_pos),
-        _ => format!("**{}** is TAKING OVER! Up {} to #{}", artist, positions, new_pos),
+        _ => format!(
+            "**{}** is TAKING OVER! Up {} to #{}",
+            artist, positions, new_pos
+        ),
     };
 
     if overtaken.is_empty() {
@@ -880,39 +1039,39 @@ pub fn get_period_stats() -> PeriodStats {
     get(|db| {
         let now = chrono::Local::now().naive_local().date();
         let today_str = now.format("%Y-%m-%d").to_string();
-        
+
         let yesterday = now - chrono::Duration::days(1);
         let yesterday_str = yesterday.format("%Y-%m-%d").to_string();
-        
+
         // Weeks start on Monday
         let days_from_monday = now.weekday().num_days_from_monday();
         let monday = now - chrono::Duration::days(days_from_monday as i64);
         let prev_sunday = monday - chrono::Duration::days(1);
         let prev_monday = prev_sunday - chrono::Duration::days(6);
-        
+
         let this_month_prefix = now.format("%Y-%m").to_string();
         let prev_month = if now.month() == 1 {
             format!("{}-12", now.year() - 1)
         } else {
             format!("{}-{:02}", now.year(), now.month() - 1)
         };
-        
+
         let this_year_prefix = now.format("%Y").to_string();
         let prev_year_prefix = (now.year() - 1).to_string();
-        
+
         let mut stats = PeriodStats::default();
         stats.all_time_minutes = db.legacy_minutes;
 
         for (date_str, day) in &db.daily_buckets {
             stats.all_time_minutes += day.total_minutes;
-            
+
             if date_str == &today_str {
                 stats.today_minutes += day.total_minutes;
             }
             if date_str == &yesterday_str {
                 stats.yesterday_minutes += day.total_minutes;
             }
-            
+
             if let Some(d) = parse_date(date_str) {
                 if d >= monday && d <= now {
                     stats.this_week_minutes += day.total_minutes;
@@ -921,14 +1080,14 @@ pub fn get_period_stats() -> PeriodStats {
                     stats.last_week_minutes += day.total_minutes;
                 }
             }
-            
+
             if date_str.starts_with(&this_month_prefix) {
                 stats.this_month_minutes += day.total_minutes;
             }
             if date_str.starts_with(&prev_month) {
                 stats.last_month_minutes += day.total_minutes;
             }
-            
+
             if date_str.starts_with(&this_year_prefix) {
                 stats.this_year_minutes += day.total_minutes;
             }
@@ -936,7 +1095,7 @@ pub fn get_period_stats() -> PeriodStats {
                 stats.last_year_minutes += day.total_minutes;
             }
         }
-        
+
         stats
     })
 }
@@ -945,38 +1104,45 @@ use chrono::Datelike;
 
 pub fn get_streak_stats() -> StreakStats {
     get(|db| {
-        let mut active_dates: Vec<chrono::NaiveDate> = db.daily_buckets.iter()
+        let mut active_dates: Vec<chrono::NaiveDate> = db
+            .daily_buckets
+            .iter()
             .filter(|(_, day)| day.total_minutes > 0.0)
             .filter_map(|(date_str, _)| parse_date(date_str))
             .collect();
-            
+
         if active_dates.is_empty() {
             return StreakStats::default();
         }
-        
+
         active_dates.sort();
         active_dates.dedup();
-        
+
         let now = chrono::Local::now().naive_local().date();
         let yesterday = now - chrono::Duration::days(1);
-        
+
         // Compute current streak
         let mut current_streak = 0;
-        let mut has_today_or_yesterday = active_dates.contains(&now) || active_dates.contains(&yesterday);
-        
+        let mut has_today_or_yesterday =
+            active_dates.contains(&now) || active_dates.contains(&yesterday);
+
         if has_today_or_yesterday {
-            let mut check_date = if active_dates.contains(&now) { now } else { yesterday };
+            let mut check_date = if active_dates.contains(&now) {
+                now
+            } else {
+                yesterday
+            };
             while active_dates.contains(&check_date) {
                 current_streak += 1;
                 check_date -= chrono::Duration::days(1);
             }
         }
-        
+
         // Compute longest streak
         let mut longest_streak = 0;
         let mut current_run = 0;
         let mut prev_date: Option<chrono::NaiveDate> = None;
-        
+
         for date in active_dates {
             match prev_date {
                 Some(prev) => {
@@ -995,7 +1161,7 @@ pub fn get_streak_stats() -> StreakStats {
             }
             prev_date = Some(date);
         }
-        
+
         StreakStats {
             current_streak,
             longest_streak,
@@ -1011,18 +1177,18 @@ pub fn get_unique_stats(all_tracks: &[crate::library::models::Track]) -> UniqueS
                 tracks_played.insert(path.clone());
             }
         }
-        
+
         let unique_tracks_count = tracks_played.len() + db.legacy_tracks as usize;
-        
+
         // Deduplicate artists and albums from played track paths
         let mut artists = std::collections::HashSet::new();
         let mut albums = std::collections::HashSet::new();
-        
+
         // Load legacy ones
         for artist in db.legacy_artist_minutes.keys() {
             artists.insert(artist.clone());
         }
-        
+
         for path in &tracks_played {
             if let Some(track) = all_tracks.iter().find(|t| &t.path == path) {
                 if !track.artist.trim().is_empty() {
@@ -1040,7 +1206,7 @@ pub fn get_unique_stats(all_tracks: &[crate::library::models::Track]) -> UniqueS
                 }
             }
         }
-        
+
         UniqueStats {
             unique_tracks: unique_tracks_count,
             unique_artists: artists.len(),
@@ -1053,10 +1219,10 @@ pub fn get_combined_monthly_leaderboard() -> Vec<(String, f64, u32)> {
     get(|db| {
         let now = chrono::Local::now().naive_local().date();
         let this_month_prefix = now.format("%Y-%m").to_string();
-        
+
         let mut artists_minutes: HashMap<String, f64> = HashMap::new();
         let mut artists_tracks: HashMap<String, u32> = HashMap::new();
-        
+
         for (date_str, day) in &db.daily_buckets {
             if date_str.starts_with(&this_month_prefix) {
                 for (artist, mins) in &day.artist_minutes {
@@ -1067,12 +1233,15 @@ pub fn get_combined_monthly_leaderboard() -> Vec<(String, f64, u32)> {
                 }
             }
         }
-        
-        let mut combined: Vec<(String, f64, u32)> = artists_minutes.into_iter().map(|(name, mins)| {
-            let count = artists_tracks.get(&name).cloned().unwrap_or(0);
-            (name, mins, count)
-        }).collect();
-        
+
+        let mut combined: Vec<(String, f64, u32)> = artists_minutes
+            .into_iter()
+            .map(|(name, mins)| {
+                let count = artists_tracks.get(&name).cloned().unwrap_or(0);
+                (name, mins, count)
+            })
+            .collect();
+
         combined.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         combined.truncate(5);
         combined
@@ -1083,7 +1252,7 @@ pub fn get_combined_all_time_leaderboard() -> Vec<(String, f64, u32)> {
     get(|db| {
         let mut artists_minutes: HashMap<String, f64> = db.legacy_artist_minutes.clone();
         let mut artists_tracks: HashMap<String, u32> = db.legacy_artist_tracks.clone();
-        
+
         for (_, day) in &db.daily_buckets {
             for (artist, mins) in &day.artist_minutes {
                 *artists_minutes.entry(artist.clone()).or_default() += mins;
@@ -1092,12 +1261,15 @@ pub fn get_combined_all_time_leaderboard() -> Vec<(String, f64, u32)> {
                 *artists_tracks.entry(artist.clone()).or_default() += count;
             }
         }
-        
-        let mut combined: Vec<(String, f64, u32)> = artists_minutes.into_iter().map(|(name, mins)| {
-            let count = artists_tracks.get(&name).cloned().unwrap_or(0);
-            (name, mins, count)
-        }).collect();
-        
+
+        let mut combined: Vec<(String, f64, u32)> = artists_minutes
+            .into_iter()
+            .map(|(name, mins)| {
+                let count = artists_tracks.get(&name).cloned().unwrap_or(0);
+                (name, mins, count)
+            })
+            .collect();
+
         combined.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         combined.truncate(TOP_N_BREAKDOWN);
         combined
@@ -1126,7 +1298,10 @@ pub struct PeriodBreakdown {
 
 const TOP_N_BREAKDOWN: usize = 25;
 
-pub fn get_period_breakdown(period_idx: usize, tracks: &[crate::library::models::Track]) -> PeriodBreakdown {
+pub fn get_period_breakdown(
+    period_idx: usize,
+    tracks: &[crate::library::models::Track],
+) -> PeriodBreakdown {
     get(|db| {
         let now = chrono::Local::now().naive_local().date();
         let today_str = now.format("%Y-%m-%d").to_string();
@@ -1138,13 +1313,24 @@ pub fn get_period_breakdown(period_idx: usize, tracks: &[crate::library::models:
 
         let periods: Vec<(&str, Box<dyn Fn(&str) -> bool>)> = vec![
             ("Today", Box::new(move |d: &str| d == today_str)),
-            ("This Week", Box::new(move |d: &str| {
-                if let Some(date) = parse_date(d) {
-                    date >= monday && date <= now
-                } else { false }
-            })),
-            ("This Month", Box::new(move |d: &str| d.starts_with(&this_month_prefix))),
-            ("This Year", Box::new(move |d: &str| d.starts_with(&this_year_prefix))),
+            (
+                "This Week",
+                Box::new(move |d: &str| {
+                    if let Some(date) = parse_date(d) {
+                        date >= monday && date <= now
+                    } else {
+                        false
+                    }
+                }),
+            ),
+            (
+                "This Month",
+                Box::new(move |d: &str| d.starts_with(&this_month_prefix)),
+            ),
+            (
+                "This Year",
+                Box::new(move |d: &str| d.starts_with(&this_year_prefix)),
+            ),
             ("All-Time", Box::new(move |_d: &str| true)),
         ];
 
@@ -1191,8 +1377,15 @@ pub fn get_period_breakdown(period_idx: usize, tracks: &[crate::library::models:
         let mut artist_album_list: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for track in tracks {
             if !track.artist.is_empty() && !track.album.is_empty() {
-                let clean = if track.album.trim().is_empty() { "Unknown".to_string() } else { track.album.trim().to_string() };
-                artist_album_list.entry(track.artist.clone()).or_default().push(clean);
+                let clean = if track.album.trim().is_empty() {
+                    "Unknown".to_string()
+                } else {
+                    track.album.trim().to_string()
+                };
+                artist_album_list
+                    .entry(track.artist.clone())
+                    .or_default()
+                    .push(clean);
             }
         }
         // Deduplicate album lists
@@ -1213,11 +1406,16 @@ pub fn get_period_breakdown(period_idx: usize, tracks: &[crate::library::models:
                         *artist_tracks_count.entry(a.clone()).or_default() += t;
                     }
                     if day.genre_minutes.is_empty() {
-                        let mut artist_genre_counts: HashMap<String, HashMap<String, usize>> = HashMap::new();
+                        let mut artist_genre_counts: HashMap<String, HashMap<String, usize>> =
+                            HashMap::new();
                         for track in tracks {
                             if !track.artist.is_empty() && !track.genre.is_empty() {
                                 for g in track.genres() {
-                                    let clean = if g.trim().is_empty() { "Unknown" } else { g.trim() };
+                                    let clean = if g.trim().is_empty() {
+                                        "Unknown"
+                                    } else {
+                                        g.trim()
+                                    };
                                     *artist_genre_counts
                                         .entry(track.artist.clone())
                                         .or_default()
@@ -1227,9 +1425,9 @@ pub fn get_period_breakdown(period_idx: usize, tracks: &[crate::library::models:
                             }
                         }
                         for (a, m) in &day.artist_minutes {
-                            if let Some(best_genre) = artist_genre_counts.get(a)
-                                .and_then(|gmap| gmap.iter().max_by_key(|(_, count)| **count).map(|(g, _)| g))
-                            {
+                            if let Some(best_genre) = artist_genre_counts.get(a).and_then(|gmap| {
+                                gmap.iter().max_by_key(|(_, count)| **count).map(|(g, _)| g)
+                            }) {
                                 *genre_minutes.entry(best_genre.clone()).or_default() += m;
                             }
                         }
@@ -1248,7 +1446,8 @@ pub fn get_period_breakdown(period_idx: usize, tracks: &[crate::library::models:
                                 if !albums.is_empty() {
                                     let per_album = m / albums.len() as f64;
                                     for album in albums {
-                                        *album_minutes.entry(album.clone()).or_default() += per_album;
+                                        *album_minutes.entry(album.clone()).or_default() +=
+                                            per_album;
                                     }
                                 }
                             }
@@ -1274,7 +1473,8 @@ pub fn get_period_breakdown(period_idx: usize, tracks: &[crate::library::models:
             }
         }
 
-        let mut artist_list: Vec<(String, f64, u32)> = artist_minutes.into_iter()
+        let mut artist_list: Vec<(String, f64, u32)> = artist_minutes
+            .into_iter()
             .map(|(name, mins)| {
                 let count = artist_tracks_count.get(&name).cloned().unwrap_or(0);
                 (name, mins, count)
@@ -1283,19 +1483,29 @@ pub fn get_period_breakdown(period_idx: usize, tracks: &[crate::library::models:
         artist_list.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         artist_list.truncate(TOP_N_BREAKDOWN);
         let avg_song_mins: f64 = 4.0;
-        let mut genre_list: Vec<(String, f64, u32)> = genre_minutes.into_iter()
+        let mut genre_list: Vec<(String, f64, u32)> = genre_minutes
+            .into_iter()
             .map(|(name, mins)| {
                 let count = genre_tracks_count.get(&name).cloned().unwrap_or(0);
-                let estimated = if mins > 0.0 { (mins / avg_song_mins).ceil() as u32 } else { 0 };
+                let estimated = if mins > 0.0 {
+                    (mins / avg_song_mins).ceil() as u32
+                } else {
+                    0
+                };
                 (name, mins, count.max(estimated))
             })
             .collect();
         genre_list.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         genre_list.truncate(TOP_N_BREAKDOWN);
-        let mut album_list: Vec<(String, f64, u32)> = album_minutes.into_iter()
+        let mut album_list: Vec<(String, f64, u32)> = album_minutes
+            .into_iter()
             .map(|(name, mins)| {
                 let count = album_tracks_count.get(&name).cloned().unwrap_or(0);
-                let estimated = if mins > 0.0 { (mins / avg_song_mins).ceil() as u32 } else { 0 };
+                let estimated = if mins > 0.0 {
+                    (mins / avg_song_mins).ceil() as u32
+                } else {
+                    0
+                };
                 (name, mins, count.max(estimated))
             })
             .collect();
@@ -1341,11 +1551,24 @@ pub fn get_song_breakdown(
 
         let periods: Vec<(&str, Box<dyn Fn(&str) -> bool>)> = vec![
             ("Today", Box::new(move |d: &str| d == today_str)),
-            ("This Week", Box::new(move |d: &str| {
-                if let Some(date) = parse_date(d) { date >= monday && date <= now } else { false }
-            })),
-            ("This Month", Box::new(move |d: &str| d.starts_with(&this_month_prefix))),
-            ("This Year", Box::new(move |d: &str| d.starts_with(&this_year_prefix))),
+            (
+                "This Week",
+                Box::new(move |d: &str| {
+                    if let Some(date) = parse_date(d) {
+                        date >= monday && date <= now
+                    } else {
+                        false
+                    }
+                }),
+            ),
+            (
+                "This Month",
+                Box::new(move |d: &str| d.starts_with(&this_month_prefix)),
+            ),
+            (
+                "This Year",
+                Box::new(move |d: &str| d.starts_with(&this_year_prefix)),
+            ),
             ("All-Time", Box::new(move |_d: &str| true)),
         ];
 
@@ -1456,18 +1679,22 @@ pub fn get_restructured_stats(tracks: &[crate::library::models::Track]) -> Vec<R
     get(|db| {
         let now = chrono::Local::now().naive_local().date();
         let today_str = now.format("%Y-%m-%d").to_string();
-        
+
         let days_from_monday = now.weekday().num_days_from_monday();
         let monday = now - chrono::Duration::days(days_from_monday as i64);
-        
+
         let this_month_prefix = now.format("%Y-%m").to_string();
-        
+
         // Build artist to genre mapping from the library tracks
         let mut artist_genre_counts: HashMap<String, HashMap<String, usize>> = HashMap::new();
         for track in tracks {
             if !track.artist.is_empty() && !track.genre.is_empty() {
                 for g in track.genres() {
-                    let clean = if g.trim().is_empty() { "Unknown" } else { g.trim() };
+                    let clean = if g.trim().is_empty() {
+                        "Unknown"
+                    } else {
+                        g.trim()
+                    };
                     *artist_genre_counts
                         .entry(track.artist.clone())
                         .or_default()
@@ -1476,38 +1703,49 @@ pub fn get_restructured_stats(tracks: &[crate::library::models::Track]) -> Vec<R
                 }
             }
         }
-        
+
         let mut artist_to_genre: HashMap<String, String> = HashMap::new();
         for (artist, genres_map) in artist_genre_counts {
-            if let Some(best_genre) = genres_map.into_iter()
+            if let Some(best_genre) = genres_map
+                .into_iter()
                 .max_by_key(|(_, count)| *count)
-                .map(|(genre, _)| genre) {
+                .map(|(genre, _)| genre)
+            {
                 artist_to_genre.insert(artist, best_genre);
             }
         }
-        
+
         let periods = vec![
-            ("Today".to_string(), Box::new(move |d: &str| d == today_str) as Box<dyn Fn(&str) -> bool>),
-            ("This Week".to_string(), Box::new(move |d: &str| {
-                if let Some(date) = parse_date(d) {
-                    date >= monday && date <= now
-                } else {
-                    false
-                }
-            })),
-            ("This Month".to_string(), Box::new(move |d: &str| d.starts_with(&this_month_prefix))),
+            (
+                "Today".to_string(),
+                Box::new(move |d: &str| d == today_str) as Box<dyn Fn(&str) -> bool>,
+            ),
+            (
+                "This Week".to_string(),
+                Box::new(move |d: &str| {
+                    if let Some(date) = parse_date(d) {
+                        date >= monday && date <= now
+                    } else {
+                        false
+                    }
+                }),
+            ),
+            (
+                "This Month".to_string(),
+                Box::new(move |d: &str| d.starts_with(&this_month_prefix)),
+            ),
             ("All-Time".to_string(), Box::new(move |_d: &str| true)),
         ];
-        
+
         let mut rows = Vec::new();
-        
+
         for (label, filter) in periods {
             let mut songs = 0;
             let mut minutes = 0.0;
             let mut longest_session = 0.0;
             let mut artists: HashMap<String, f64> = HashMap::new();
             let mut genres: HashMap<String, f64> = HashMap::new();
-            
+
             if label == "All-Time" {
                 songs += db.legacy_tracks;
                 minutes += db.legacy_minutes;
@@ -1518,7 +1756,7 @@ pub fn get_restructured_stats(tracks: &[crate::library::models::Track]) -> Vec<R
                     }
                 }
             }
-            
+
             for (date_str, day) in &db.daily_buckets {
                 if filter(date_str) {
                     songs += day.track_play_count;
@@ -1542,17 +1780,19 @@ pub fn get_restructured_stats(tracks: &[crate::library::models::Track]) -> Vec<R
                     }
                 }
             }
-            
-            let top_artist = artists.into_iter()
+
+            let top_artist = artists
+                .into_iter()
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .map(|(name, _)| name)
                 .unwrap_or_else(|| "-".to_string());
-                
-            let top_genre = genres.into_iter()
+
+            let top_genre = genres
+                .into_iter()
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
                 .map(|(name, _)| name)
                 .unwrap_or_else(|| "-".to_string());
-                
+
             rows.push(RowStats {
                 period_label: label,
                 songs,
@@ -1562,7 +1802,7 @@ pub fn get_restructured_stats(tracks: &[crate::library::models::Track]) -> Vec<R
                 longest_session,
             });
         }
-        
+
         rows
     })
 }
@@ -1591,18 +1831,24 @@ pub fn detect_all_time_rank_changes(db: &mut StatsDb) {
         for (name, &new_rank) in &new_artist_ranks {
             if let Some(&old_rank) = db.previous_artist_ranks.get(name) {
                 if new_rank < old_rank {
-                    db.artist_rank_changes.insert(name.clone(), RankChange {
-                        direction: "up".to_string(),
-                        timestamp: now,
-                        date: date_str.clone(),
-                    });
+                    db.artist_rank_changes.insert(
+                        name.clone(),
+                        RankChange {
+                            direction: "up".to_string(),
+                            timestamp: now,
+                            date: date_str.clone(),
+                        },
+                    );
                     db.viewed_rank_changes.remove(name);
                 } else if new_rank > old_rank {
-                    db.artist_rank_changes.insert(name.clone(), RankChange {
-                        direction: "down".to_string(),
-                        timestamp: now,
-                        date: date_str.clone(),
-                    });
+                    db.artist_rank_changes.insert(
+                        name.clone(),
+                        RankChange {
+                            direction: "down".to_string(),
+                            timestamp: now,
+                            date: date_str.clone(),
+                        },
+                    );
                     db.viewed_rank_changes.remove(name);
                 }
             }
@@ -1629,18 +1875,24 @@ pub fn detect_all_time_rank_changes(db: &mut StatsDb) {
         for (name, &new_rank) in &new_album_ranks {
             if let Some(&old_rank) = db.previous_album_ranks.get(name) {
                 if new_rank < old_rank {
-                    db.album_rank_changes.insert(name.clone(), RankChange {
-                        direction: "up".to_string(),
-                        timestamp: now,
-                        date: date_str.clone(),
-                    });
+                    db.album_rank_changes.insert(
+                        name.clone(),
+                        RankChange {
+                            direction: "up".to_string(),
+                            timestamp: now,
+                            date: date_str.clone(),
+                        },
+                    );
                     db.viewed_rank_changes.remove(name);
                 } else if new_rank > old_rank {
-                    db.album_rank_changes.insert(name.clone(), RankChange {
-                        direction: "down".to_string(),
-                        timestamp: now,
-                        date: date_str.clone(),
-                    });
+                    db.album_rank_changes.insert(
+                        name.clone(),
+                        RankChange {
+                            direction: "down".to_string(),
+                            timestamp: now,
+                            date: date_str.clone(),
+                        },
+                    );
                     db.viewed_rank_changes.remove(name);
                 }
             }
@@ -1667,18 +1919,24 @@ pub fn detect_all_time_rank_changes(db: &mut StatsDb) {
         for (name, &new_rank) in &new_genre_ranks {
             if let Some(&old_rank) = db.previous_genre_ranks.get(name) {
                 if new_rank < old_rank {
-                    db.genre_rank_changes.insert(name.clone(), RankChange {
-                        direction: "up".to_string(),
-                        timestamp: now,
-                        date: date_str.clone(),
-                    });
+                    db.genre_rank_changes.insert(
+                        name.clone(),
+                        RankChange {
+                            direction: "up".to_string(),
+                            timestamp: now,
+                            date: date_str.clone(),
+                        },
+                    );
                     db.viewed_rank_changes.remove(name);
                 } else if new_rank > old_rank {
-                    db.genre_rank_changes.insert(name.clone(), RankChange {
-                        direction: "down".to_string(),
-                        timestamp: now,
-                        date: date_str.clone(),
-                    });
+                    db.genre_rank_changes.insert(
+                        name.clone(),
+                        RankChange {
+                            direction: "down".to_string(),
+                            timestamp: now,
+                            date: date_str.clone(),
+                        },
+                    );
                     db.viewed_rank_changes.remove(name);
                 }
             }
@@ -1686,5 +1944,3 @@ pub fn detect_all_time_rank_changes(db: &mut StatsDb) {
     }
     db.previous_genre_ranks = new_genre_ranks;
 }
-
-

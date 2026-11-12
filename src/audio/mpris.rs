@@ -63,29 +63,45 @@ pub fn launch(
             };
 
             let tx = cmd_tx.clone();
-            player.connect_play(move |_| { let _ = tx.send(MprisCommand::Play); });
+            player.connect_play(move |_| {
+                let _ = tx.send(MprisCommand::Play);
+            });
 
             let tx = cmd_tx.clone();
-            player.connect_pause(move |_| { let _ = tx.send(MprisCommand::Pause); });
+            player.connect_pause(move |_| {
+                let _ = tx.send(MprisCommand::Pause);
+            });
 
             let tx = cmd_tx.clone();
-            player.connect_play_pause(move |_| { let _ = tx.send(MprisCommand::PlayPause); });
+            player.connect_play_pause(move |_| {
+                let _ = tx.send(MprisCommand::PlayPause);
+            });
 
             let tx = cmd_tx.clone();
-            player.connect_next(move |_| { let _ = tx.send(MprisCommand::Next); });
+            player.connect_next(move |_| {
+                let _ = tx.send(MprisCommand::Next);
+            });
 
             let tx = cmd_tx.clone();
-            player.connect_previous(move |_| { let _ = tx.send(MprisCommand::Previous); });
+            player.connect_previous(move |_| {
+                let _ = tx.send(MprisCommand::Previous);
+            });
 
             let tx = cmd_tx.clone();
-            player.connect_stop(move |_| { let _ = tx.send(MprisCommand::Stop); });
+            player.connect_stop(move |_| {
+                let _ = tx.send(MprisCommand::Stop);
+            });
 
             let tx = cmd_tx.clone();
-            player.connect_set_volume(move |_, v| { let _ = tx.send(MprisCommand::SetVolume(v)); });
+            player.connect_set_volume(move |_, v| {
+                let _ = tx.send(MprisCommand::SetVolume(v));
+            });
 
             let tx = cmd_tx.clone();
             player.connect_set_position(move |_, _track_id, pos| {
-                let _ = tx.send(MprisCommand::SeekTo(std::time::Duration::from_micros(pos.as_micros() as u64)));
+                let _ = tx.send(MprisCommand::SeekTo(std::time::Duration::from_micros(
+                    pos.as_micros() as u64,
+                )));
             });
 
             let tx = cmd_tx.clone();
@@ -100,7 +116,14 @@ pub fn launch(
 
             while let Some(update) = update_rx.recv().await {
                 match update {
-                    MprisUpdate::Metadata { title, artist, album, duration_us, url, art_url } => {
+                    MprisUpdate::Metadata {
+                        title,
+                        artist,
+                        album,
+                        duration_us,
+                        url,
+                        art_url,
+                    } => {
                         let mut builder = Metadata::builder()
                             .title(title)
                             .artist([artist])

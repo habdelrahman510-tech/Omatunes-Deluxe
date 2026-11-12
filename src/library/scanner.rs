@@ -12,14 +12,21 @@ use walkdir::WalkDir;
 
 use super::models::Track;
 
-const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "ogg", "opus", "wav", "aac", "m4a", "wma", "aiff"];
+const AUDIO_EXTENSIONS: &[&str] = &[
+    "mp3", "flac", "ogg", "opus", "wav", "aac", "m4a", "wma", "aiff",
+];
 
 const COVER_FILENAMES: &[&str] = &[
-    "cover.jpg", "Cover.jpg",
-    "cover.png", "Cover.png",
-    "cover.webp", "Cover.webp",
-    "folder.jpg", "Folder.jpg",
-    "folder.png", "Folder.png",
+    "cover.jpg",
+    "Cover.jpg",
+    "cover.png",
+    "Cover.png",
+    "cover.webp",
+    "Cover.webp",
+    "folder.jpg",
+    "Folder.jpg",
+    "folder.png",
+    "Folder.png",
 ];
 
 /// Write like/rating metadata to an audio file using the unified generic tag API.
@@ -83,10 +90,7 @@ pub fn scan_folder(dir: &Path) -> Vec<Track> {
         })
         .collect();
 
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(4)
-        .build()
-        .ok();
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(4).build().ok();
 
     let mut pairs: Vec<(PathBuf, TrackInfo)> = if let Some(p) = pool {
         p.install(|| {
@@ -103,38 +107,42 @@ pub fn scan_folder(dir: &Path) -> Vec<Track> {
     };
 
     pairs.sort_by(|(_, a), (_, b)| {
-        a.album.cmp(&b.album)
+        a.album
+            .cmp(&b.album)
             .then(a.disc_number.cmp(&b.disc_number))
             .then(a.track_number.cmp(&b.track_number))
             .then(a.title.cmp(&b.title))
     });
 
-
-    pairs.into_iter().enumerate().map(|(_i, (path, info))| {
-        let play_count = crate::db::get(|db| db.play_counts.get(&path).copied().unwrap_or(0));
-        Track {
-            id: {
-                let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                path.hash(&mut hasher);
-                hasher.finish() as i64
-            },
-            path,
-            title: info.title,
-            artist: info.artist,
-            album: info.album,
-            album_id: 0,
-            track_number: info.track_number,
-            disc_number: info.disc_number,
-            duration: Duration::from_millis(info.duration_ms),
-            cover_data: None,
-            genre: info.genre,
-            year: info.year,
-            play_count,
-            liked: info.liked,
-            date_played: None,
-            lyrics: info.lyrics,
-        }
-    }).collect()
+    pairs
+        .into_iter()
+        .enumerate()
+        .map(|(_i, (path, info))| {
+            let play_count = crate::db::get(|db| db.play_counts.get(&path).copied().unwrap_or(0));
+            Track {
+                id: {
+                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                    path.hash(&mut hasher);
+                    hasher.finish() as i64
+                },
+                path,
+                title: info.title,
+                artist: info.artist,
+                album: info.album,
+                album_id: 0,
+                track_number: info.track_number,
+                disc_number: info.disc_number,
+                duration: Duration::from_millis(info.duration_ms),
+                cover_data: None,
+                genre: info.genre,
+                year: info.year,
+                play_count,
+                liked: info.liked,
+                date_played: None,
+                lyrics: info.lyrics,
+            }
+        })
+        .collect()
 }
 
 pub fn load_cache() -> Option<Vec<Track>> {
@@ -153,7 +161,6 @@ pub fn save_cache(tracks: &[Track]) {
         std::fs::write(p, json).ok();
     }
 }
-
 
 pub fn downscale_cover(raw_bytes: &[u8], max_dim: u32) -> Vec<u8> {
     if raw_bytes.len() < 100_000 {
@@ -175,13 +182,15 @@ pub fn downscale_cover(raw_bytes: &[u8], max_dim: u32) -> Vec<u8> {
 pub fn load_cover(path: &Path) -> Option<Vec<u8>> {
     let tagged = Probe::open(path).ok()?.read().ok()?;
     let embedded = tagged.primary_tag().and_then(|t| {
-        t.pictures().iter().find(|p| {
-            matches!(
-                p.pic_type(),
-                lofty::picture::PictureType::CoverFront | lofty::picture::PictureType::Other
-            )
-        })
-        .map(|p| p.data().to_vec())
+        t.pictures()
+            .iter()
+            .find(|p| {
+                matches!(
+                    p.pic_type(),
+                    lofty::picture::PictureType::CoverFront | lofty::picture::PictureType::Other
+                )
+            })
+            .map(|p| p.data().to_vec())
     });
     let raw = embedded.or_else(|| cover_from_folder(path))?;
     Some(downscale_cover(&raw, 512))
@@ -219,7 +228,8 @@ fn read_tags(path: &Path) -> Result<TrackInfo> {
                 .to_string()
         });
 
-    let folder_artist = path.parent()
+    let folder_artist = path
+        .parent()
         .and_then(|p| p.parent())
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
@@ -231,7 +241,8 @@ fn read_tags(path: &Path) -> Result<TrackInfo> {
         .unwrap_or(unknown)
         .to_string();
 
-    let folder_album = path.parent()
+    let folder_album = path
+        .parent()
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
         .unwrap_or(unknown)
@@ -302,7 +313,18 @@ fn read_tags(path: &Path) -> Result<TrackInfo> {
         })
         .unwrap_or(false);
 
-    Ok(TrackInfo { title, artist, album, track_number, disc_number, duration_ms, genre, year, lyrics, liked })
+    Ok(TrackInfo {
+        title,
+        artist,
+        album,
+        track_number,
+        disc_number,
+        duration_ms,
+        genre,
+        year,
+        lyrics,
+        liked,
+    })
 }
 
 fn cover_from_folder(path: &Path) -> Option<Vec<u8>> {
@@ -407,12 +429,19 @@ mod tests {
         // test. Skip when there is nothing to scan (clean build dirs, chroots,
         // CI) instead of failing a release build for having no music on disk.
         if !music_dir.is_dir() {
-            eprintln!("skipping test_scan_media_dir: {} is not a directory", music_dir.display());
+            eprintln!(
+                "skipping test_scan_media_dir: {} is not a directory",
+                music_dir.display()
+            );
             return;
         }
 
         let tracks = scan_folder(&music_dir);
-        println!("scan_folder returned {} tracks from {}", tracks.len(), music_dir.display());
+        println!(
+            "scan_folder returned {} tracks from {}",
+            tracks.len(),
+            music_dir.display()
+        );
         if tracks.is_empty() {
             // Check why read_tags fails on sample track
             for entry in WalkDir::new(&music_dir).into_iter().filter_map(|e| e.ok()) {
@@ -423,11 +452,12 @@ mod tests {
                     break;
                 }
             }
-            eprintln!("skipping test_scan_media_dir: no tracks found in {}", music_dir.display());
+            eprintln!(
+                "skipping test_scan_media_dir: no tracks found in {}",
+                music_dir.display()
+            );
             return;
         }
         assert!(!tracks.is_empty(), "scan_folder should find tracks!");
     }
 }
-
-

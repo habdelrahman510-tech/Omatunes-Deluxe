@@ -20,4 +20,3 @@ pub fn config_toml() -> PathBuf {
 pub fn library_cache() -> PathBuf {
     config_dir().join("library_cache.json")
 }
-

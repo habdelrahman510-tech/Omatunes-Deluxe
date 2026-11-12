@@ -1,7 +1,7 @@
-use iced::widget::canvas::{self, Canvas, Frame, Path};
-use iced::{Color, Element, Length, Point, Rectangle, Size};
 use crate::app::Message;
 use crate::ui::theme;
+use iced::widget::canvas::{self, Canvas, Frame, Path};
+use iced::{Color, Element, Length, Point, Rectangle, Size};
 
 // ── Pie Chart ─────────────────────────────────────────────────────────────────
 
@@ -29,15 +29,11 @@ impl<Message> canvas::Program<Message> for PieChartProgram {
         _cursor: iced::mouse::Cursor,
     ) -> Vec<canvas::Geometry> {
         let mut frame = Frame::new(renderer, bounds.size());
-        
+
         let center = Point::new(bounds.width / 2.0, bounds.height / 2.0);
         let radius = (bounds.width.min(bounds.height) * 0.45).max(10.0);
 
-        frame.fill_rectangle(
-            Point::ORIGIN,
-            bounds.size(),
-            Color::TRANSPARENT,
-        );
+        frame.fill_rectangle(Point::ORIGIN, bounds.size(), Color::TRANSPARENT);
 
         let mut start_angle = 0.0f32;
         for slice in &self.slices {
@@ -56,7 +52,7 @@ impl<Message> canvas::Program<Message> for PieChartProgram {
                 end_angle: iced::Radians(end_angle),
             });
             builder.line_to(center);
-            
+
             let path = builder.build();
             frame.fill(&path, slice.color);
 

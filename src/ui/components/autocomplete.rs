@@ -1,7 +1,7 @@
-use iced::widget::{button, column, row};
-use crate::ui::txt::text;
 use crate::app::Message;
 use crate::ui::theme;
+use crate::ui::txt::text;
+use iced::widget::{button, column, row};
 
 pub fn get_suggestions(query: &str, items: &[String]) -> Vec<String> {
     let query_lower = query.trim().to_lowercase();
@@ -31,14 +31,10 @@ pub fn render_suggestions(
         let mut row_el = row![].spacing(6);
         for suggestion in chunk {
             row_el = row_el.push(
-                button(
-                    text(suggestion.clone())
-                        .size(10)
-                        .color(theme::accent())
-                )
-                .on_press(on_select(suggestion.clone()))
-                .style(theme::secondary_button)
-                .padding([2, 6])
+                button(text(suggestion.clone()).size(10).color(theme::accent()))
+                    .on_press(on_select(suggestion.clone()))
+                    .style(theme::secondary_button)
+                    .padding([2, 6]),
             );
         }
         col = col.push(row_el);
