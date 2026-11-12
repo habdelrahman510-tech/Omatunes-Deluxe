@@ -3,17 +3,26 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use iced::widget::{button, container, column, row, Space, stack, scrollable, mouse_area};
+use iced::widget::{button, column, container, mouse_area, row, scrollable, stack, Space};
 use iced::{Alignment, Element, Length, Subscription, Task, Theme};
 
 use crate::ui::txt::text;
 use mpris_server::{LoopStatus, PlaybackStatus};
 
-use serde::{Serialize, Deserialize};
+mod achievements;
+mod browse;
+mod overlays;
+mod playback;
+mod smart_playlists;
+mod tag_editor;
 
-use crate::audio::{AudioCommand, AudioEvent, AudioPlayer, MprisCommand, MprisUpdate, PlaybackState};
+use serde::{Deserialize, Serialize};
+
 use crate::audio::mpris;
 use crate::audio::spectrum::SpectrumAnalyzer;
+use crate::audio::{
+    AudioCommand, AudioEvent, AudioPlayer, MprisCommand, MprisUpdate, PlaybackState,
+};
 use crate::library::models::Track;
 use crate::library::{load_cover, scan_folder};
 use crate::ui::{theme, views};
@@ -316,8 +325,8 @@ pub enum Message {
     DoubleClickGenre(String),
     HoverPlaylist(Option<String>),
     ToggleContextMenu(Option<ContextMenuTarget>),
-    HideAlbumOrArtist(String, bool),            // (Name, IsArtistOrAlbum)
-    AddAlbumToPlaylist(String, String),         // (AlbumName, PlaylistName)
+    HideAlbumOrArtist(String, bool),    // (Name, IsArtistOrAlbum)
+    AddAlbumToPlaylist(String, String), // (AlbumName, PlaylistName)
 
     HoverSidebarResizer(bool),
     HoverPlaylistResizer(bool),
@@ -602,7 +611,9 @@ impl Clone for TagEditorState {
             apply_cover: self.apply_cover,
             apply_lyrics: self.apply_lyrics,
             lyrics: self.lyrics.clone(),
-            lyrics_content: iced::widget::text_editor::Content::with_text(&self.lyrics_content.text()),
+            lyrics_content: iced::widget::text_editor::Content::with_text(
+                &self.lyrics_content.text(),
+            ),
             active_tab: self.active_tab,
             focused_field: self.focused_field,
             pending_offset: self.pending_offset,
@@ -611,7 +622,6 @@ impl Clone for TagEditorState {
         }
     }
 }
-
 
 pub struct CoverCache {
     pub id: Option<i64>,
@@ -708,7 +718,7 @@ pub struct AppState {
     pub modifiers: iced::keyboard::Modifiers,
     pub selected_tracks: Arc<Vec<Track>>,
     pub last_clicked_track: Option<Track>,
-    pub hidden_artists_albums: Vec<(String, bool)>,       // (Name, IsArtistOrAlbum)
+    pub hidden_artists_albums: Vec<(String, bool)>, // (Name, IsArtistOrAlbum)
 
     pub playlist_tab: PlaylistTab,
     pub right_panel_tab: Option<RightPanelTab>,
@@ -743,7 +753,8 @@ pub struct AppState {
     pub hovered_album_header: Option<String>,
     pub track_list_start: usize,
     pub track_list_end: usize,
-    pub smart_playlist_builder: Option<crate::ui::components::smart_playlist_builder::SmartPlaylistBuilderState>,
+    pub smart_playlist_builder:
+        Option<crate::ui::components::smart_playlist_builder::SmartPlaylistBuilderState>,
     pub previous_view_state: Option<SavedViewState>,
     pub playing_context: Option<PlayingContext>,
     pub animation_tick: u32,
@@ -762,7 +773,8 @@ pub struct AppState {
     pub achievements_sort: AchievementsSort,
     pub achievements_offset: usize,
     pub achievements_search_query: String,
-    pub achievements_cover_cache: std::sync::Mutex<std::collections::HashMap<String, iced::widget::image::Handle>>,
+    pub achievements_cover_cache:
+        std::sync::Mutex<std::collections::HashMap<String, iced::widget::image::Handle>>,
     pub achievements_items: Vec<AchievementItem>,
     pub is_scanning: bool,
 }
@@ -818,168 +830,6 @@ impl GroupByControlState {
 }
 
 impl AppState {
-    pub fn mark_all_time_changes_viewed(&self) {
-        if let Some(ref breakdown) = self.show_period_breakdown {
-            if breakdown.period_label == "All-Time" {
-                crate::stats::write(|db| {
-                    for (name, _, _) in &breakdown.artist_minutes {
-                        db.viewed_rank_changes.insert(name.clone());
-                    }
-                    for (name, _, _) in &breakdown.album_minutes {
-                        db.viewed_rank_changes.insert(name.clone());
-                    }
-                    for (name, _, _) in &breakdown.genre_minutes {
-                        db.viewed_rank_changes.insert(name.clone());
-                    }
-                });
-                crate::stats::flush();
-            }
-        }
-    }
-
-    pub fn show_achievements_in_ui(&self) -> bool {
-        crate::config::get().show_achievements_in_ui
-    }
-
-    pub fn recalculate_achievements_items(&mut self) {
-        let achievements = crate::stats::get(|db| db.earned_achievements.clone());
-        let mut items = Vec::new();
-        let entity_type_str = match self.achievements_sub_tab {
-            AchievementsSubTab::Artists => "Artist",
-            AchievementsSubTab::Albums => "Album",
-            AchievementsSubTab::Genres => "Genre",
-        };
-
-        let mut unique_names = std::collections::HashSet::new();
-        for track in self.all_tracks.iter() {
-            match self.achievements_sub_tab {
-                AchievementsSubTab::Artists => {
-                    if !track.artist.trim().is_empty() {
-                        unique_names.insert(track.artist.clone());
-                    }
-                }
-                AchievementsSubTab::Albums => {
-                    if !track.album.trim().is_empty() {
-                        unique_names.insert(track.album.clone());
-                    }
-                }
-                AchievementsSubTab::Genres => {
-                    if !track.genre.trim().is_empty() {
-                        let parts = if track.genre.contains("; ") {
-                            track.genre.split("; ").map(|g| g.trim().to_string()).collect::<Vec<_>>()
-                        } else {
-                            vec![track.genre.trim().to_string()]
-                        };
-                        for p in parts {
-                            if !p.is_empty() && p != "Unknown" {
-                                unique_names.insert(p);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut play_map = std::collections::HashMap::new();
-        for track in self.all_tracks.iter() {
-            match self.achievements_sub_tab {
-                AchievementsSubTab::Artists => {
-                    *play_map.entry(track.artist.clone()).or_insert(0) += track.play_count;
-                }
-                AchievementsSubTab::Albums => {
-                    *play_map.entry(track.album.clone()).or_insert(0) += track.play_count;
-                }
-                AchievementsSubTab::Genres => {
-                    let parts = if track.genre.contains("; ") {
-                        track.genre.split("; ").map(|g| g.trim().to_string()).collect::<Vec<_>>()
-                    } else {
-                        vec![track.genre.trim().to_string()]
-                    };
-                    for p in parts {
-                        if !p.is_empty() && p != "Unknown" {
-                            *play_map.entry(p).or_insert(0) += track.play_count;
-                        }
-                    }
-                }
-            }
-        }
-
-        for name in unique_names {
-            let plays = play_map.get(&name).copied().unwrap_or(0);
-            if plays == 0 {
-                continue;
-            }
-
-            let entity_awards: Vec<_> = achievements.iter()
-                .filter(|a| a.entity_type == entity_type_str && a.entity_name == name)
-                .collect();
-            let num_awards = entity_awards.len();
-            let highest_tier_score = entity_awards.iter()
-                .map(|a| crate::stats::get_achievement_score(&a.period, &a.tier))
-                .max()
-                .unwrap_or(0);
-
-            items.push(AchievementItem {
-                name,
-                plays,
-                highest_tier_score,
-                num_awards,
-            });
-        }
-
-        match self.achievements_sort {
-            AchievementsSort::Alphabetical => {
-                items.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-            }
-            AchievementsSort::AchievementLevel => {
-                items.sort_by(|a, b| {
-                    b.highest_tier_score.cmp(&a.highest_tier_score)
-                        .then(b.num_awards.cmp(&a.num_awards))
-                        .then(b.plays.cmp(&a.plays))
-                        .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-                });
-            }
-        }
-
-        self.achievements_items = items;
-    }
-
-    pub fn is_draggable_playlist_view(&self) -> bool {
-        match &self.selected_playlist {
-            Some(name) => {
-                name != "Recently Played" && name != "Most Played"
-                    && (
-                        crate::db::get(|db| db.playlists.contains_key(name.as_str()))
-                        || crate::db::get(|db| db.smart_playlists.contains_key(name.as_str()))
-                        || name == "Liked Songs"
-                        || name == "New Music"
-                    )
-            }
-            None => false,
-        }
-    }
-
-    pub fn get_display_cover(&self) -> Option<iced::widget::image::Handle> {
-        let is_playing_or_paused = !matches!(self.playback_state, PlaybackState::Stopped);
-        let display_track = if is_playing_or_paused {
-            self.current_track.as_ref()
-        } else {
-            self.selected_track.as_ref()
-        };
-        let track_id = display_track.map(|t| t.id);
-        let cache_key = (track_id, self.cover_cache_version);
-        
-        let mut cache = self.cover_cache.lock().unwrap();
-        if cache_key != (cache.id, cache.version) {
-            cache.id = track_id;
-            cache.version = self.cover_cache_version;
-            cache.handle = display_track
-                .and_then(|t| t.cover_data.as_ref())
-                .map(|data| iced::widget::image::Handle::from_bytes(data.clone()));
-        }
-        cache.handle.clone()
-    }
-
     fn new() -> (Self, Task<Message>) {
         let audio = AudioPlayer::spawn();
         let spectrum_analyzer = SpectrumAnalyzer::new(audio.sample_buffer.clone());
@@ -990,23 +840,34 @@ impl AppState {
         let (mpris_cmd_tx, mpris_cmd_rx) = tokio::sync::mpsc::unbounded_channel();
         let (mpris_update_tx, mpris_update_rx) = tokio::sync::mpsc::unbounded_channel();
         mpris::launch(mpris_cmd_tx, mpris_update_rx);
-        let _ = mpris_update_tx.send(crate::audio::mpris::MprisUpdate::Volume(cfg.volume.clamp(0.0, 1.0) as f64));
+        let _ = mpris_update_tx.send(crate::audio::mpris::MprisUpdate::Volume(
+            cfg.volume.clamp(0.0, 1.0) as f64,
+        ));
 
         let loaded_theme_name = crate::ui::theme::read_current_theme_name();
         let iced_theme = build_iced_theme();
 
-        let (db_sidebar_width, db_playlist_height, db_right_panel_width, db_right_panel_tab, db_player_height, db_equalizer) = crate::db::get(|db| (
-            db.sidebar_width,
-            db.playlist_height,
-            db.right_panel_width,
-            db.right_panel_tab,
-            db.player_height,
-            db.equalizer,
-        ));
+        let (
+            db_sidebar_width,
+            db_playlist_height,
+            db_right_panel_width,
+            db_right_panel_tab,
+            db_player_height,
+            db_equalizer,
+        ) = crate::db::get(|db| {
+            (
+                db.sidebar_width,
+                db.playlist_height,
+                db.right_panel_width,
+                db.right_panel_tab,
+                db.player_height,
+                db.equalizer,
+            )
+        });
 
         // Hand the persisted curve to the audio thread before it starts playing.
         audio.eq.update(db_equalizer);
-        
+
         crate::db::write(|db| {
             if db.playlist_order.is_empty() && !db.playlists.is_empty() {
                 let mut names: Vec<String> = db.playlists.keys().cloned().collect();
@@ -1036,7 +897,10 @@ impl AppState {
         let mut initial_folder_cache: HashMap<PathBuf, Vec<Track>> = HashMap::new();
         for track in initial_all_tracks.iter() {
             if let Some(parent) = track.path.parent() {
-                initial_folder_cache.entry(parent.to_path_buf()).or_default().push(track.clone());
+                initial_folder_cache
+                    .entry(parent.to_path_buf())
+                    .or_default()
+                    .push(track.clone());
             }
         }
         let mut initial_folders: Vec<PathBuf> = initial_folder_cache.keys().cloned().collect();
@@ -1054,17 +918,25 @@ impl AppState {
             volume: cfg.volume.clamp(0.0, 1.0),
             shuffle: cfg.playback_defaults.album.shuffle,
             repeat: cfg.playback_defaults.album.repeat,
-            folders: if initial_folders.is_empty() { folders } else { initial_folders },
+            folders: if initial_folders.is_empty() {
+                folders
+            } else {
+                initial_folders
+            },
             selected_folder: None,
             tracks: Arc::new(Vec::new()),
             folder_cache: initial_folder_cache,
 
-            sidebar_width: db_sidebar_width.unwrap_or(200.0).clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH),
+            sidebar_width: db_sidebar_width
+                .unwrap_or(200.0)
+                .clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH),
             dragging_sidebar: false,
             player_height: db_player_height.unwrap_or(330.0).clamp(330.0, 458.0),
             dragging_player_split: false,
             is_hovering_player_resizer: false,
-            right_panel_width: db_right_panel_width.unwrap_or(960.0f32 * 0.33).clamp(450.0, 960.0),
+            right_panel_width: db_right_panel_width
+                .unwrap_or(960.0f32 * 0.33)
+                .clamp(450.0, 960.0),
             right_panel_width_initialized: db_right_panel_width.is_some(),
             dragging_right_panel: false,
             is_hovering_right_panel_resizer: false,
@@ -1130,7 +1002,13 @@ impl AppState {
             last_clicked_track: None,
             hidden_artists_albums: crate::db::get(|db| db.hidden_artists_albums.clone()),
             playlist_tab: PlaylistTab::Playlists,
-            right_panel_tab: db_right_panel_tab.and_then(|t| if t == RightPanelTab::Statistics { None } else { Some(t) }),
+            right_panel_tab: db_right_panel_tab.and_then(|t| {
+                if t == RightPanelTab::Statistics {
+                    None
+                } else {
+                    Some(t)
+                }
+            }),
             equalizer: db_equalizer,
             visualizer_mode: cfg.visualizer_mode,
             visualizer_sensitivity: cfg.visualizer_sensitivity,
@@ -1157,7 +1035,11 @@ impl AppState {
             mpris_cmd_rx,
             mpris_update_tx,
             cover_cache_version: 0,
-            cover_cache: std::sync::Mutex::new(CoverCache { id: None, version: 0, handle: None }),
+            cover_cache: std::sync::Mutex::new(CoverCache {
+                id: None,
+                version: 0,
+                handle: None,
+            }),
             font_scale: cfg.font_scale(),
             hovered_album_header: None,
             track_list_start: 0,
@@ -1192,10 +1074,14 @@ impl AppState {
         if let Some(cached_tracks) = crate::library::load_cache() {
             if !cached_tracks.is_empty() {
                 state.all_tracks = Arc::new(cached_tracks);
-                let mut cache: std::collections::HashMap<PathBuf, Vec<Track>> = std::collections::HashMap::new();
+                let mut cache: std::collections::HashMap<PathBuf, Vec<Track>> =
+                    std::collections::HashMap::new();
                 for track in state.all_tracks.iter() {
                     if let Some(parent) = track.path.parent() {
-                        cache.entry(parent.to_path_buf()).or_default().push(track.clone());
+                        cache
+                            .entry(parent.to_path_buf())
+                            .or_default()
+                            .push(track.clone());
                     }
                 }
                 state.folder_cache = cache;
@@ -1203,21 +1089,39 @@ impl AppState {
                 keys.sort();
                 state.folders = keys;
 
-                let saved = crate::db::get(|db| (
-                    db.last_view_mode,
-                    db.last_selected_playlist.clone(),
-                    db.last_selected_folder.clone(),
-                    db.last_selected_artist.clone(),
-                    db.last_selected_album.clone(),
-                    db.last_selected_genre.clone(),
-                    db.last_playlist_tab,
-                    db.last_track_path.clone(),
-                    db.last_queue_paths.clone(),
-                    db.last_position_secs,
-                ));
+                let saved = crate::db::get(|db| {
+                    (
+                        db.last_view_mode,
+                        db.last_selected_playlist.clone(),
+                        db.last_selected_folder.clone(),
+                        db.last_selected_artist.clone(),
+                        db.last_selected_album.clone(),
+                        db.last_selected_genre.clone(),
+                        db.last_playlist_tab,
+                        db.last_track_path.clone(),
+                        db.last_queue_paths.clone(),
+                        db.last_position_secs,
+                    )
+                });
 
-                if let (Some(vm), sel_playlist, sel_folder, sel_artist, sel_album, sel_genre, sel_tab, last_track, last_queue, last_pos) = saved {
-                    let restore_vm = if vm == ViewMode::NowPlaying { ViewMode::Artists } else { vm };
+                if let (
+                    Some(vm),
+                    sel_playlist,
+                    sel_folder,
+                    sel_artist,
+                    sel_album,
+                    sel_genre,
+                    sel_tab,
+                    last_track,
+                    last_queue,
+                    last_pos,
+                ) = saved
+                {
+                    let restore_vm = if vm == ViewMode::NowPlaying {
+                        ViewMode::Artists
+                    } else {
+                        vm
+                    };
                     state.view_mode = restore_vm;
                     state.last_browsing_view = restore_vm;
                     state.selected_playlist = sel_playlist;
@@ -1248,9 +1152,13 @@ impl AppState {
                     }
 
                     if let Some(track_path) = last_track {
-                        if let Some(track) = state.all_tracks.iter().find(|t| t.path == track_path) {
+                        if let Some(track) = state.all_tracks.iter().find(|t| t.path == track_path)
+                        {
                             let cover_data = load_cover(&track.path);
-                            let t = Track { cover_data, ..track.clone() };
+                            let t = Track {
+                                cover_data,
+                                ..track.clone()
+                            };
                             state.current_track = Some(t.clone());
                             state.selected_track = Some(t.clone());
                             state.playback_state = PlaybackState::Paused;
@@ -1260,7 +1168,9 @@ impl AppState {
                             state.notify_mpris_track(PlaybackStatus::Paused);
 
                             state.audio.send(AudioCommand::Play(t.path.clone()));
-                            state.audio.send(AudioCommand::Seek(Duration::from_secs(last_pos)));
+                            state
+                                .audio
+                                .send(AudioCommand::Seek(Duration::from_secs(last_pos)));
                             state.audio.send(AudioCommand::Pause);
                         }
                     }
@@ -1270,7 +1180,8 @@ impl AppState {
             }
         }
 
-        if crate::ui::theme::did_theme_load_fail() && crate::config::get().theme_source == "System" {
+        if crate::ui::theme::did_theme_load_fail() && crate::config::get().theme_source == "System"
+        {
             state.active_notifications.push(StatsNotification {
                 id: state.next_notification_id,
                 title: "System Theme Unavailable".to_string(),
@@ -1287,567 +1198,6 @@ impl AppState {
         (state, scan_task)
     }
 
-
-
-    fn send_mpris(&self, update: MprisUpdate) {
-        let _ = self.mpris_update_tx.send(update);
-    }
-
-    fn notify_mpris_track(&self, status: PlaybackStatus) {
-        if let Some(track) = &self.current_track {
-            let art_url = if let Some(parent) = track.path.parent() {
-                let mut found = None;
-                for name in &["cover.jpg", "Cover.jpg", "cover.png", "Cover.png", "cover.webp", "Cover.webp", "folder.jpg", "Folder.jpg"] {
-                    let p = parent.join(name);
-                    if p.exists() {
-                        found = Some(format!("file://{}", p.to_string_lossy()));
-                        break;
-                    }
-                }
-                if let Some(url) = found {
-                    url
-                } else if let Some(cover_bytes) = crate::library::scanner::load_cover(&track.path) {
-                    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-                    let cache_art = PathBuf::from(home).join(".cache/omatunes_current_art.jpg");
-                    if std::fs::write(&cache_art, cover_bytes).is_ok() {
-                        // Cache-bust with track id + timestamp so QML Image (cache:true) reloads per track
-                        let ts = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis();
-                        format!("file://{}?t={}_{}", cache_art.to_string_lossy(), track.id, ts)
-                    } else {
-                        String::new()
-                    }
-                } else {
-                    String::new()
-                }
-            } else {
-                String::new()
-            };
-
-            self.send_mpris(MprisUpdate::Metadata {
-                title: track.title.clone(),
-                artist: track.artist.clone(),
-                album: track.album.clone(),
-                duration_us: track.duration.as_micros() as i64,
-                url: track.path.to_string_lossy().to_string(),
-                art_url,
-            });
-        }
-        self.send_mpris(MprisUpdate::Status(status));
-        self.send_mpris(MprisUpdate::Shuffle(self.shuffle));
-        self.send_mpris(MprisUpdate::Loop(if self.repeat { mpris_server::LoopStatus::Track } else { mpris_server::LoopStatus::None }));
-        self.write_current_liked_status();
-    }
-
-    fn write_current_liked_status(&self) {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        let path = PathBuf::from(&home).join(".cache/omatunes_current_liked");
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let status = self.current_track.as_ref().map(|t| t.liked).unwrap_or(false);
-        let data = if status { "1" } else { "0" };
-        let tmp = path.with_extension("tmp");
-        if std::fs::write(&tmp, data).is_ok() {
-            let _ = std::fs::rename(&tmp, &path);
-        } else {
-            let _ = std::fs::write(&path, data);
-        }
-
-        let state_path = PathBuf::from(&home).join(".cache/omatunes_current_state.json");
-        if let Some(parent) = state_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let json = format!(
-            "{{\"liked\":{},\"shuffle\":{},\"repeat\":{}}}",
-            status, self.shuffle, self.repeat
-        );
-        let state_tmp = state_path.with_extension("tmp.json");
-        // Use .tmp.json to keep json extension for atomicity check, fallback to .tmp
-        let tmp2 = state_path.with_extension("tmp");
-        if std::fs::write(&state_tmp, &json).is_ok() {
-            let _ = std::fs::rename(&state_tmp, &state_path);
-        } else if std::fs::write(&tmp2, &json).is_ok() {
-            let _ = std::fs::rename(&tmp2, &state_path);
-        } else {
-            let _ = std::fs::write(&state_path, json.clone());
-        }
-        // Dual-write to REAL_HOME for test isolation so live QuickShell (real HOME) sees TEST's state
-        if let Ok(real_home) = std::env::var("REAL_HOME") {
-            if real_home != home {
-                let real_path = PathBuf::from(&real_home).join(".cache/omatunes_current_liked");
-                if let Some(parent) = real_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let _ = std::fs::write(&real_path, data);
-                let real_state_path = PathBuf::from(&real_home).join(".cache/omatunes_current_state.json");
-                if let Some(parent) = real_state_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let _ = std::fs::write(&real_state_path, json);
-            }
-        }
-    }
-
-    pub fn artists(&self) -> Vec<String> {
-        let query = self.sidebar_search.to_lowercase();
-        let mut artists: Vec<String> = self.all_tracks.iter()
-            .map(|t| if t.artist.trim().is_empty() { "Unknown Artist".to_string() } else { t.artist.clone() })
-            .collect();
-        artists.sort_by(|a, b| {
-            let normalize = |s: &str| {
-                let lower = s.to_lowercase();
-                if lower.starts_with("the ") {
-                    lower[4..].to_string()
-                } else {
-                    lower
-                }
-            };
-            normalize(a).cmp(&normalize(b))
-        });
-        artists.dedup();
-        if !query.is_empty() {
-            artists.retain(|a| a.to_lowercase().contains(&query));
-        }
-        artists.retain(|a| !self.hidden_artists_albums.contains(&(a.clone(), true)));
-        artists
-    }
-
-    pub fn albums(&self) -> Vec<String> {
-        let query = self.sidebar_search.to_lowercase();
-        let mut albums: Vec<String> = self.all_tracks.iter()
-            .map(|t| if t.album.trim().is_empty() { "Unknown Album".to_string() } else { t.album.clone() })
-            .collect();
-        albums.sort();
-        albums.dedup();
-        if !query.is_empty() {
-            albums.retain(|a| a.to_lowercase().contains(&query));
-        }
-        albums.retain(|a| !self.hidden_artists_albums.contains(&(a.clone(), false)));
-        albums
-    }
-
-    pub fn genres(&self) -> Vec<String> {
-        let query = self.sidebar_search.to_lowercase();
-        let mut genres: Vec<String> = self.all_tracks.iter()
-            .flat_map(|t| {
-                if t.genre.trim().is_empty() {
-                    vec!["Unknown Genre".to_string()]
-                } else if t.genre.contains("; ") {
-                    t.genre.split("; ").map(|g| {
-                        let trimmed = g.trim();
-                        if trimmed.is_empty() { "Unknown Genre".to_string() } else { trimmed.to_string() }
-                    }).collect()
-                } else {
-                    vec![t.genre.clone()]
-                }
-            })
-            .collect();
-        genres.sort();
-        genres.dedup();
-        if !query.is_empty() {
-            genres.retain(|g| g.to_lowercase().contains(&query));
-        }
-        genres
-    }
-
-    pub fn load_track_in_tag_editor(&mut self, track: Track) {
-        let active_tab = self.show_tag_editor.as_ref()
-            .map(|state| state.active_tab)
-            .unwrap_or(TagEditorTab::Main);
-
-        let mut original_tracks = self.show_tag_editor.as_mut()
-            .map(|state| std::mem::take(&mut state.original_tracks))
-            .unwrap_or_default();
-
-        if !original_tracks.contains_key(&track.path) {
-            original_tracks.insert(track.path.clone(), track.clone());
-        }
-
-        let tracks = vec![track.clone()];
-        let first = &tracks[0];
-        let mut genre_vec: Vec<String> = first.genres().into_iter().map(|s| s.to_string()).collect();
-        // Always show at least 2 genre boxes
-        while genre_vec.len() < 2 {
-            genre_vec.push(String::new());
-        }
-        let genres_original = genre_vec.clone();
-        let apply_genres = vec![false; genre_vec.len()];
-        self.show_tag_editor = Some(TagEditorState {
-            tracks: tracks.clone(),
-            original_tracks,
-            is_saved: false,
-            title: first.title.clone(),
-            artist: first.artist.clone(),
-            album: first.album.clone(),
-            genres: genre_vec.clone(),
-            genres_original,
-            apply_genres,
-            track_number: first.track_number.map(|n| n.to_string()).unwrap_or_default(),
-            disc_number: first.disc_number.map(|n| n.to_string()).unwrap_or_default(),
-            cover_path: None,
-            apply_to_album: false,
-            year: first.year.map(|n| n.to_string()).unwrap_or_default(),
-            apply_title: false,
-            apply_artist: false,
-            apply_album: false,
-            apply_year: false,
-            apply_track_num: false,
-            apply_disc_num: false,
-            apply_cover: false,
-            apply_lyrics: false,
-            lyrics: first.lyrics.clone(),
-            lyrics_content: iced::widget::text_editor::Content::with_text(&first.lyrics),
-            active_tab,
-            focused_field: Some(0),
-            pending_offset: 0.0,
-            just_saved: HashSet::new(),
-            removed_genres: Vec::new(),
-        });
-    }
-
-    /// Drops a restored selection that no longer exists (a deleted playlist, an
-    /// artist/album/genre that left with its files) so the track list falls back
-    /// to everything instead of restoring as an empty view.
-    fn sanitize_browse_selection(&mut self) {
-        if let Some(name) = self.selected_playlist.clone() {
-            let known = matches!(
-                name.as_str(),
-                "Liked Songs" | "Most Played" | "Recently Played" | "New Music"
-            ) || crate::db::get(|db| {
-                db.playlists.contains_key(&name) || db.smart_playlists.contains_key(&name)
-            });
-            if !known {
-                self.selected_playlist = None;
-            }
-        }
-
-        if let Some(artist) = self.selected_artist.clone() {
-            let exists = self.all_tracks.iter().any(|t| {
-                let a = if t.artist.trim().is_empty() { "Unknown Artist" } else { t.artist.as_str() };
-                a == artist
-            });
-            if !exists {
-                self.selected_artist = None;
-            }
-        }
-
-        if let Some(album) = self.selected_album.clone() {
-            let exists = self.all_tracks.iter().any(|t| {
-                let al = if t.album.trim().is_empty() { "Unknown Album" } else { t.album.as_str() };
-                al == album
-            });
-            if !exists {
-                self.selected_album = None;
-            }
-        }
-
-        if let Some(genre) = self.selected_genre.clone() {
-            let exists = self.all_tracks.iter().any(|t| {
-                t.genres().iter().any(|g| {
-                    let clean = if g.trim().is_empty() { "Unknown Genre" } else { g.trim() };
-                    clean == genre.as_str()
-                })
-            });
-            if !exists {
-                self.selected_genre = None;
-            }
-        }
-    }
-
-    /// Saves the browsing position immediately, so a restart lands where the
-    /// user left off even if no track was played in between.
-    fn persist_browse_state(&self) {
-        let vm = self.view_mode;
-        let tab = self.playlist_tab;
-        let playlist = self.selected_playlist.clone();
-        let folder = self.selected_folder.clone();
-        let artist = self.selected_artist.clone();
-        let album = self.selected_album.clone();
-        let genre = self.selected_genre.clone();
-        crate::db::write(|db| {
-            db.last_view_mode = Some(vm);
-            db.last_playlist_tab = Some(tab);
-            db.last_selected_playlist = playlist;
-            db.last_selected_folder = folder;
-            db.last_selected_artist = artist;
-            db.last_selected_album = album;
-            db.last_selected_genre = genre;
-        });
-    }
-
-    pub fn update_filtered_tracks(&mut self) {
-        self.track_list_start = 0;
-        self.track_list_end = 500;
-        if !self.search_query.is_empty() {
-            let query = self.search_query.to_lowercase();
-            self.tracks = Arc::new(self.all_tracks.iter().filter(|t| {
-                let match_title = self.filter_title && t.title.to_lowercase().contains(&query);
-                let match_artist = self.filter_artist && t.artist.to_lowercase().contains(&query);
-                let match_album = self.filter_album && t.album.to_lowercase().contains(&query);
-                let match_genre = self.filter_genre && t.genres().iter().any(|g| g.to_lowercase().contains(&query));
-                match_title || match_artist || match_album || match_genre
-            }).cloned().collect::<Vec<_>>());
-        } else if let Some(playlist_name) = &self.selected_playlist {
-            if playlist_name == "Liked Songs" {
-                self.tracks = Arc::new(self.all_tracks.iter().filter(|t| t.liked).cloned().collect::<Vec<_>>());
-            } else if playlist_name == "Most Played" {
-                let mut temp = (*self.all_tracks).clone();
-                temp.sort_by(|a, b| b.play_count.cmp(&a.play_count));
-                self.tracks = Arc::new(temp.into_iter().filter(|t| t.play_count > 0).collect::<Vec<_>>());
-            } else if playlist_name == "Recently Played" {
-                let rp = crate::db::get(|db| db.recently_played.clone());
-                let mut temp_tracks = Vec::new();
-                for (path, date_str) in rp {
-                    if let Some(mut t) = self.all_tracks.iter().find(|t| t.path == path).cloned() {
-                        t.date_played = Some(date_str);
-                        temp_tracks.push(t);
-                    }
-                }
-                self.tracks = Arc::new(temp_tracks);
-            } else if playlist_name == "New Music" {
-                use std::time::SystemTime;
-                let mut album_times: std::collections::HashMap<String, SystemTime> = std::collections::HashMap::new();
-                for t in self.all_tracks.iter() {
-                    let mtime = std::fs::metadata(&t.path)
-                        .and_then(|meta| meta.modified())
-                        .unwrap_or(SystemTime::UNIX_EPOCH);
-                    let entry = album_times.entry(t.album.clone()).or_insert(SystemTime::UNIX_EPOCH);
-                    if mtime > *entry {
-                        *entry = mtime;
-                    }
-                }
-                
-                let mut albums_sorted: Vec<(String, SystemTime)> = album_times.into_iter().collect();
-                albums_sorted.sort_by(|a, b| b.1.cmp(&a.1));
-                
-                let now = SystemTime::now();
-                let forty_eight_hours = std::time::Duration::from_secs(48 * 3600);
-                
-                let mut target_albums = std::collections::HashSet::new();
-                for (idx, (album_title, added_time)) in albums_sorted.iter().enumerate() {
-                    let is_in_last_48h = now.duration_since(*added_time)
-                        .map(|d| d < forty_eight_hours)
-                        .unwrap_or(false);
-                    if idx < 5 || is_in_last_48h {
-                        target_albums.insert(album_title.clone());
-                    }
-                }
-                
-                let mut temp_tracks: Vec<Track> = self.all_tracks.iter()
-                    .filter(|t| target_albums.contains(&t.album))
-                    .cloned()
-                    .collect();
-                    
-                let album_times_ref = &albums_sorted.into_iter().collect::<std::collections::HashMap<_, _>>();
-                temp_tracks.sort_by(|a, b| {
-                    let time_a = album_times_ref.get(&a.album).unwrap_or(&SystemTime::UNIX_EPOCH);
-                    let time_b = album_times_ref.get(&b.album).unwrap_or(&SystemTime::UNIX_EPOCH);
-                    let cmp_time = time_b.cmp(time_a);
-                    if cmp_time == std::cmp::Ordering::Equal {
-                        let cmp_album = a.album.cmp(&b.album);
-                        if cmp_album == std::cmp::Ordering::Equal {
-                            let cmp_disc = a.disc_number.unwrap_or(0).cmp(&b.disc_number.unwrap_or(0));
-                            if cmp_disc == std::cmp::Ordering::Equal {
-                                a.track_number.unwrap_or(0).cmp(&b.track_number.unwrap_or(0))
-                            } else {
-                                cmp_disc
-                            }
-                        } else {
-                            cmp_album
-                        }
-                    } else {
-                        cmp_time
-                    }
-                });
-                
-                self.tracks = Arc::new(temp_tracks);
-        } else if let Some(sp) = crate::db::get(|db| db.smart_playlists.get(playlist_name).cloned()) {
-                self.tracks = Arc::new(self.evaluate_smart_playlist(&sp));
-            } else {
-                let paths = crate::db::get(|db| db.playlists.get(playlist_name).cloned().unwrap_or_default());
-                let track_map: std::collections::HashMap<std::path::PathBuf, Track> =
-                    self.all_tracks.iter().map(|t| (t.path.clone(), t.clone())).collect();
-                self.tracks = Arc::new(paths.iter().filter_map(|p| track_map.get(p).cloned()).collect::<Vec<_>>());
-            }
-            
-            if playlist_name == "Liked Songs" || playlist_name == "New Music" {
-                let manual = crate::db::get(|db| db.auto_playlist_song_order.get(playlist_name).cloned());
-                if let Some(manual_order) = manual {
-                    let live_paths: Vec<PathBuf> = self.tracks.iter().map(|t| t.path.clone()).collect();
-                    let merged_paths = merge_song_order(&manual_order, &live_paths);
-                    let track_map: std::collections::HashMap<PathBuf, Track> =
-                        self.tracks.iter().map(|t| (t.path.clone(), t.clone())).collect();
-                    self.tracks = Arc::new(merged_paths.iter()
-                        .filter_map(|p| track_map.get(p).cloned())
-                        .collect::<Vec<_>>());
-                    crate::db::write(|db| {
-                        db.auto_playlist_song_order.insert(playlist_name.clone(), merged_paths);
-                    });
-                }
-            } else if crate::db::get(|db| db.smart_playlists.contains_key(playlist_name)) {
-                let manual = crate::db::get(|db| db.smart_playlist_song_order.get(playlist_name).cloned());
-                if let Some(manual_order) = manual {
-                    let live_paths: Vec<PathBuf> = self.tracks.iter().map(|t| t.path.clone()).collect();
-                    let merged_paths = merge_song_order(&manual_order, &live_paths);
-                    let track_map: std::collections::HashMap<PathBuf, Track> =
-                        self.tracks.iter().map(|t| (t.path.clone(), t.clone())).collect();
-                    self.tracks = Arc::new(merged_paths.iter()
-                        .filter_map(|p| track_map.get(p).cloned())
-                        .collect::<Vec<_>>());
-                    crate::db::write(|db| {
-                        db.smart_playlist_song_order.insert(playlist_name.clone(), merged_paths);
-                    });
-                }
-            }
-        } else {
-            match self.view_mode {
-
-                ViewMode::Artists => {
-                    if let Some(artist_name) = &self.selected_artist {
-                        self.tracks = Arc::new(self.all_tracks.iter().filter(|t| {
-                            let a = if t.artist.trim().is_empty() { "Unknown Artist" } else { &t.artist };
-                            a == artist_name
-                        }).cloned().collect::<Vec<_>>());
-                    } else {
-                        self.tracks = self.all_tracks.clone();
-                    }
-                }
-                ViewMode::Albums => {
-                    if let Some(album_name) = &self.selected_album {
-                        self.tracks = Arc::new(self.all_tracks.iter().filter(|t| {
-                            let al = if t.album.trim().is_empty() { "Unknown Album" } else { &t.album };
-                            al == album_name
-                        }).cloned().collect::<Vec<_>>());
-                    } else {
-                        self.tracks = self.all_tracks.clone();
-                    }
-                }
-                ViewMode::Genres => {
-                    if let Some(genre_name) = &self.selected_genre {
-                        self.tracks = Arc::new(self.all_tracks.iter().filter(|t| {
-                            t.genres().iter().any(|g| {
-                                let clean = if g.trim().is_empty() { "Unknown Genre" } else { g.trim() };
-                                clean == genre_name
-                            })
-                        }).cloned().collect::<Vec<_>>());
-                    } else {
-                        self.tracks = self.all_tracks.clone();
-                    }
-                }
-                ViewMode::NowPlaying => {
-                    self.tracks = Arc::new(self.queue.clone());
-                }
-            }
-        }
-
-        // Apply sorting
-        if let Some(ref playlist_name) = self.selected_playlist {
-            if playlist_name == "Recently Played" || playlist_name == "Most Played" {
-                return;
-            }
-        }
-
-        let group_by = self.group_by;
-        let sort_column = self.sort_column;
-        let sort_ascending = self.sort_ascending;
-
-        if group_by != crate::db::GroupBy::None || sort_column.is_some() {
-            Arc::make_mut(&mut self.tracks).sort_by(|a, b| {
-                // 1. Sort by group key first if grouping is active
-                if group_by != crate::db::GroupBy::None {
-                    let key_a = match group_by {
-                        crate::db::GroupBy::Album => a.album.to_lowercase(),
-                        crate::db::GroupBy::Artist => a.artist.to_lowercase(),
-                        crate::db::GroupBy::Genre => a.primary_genre().to_lowercase(),
-                        crate::db::GroupBy::Year => a.year.map(|y| y.to_string()).unwrap_or_default(),
-                        crate::db::GroupBy::None => unreachable!(),
-                    };
-                    let key_b = match group_by {
-                        crate::db::GroupBy::Album => b.album.to_lowercase(),
-                        crate::db::GroupBy::Artist => b.artist.to_lowercase(),
-                        crate::db::GroupBy::Genre => b.primary_genre().to_lowercase(),
-                        crate::db::GroupBy::Year => b.year.map(|y| y.to_string()).unwrap_or_default(),
-                        crate::db::GroupBy::None => unreachable!(),
-                    };
-                    let cmp_group = key_a.cmp(&key_b);
-                    if cmp_group != std::cmp::Ordering::Equal {
-                        return cmp_group;
-                    }
-                }
-
-                // 2. Sort by column within group
-                if let Some(col) = sort_column {
-                    let cmp = match col {
-                        SortColumn::TrackNumber => {
-                            let a_dc = a.disc_number.unwrap_or(0);
-                            let b_dc = b.disc_number.unwrap_or(0);
-                            let cmp_dc = a_dc.cmp(&b_dc);
-                            if cmp_dc == std::cmp::Ordering::Equal {
-                                let a_num = a.track_number.unwrap_or(u32::MAX);
-                                let b_num = b.track_number.unwrap_or(u32::MAX);
-                                a_num.cmp(&b_num)
-                            } else {
-                                cmp_dc
-                            }
-                        }
-                        SortColumn::Title => a.title.to_lowercase().cmp(&b.title.to_lowercase()),
-                        SortColumn::Artist => a.artist.to_lowercase().cmp(&b.artist.to_lowercase()),
-                        SortColumn::Album => a.album.to_lowercase().cmp(&b.album.to_lowercase()),
-                        SortColumn::Genre => a.genre.to_lowercase().cmp(&b.genre.to_lowercase()),
-                        SortColumn::Year => {
-                            let a_yr = a.year.unwrap_or(u32::MAX);
-                            let b_yr = b.year.unwrap_or(u32::MAX);
-                            a_yr.cmp(&b_yr)
-                        }
-                        SortColumn::DiscNumber => {
-                            let a_dc = a.disc_number.unwrap_or(u32::MAX);
-                            let b_dc = b.disc_number.unwrap_or(u32::MAX);
-                            let cmp_dc = a_dc.cmp(&b_dc);
-                            if cmp_dc == std::cmp::Ordering::Equal {
-                                let a_num = a.track_number.unwrap_or(u32::MAX);
-                                let b_num = b.track_number.unwrap_or(u32::MAX);
-                                a_num.cmp(&b_num)
-                            } else {
-                                cmp_dc
-                            }
-                        }
-                        SortColumn::Duration => a.duration.cmp(&b.duration),
-                        SortColumn::Plays => a.play_count.cmp(&b.play_count),
-                        SortColumn::DatePlayed => {
-                            let a_dp = a.date_played.as_deref().unwrap_or("");
-                            let b_dp = b.date_played.as_deref().unwrap_or("");
-                            a_dp.cmp(b_dp)
-                        }
-                        SortColumn::Liked => a.liked.cmp(&b.liked),
-                    };
-                    if sort_ascending { cmp } else { cmp.reverse() }
-                } else {
-                    // Default layout sorting (Disc, then Track number)
-                    let a_dc = a.disc_number.unwrap_or(0);
-                    let b_dc = b.disc_number.unwrap_or(0);
-                    let cmp_dc = a_dc.cmp(&b_dc);
-                    if cmp_dc == std::cmp::Ordering::Equal {
-                        let a_num = a.track_number.unwrap_or(u32::MAX);
-                        let b_num = b.track_number.unwrap_or(u32::MAX);
-                        a_num.cmp(&b_num)
-                    } else {
-                        cmp_dc
-                    }
-                }
-            });
-        }
-    }
-
-
-    /// Publish the current curve to the audio thread and persist it.
-    fn commit_equalizer(&mut self) {
-        self.audio.eq.update(self.equalizer);
-        crate::db::write(|db| db.equalizer = self.equalizer);
-    }
-
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::SelectFolder(path) => {
@@ -1859,9 +1209,7 @@ impl AppState {
                 blur_focus()
             }
 
-            Message::FolderScanned(_, _) => {
-                Task::none()
-            }
+            Message::FolderScanned(_, _) => Task::none(),
 
             Message::PlayTrack(track) => {
                 self.queue = self.tracks.to_vec();
@@ -1925,7 +1273,8 @@ impl AppState {
             }
 
             Message::ToggleAlbumPlayPause(album_name) => {
-                let is_current_album_playing = self.current_track.as_ref().map(|t| &t.album) == Some(&album_name);
+                let is_current_album_playing =
+                    self.current_track.as_ref().map(|t| &t.album) == Some(&album_name);
                 if is_current_album_playing {
                     match self.playback_state {
                         PlaybackState::Playing => {
@@ -1997,65 +1346,63 @@ impl AppState {
                 let content_height = viewport.content_bounds().height;
                 let bounds_height = viewport.bounds().height;
                 let total_tracks = self.tracks.len();
-                
-                let near_bottom = rel_y > 0.75 || (absolute_y + bounds_height >= content_height - 1000.0);
-                
+
+                let near_bottom =
+                    rel_y > 0.75 || (absolute_y + bounds_height >= content_height - 1000.0);
+
                 if near_bottom && self.track_list_end < total_tracks {
                     self.track_list_end = (self.track_list_end + 200).min(total_tracks);
                 }
                 Task::none()
             }
 
-            Message::PlayPause => {
-                match self.playback_state {
-                    PlaybackState::Playing => {
-                        if let Some(sel) = self.selected_track.clone() {
-                            if self.current_track.as_ref().map(|ct| ct.id) != Some(sel.id) {
-                                self.queue = (*self.tracks).clone();
-                                self.maybe_shuffle_queue(Some(sel.id));
-                                return self.play_track_internal(sel);
-                            }
-                        }
-                        self.audio.send(AudioCommand::Pause);
-                        self.playback_state = PlaybackState::Paused;
-                        self.send_mpris(MprisUpdate::Status(PlaybackStatus::Paused));
-                        Task::none()
-                    }
-                    PlaybackState::Paused => {
-                        if let Some(sel) = self.selected_track.clone() {
-                            if self.current_track.as_ref().map(|ct| ct.id) != Some(sel.id) {
-                                self.queue = (*self.tracks).clone();
-                                self.maybe_shuffle_queue(Some(sel.id));
-                                return self.play_track_internal(sel);
-                            }
-                        }
-                        self.audio.send(AudioCommand::Resume);
-                        self.playback_state = PlaybackState::Playing;
-                        self.send_mpris(MprisUpdate::Status(PlaybackStatus::Playing));
-                        Task::none()
-                    }
-                    PlaybackState::Stopped => {
-                        if let Some(sel) = self.selected_track.clone() {
+            Message::PlayPause => match self.playback_state {
+                PlaybackState::Playing => {
+                    if let Some(sel) = self.selected_track.clone() {
+                        if self.current_track.as_ref().map(|ct| ct.id) != Some(sel.id) {
                             self.queue = (*self.tracks).clone();
                             self.maybe_shuffle_queue(Some(sel.id));
-                            self.set_playing_context_from_current_view();
-                            self.play_track_internal(sel)
-                        } else if !self.tracks.is_empty() {
-                            self.queue = (*self.tracks).clone();
-                            self.maybe_shuffle_queue(None);
-                            let play_first = self.queue.first().cloned().unwrap();
-                            self.set_playing_context_from_current_view();
-                            self.play_track_internal(play_first)
-                        } else {
-                            Task::none()
+                            return self.play_track_internal(sel);
                         }
                     }
+                    self.audio.send(AudioCommand::Pause);
+                    self.playback_state = PlaybackState::Paused;
+                    self.send_mpris(MprisUpdate::Status(PlaybackStatus::Paused));
+                    Task::none()
                 }
-            }
+                PlaybackState::Paused => {
+                    if let Some(sel) = self.selected_track.clone() {
+                        if self.current_track.as_ref().map(|ct| ct.id) != Some(sel.id) {
+                            self.queue = (*self.tracks).clone();
+                            self.maybe_shuffle_queue(Some(sel.id));
+                            return self.play_track_internal(sel);
+                        }
+                    }
+                    self.audio.send(AudioCommand::Resume);
+                    self.playback_state = PlaybackState::Playing;
+                    self.send_mpris(MprisUpdate::Status(PlaybackStatus::Playing));
+                    Task::none()
+                }
+                PlaybackState::Stopped => {
+                    if let Some(sel) = self.selected_track.clone() {
+                        self.queue = (*self.tracks).clone();
+                        self.maybe_shuffle_queue(Some(sel.id));
+                        self.set_playing_context_from_current_view();
+                        self.play_track_internal(sel)
+                    } else if !self.tracks.is_empty() {
+                        self.queue = (*self.tracks).clone();
+                        self.maybe_shuffle_queue(None);
+                        let play_first = self.queue.first().cloned().unwrap();
+                        self.set_playing_context_from_current_view();
+                        self.play_track_internal(play_first)
+                    } else {
+                        Task::none()
+                    }
+                }
+            },
 
-
-            Message::NextTrack     => { self.advance_track(1) }
-            Message::PreviousTrack => { self.advance_track(-1) }
+            Message::NextTrack => self.advance_track(1),
+            Message::PreviousTrack => self.advance_track(-1),
 
             Message::Seek(dur) => {
                 if let Some(ref ct) = self.current_track {
@@ -2082,7 +1429,8 @@ impl AppState {
 
             Message::SeekRelative(delta_secs) => {
                 let new_pos = if delta_secs < 0 {
-                    self.position.saturating_sub(Duration::from_secs(delta_secs.unsigned_abs()))
+                    self.position
+                        .saturating_sub(Duration::from_secs(delta_secs.unsigned_abs()))
                 } else {
                     (self.position + Duration::from_secs(delta_secs as u64)).min(self.duration)
                 };
@@ -2130,14 +1478,16 @@ impl AppState {
                     } else {
                         self.queue.shuffle(&mut rng);
                     }
-                    let queue_paths: Vec<PathBuf> = self.queue.iter().map(|t| t.path.clone()).collect();
+                    let queue_paths: Vec<PathBuf> =
+                        self.queue.iter().map(|t| t.path.clone()).collect();
                     crate::db::write(|db| {
                         db.last_queue_paths = queue_paths;
                     });
                 } else if !self.shuffle && !self.queue.is_empty() {
                     // Restore original order from filtered tracks
                     self.queue = (*self.tracks).clone();
-                    let queue_paths: Vec<PathBuf> = self.queue.iter().map(|t| t.path.clone()).collect();
+                    let queue_paths: Vec<PathBuf> =
+                        self.queue.iter().map(|t| t.path.clone()).collect();
                     crate::db::write(|db| {
                         db.last_queue_paths = queue_paths;
                     });
@@ -2148,7 +1498,11 @@ impl AppState {
 
             Message::ToggleRepeat => {
                 self.repeat = !self.repeat;
-                let loop_status = if self.repeat { LoopStatus::Playlist } else { LoopStatus::None };
+                let loop_status = if self.repeat {
+                    LoopStatus::Playlist
+                } else {
+                    LoopStatus::None
+                };
                 self.send_mpris(MprisUpdate::Loop(loop_status));
                 self.write_current_liked_status();
                 Task::none()
@@ -2169,8 +1523,6 @@ impl AppState {
                 crate::db::write(|db| db.sidebar_width = Some(self.sidebar_width));
                 Task::none()
             }
-
-
 
             Message::RightPanelDragStart => {
                 self.dragging_right_panel = true;
@@ -2242,7 +1594,13 @@ impl AppState {
                                 let diff = position.saturating_sub(self.last_accumulated_position);
                                 if diff > Duration::ZERO && diff <= Duration::from_secs(1) {
                                     if let Some(ref track) = self.current_track {
-                                        let (new_awards, ladder_toasts) = crate::stats::add_playback_time(&track.artist, &track.album, &track.genre, diff.as_secs_f64());
+                                        let (new_awards, ladder_toasts) =
+                                            crate::stats::add_playback_time(
+                                                &track.artist,
+                                                &track.album,
+                                                &track.genre,
+                                                diff.as_secs_f64(),
+                                            );
                                         for award in new_awards {
                                             let nid = self.next_notification_id;
                                             self.next_notification_id += 1;
@@ -2260,7 +1618,10 @@ impl AppState {
                                                     title: format!("{} Earned!", award_name),
                                                     message: format!(
                                                         "You've unlocked a {} {} ({}) for **{}**!",
-                                                        award.tier, award_name, award.period, award.entity_name
+                                                        award.tier,
+                                                        award_name,
+                                                        award.period,
+                                                        award.entity_name
                                                     ),
                                                     created_at: std::time::Instant::now(),
                                                     kind: ToastKind::Achievement,
@@ -2271,33 +1632,62 @@ impl AppState {
                                             }
                                         }
                                         if crate::config::get().show_toasts {
-                                            for (title, msg, artist_name, displaced, new_pos) in ladder_toasts {
+                                            for (title, msg, artist_name, displaced, new_pos) in
+                                                ladder_toasts
+                                            {
                                                 if title == "LADDER CHANGE" {
                                                     // Consolidate: find existing ladder toast for same artist
-                                                    if let Some(existing) = self.active_notifications.iter_mut().find(|n|
-                                                        n.kind == ToastKind::LadderClimb && n.artist_name == artist_name
-                                                    ) {
+                                                    if let Some(existing) = self
+                                                        .active_notifications
+                                                        .iter_mut()
+                                                        .find(|n| {
+                                                            n.kind == ToastKind::LadderClimb
+                                                                && n.artist_name == artist_name
+                                                        })
+                                                    {
                                                         existing.positions_climbed += 1;
                                                         if !displaced.is_empty() {
-                                                            existing.overtaken_artists.push(displaced);
+                                                            existing
+                                                                .overtaken_artists
+                                                                .push(displaced);
                                                         }
                                                         let pos = existing.positions_climbed;
-                                                        let a = existing.artist_name.clone().unwrap_or_default();
-                                                        let overtaken = existing.overtaken_artists.clone();
-                                                        existing.title = crate::stats::ladder_title_for_tier(pos);
-                                                        existing.message = crate::stats::generate_ladder_message(&a, pos, new_pos, &overtaken);
+                                                        let a = existing
+                                                            .artist_name
+                                                            .clone()
+                                                            .unwrap_or_default();
+                                                        let overtaken =
+                                                            existing.overtaken_artists.clone();
+                                                        existing.title =
+                                                            crate::stats::ladder_title_for_tier(
+                                                                pos,
+                                                            );
+                                                        existing.message =
+                                                            crate::stats::generate_ladder_message(
+                                                                &a, pos, new_pos, &overtaken,
+                                                            );
                                                     } else {
                                                         let nid = self.next_notification_id;
                                                         self.next_notification_id += 1;
-                                                        self.active_notifications.push(StatsNotification {
+                                                        self.active_notifications
+                                                            .push(StatsNotification {
                                                             id: nid,
-                                                            title: crate::stats::ladder_title_for_tier(1),
+                                                            title:
+                                                                crate::stats::ladder_title_for_tier(
+                                                                    1,
+                                                                ),
                                                             message: msg,
                                                             created_at: std::time::Instant::now(),
                                                             kind: ToastKind::LadderClimb,
                                                             artist_name,
                                                             positions_climbed: 1,
-                                                            overtaken_artists: if displaced.is_empty() { Vec::new() } else { vec![displaced] },
+                                                            overtaken_artists: if displaced
+                                                                .is_empty()
+                                                            {
+                                                                Vec::new()
+                                                            } else {
+                                                                vec![displaced]
+                                                            },
                                                         });
                                                     }
                                                 } else {
@@ -2309,16 +1699,18 @@ impl AppState {
                                                     } else {
                                                         ToastKind::Achievement
                                                     };
-                                                    self.active_notifications.push(StatsNotification {
-                                                        id: nid,
-                                                        title,
-                                                        message: msg,
-                                                        created_at: std::time::Instant::now(),
-                                                        kind,
-                                                        artist_name,
-                                                        positions_climbed: 0,
-                                                        overtaken_artists: Vec::new(),
-                                                    });
+                                                    self.active_notifications.push(
+                                                        StatsNotification {
+                                                            id: nid,
+                                                            title,
+                                                            message: msg,
+                                                            created_at: std::time::Instant::now(),
+                                                            kind,
+                                                            artist_name,
+                                                            positions_climbed: 0,
+                                                            overtaken_artists: Vec::new(),
+                                                        },
+                                                    );
                                                 }
                                             }
                                         }
@@ -2335,78 +1727,116 @@ impl AppState {
                                     duration / 2
                                 };
                                 if position >= threshold {
-                                if let Some(ref mut track) = self.current_track {
-                                    let count = crate::db::increment_play_count(track.path.clone());
-                                    track.play_count = count;
+                                    if let Some(ref mut track) = self.current_track {
+                                        let count =
+                                            crate::db::increment_play_count(track.path.clone());
+                                        track.play_count = count;
 
-                                    let toasts = crate::stats::on_track_play(
-                                        &track.artist,
-                                        &track.genre,
-                                        &track.album,
-                                        track.path.clone(),
-                                        &self.all_tracks,
-                                    );
-                                    if crate::config::get().show_toasts {
-                                        for (title, msg, artist_name, displaced, new_pos) in toasts {
-                                            if title == "LADDER CHANGE" {
-                                                // Consolidate: find existing ladder toast for same artist
-                                                if let Some(existing) = self.active_notifications.iter_mut().find(|n|
-                                                    n.kind == ToastKind::LadderClimb && n.artist_name == artist_name
-                                                ) {
-                                                    existing.positions_climbed += 1;
-                                                    if !displaced.is_empty() {
-                                                        existing.overtaken_artists.push(displaced);
+                                        let toasts = crate::stats::on_track_play(
+                                            &track.artist,
+                                            &track.genre,
+                                            &track.album,
+                                            track.path.clone(),
+                                            &self.all_tracks,
+                                        );
+                                        if crate::config::get().show_toasts {
+                                            for (title, msg, artist_name, displaced, new_pos) in
+                                                toasts
+                                            {
+                                                if title == "LADDER CHANGE" {
+                                                    // Consolidate: find existing ladder toast for same artist
+                                                    if let Some(existing) = self
+                                                        .active_notifications
+                                                        .iter_mut()
+                                                        .find(|n| {
+                                                            n.kind == ToastKind::LadderClimb
+                                                                && n.artist_name == artist_name
+                                                        })
+                                                    {
+                                                        existing.positions_climbed += 1;
+                                                        if !displaced.is_empty() {
+                                                            existing
+                                                                .overtaken_artists
+                                                                .push(displaced);
+                                                        }
+                                                        let pos = existing.positions_climbed;
+                                                        let a = existing
+                                                            .artist_name
+                                                            .clone()
+                                                            .unwrap_or_default();
+                                                        let overtaken =
+                                                            existing.overtaken_artists.clone();
+                                                        existing.title =
+                                                            crate::stats::ladder_title_for_tier(
+                                                                pos,
+                                                            );
+                                                        existing.message =
+                                                            crate::stats::generate_ladder_message(
+                                                                &a, pos, new_pos, &overtaken,
+                                                            );
+                                                    } else {
+                                                        let nid = self.next_notification_id;
+                                                        self.next_notification_id += 1;
+                                                        self.active_notifications
+                                                            .push(StatsNotification {
+                                                            id: nid,
+                                                            title:
+                                                                crate::stats::ladder_title_for_tier(
+                                                                    1,
+                                                                ),
+                                                            message: msg,
+                                                            created_at: std::time::Instant::now(),
+                                                            kind: ToastKind::LadderClimb,
+                                                            artist_name,
+                                                            positions_climbed: 1,
+                                                            overtaken_artists: if displaced
+                                                                .is_empty()
+                                                            {
+                                                                Vec::new()
+                                                            } else {
+                                                                vec![displaced]
+                                                            },
+                                                        });
                                                     }
-                                                    let pos = existing.positions_climbed;
-                                                    let a = existing.artist_name.clone().unwrap_or_default();
-                                                    let overtaken = existing.overtaken_artists.clone();
-                                                    existing.title = crate::stats::ladder_title_for_tier(pos);
-                                                    existing.message = crate::stats::generate_ladder_message(&a, pos, new_pos, &overtaken);
                                                 } else {
+                                                    // Entered Top 10 or Achievement — always new toast
                                                     let nid = self.next_notification_id;
                                                     self.next_notification_id += 1;
-                                                    self.active_notifications.push(StatsNotification {
-                                                        id: nid,
-                                                        title: crate::stats::ladder_title_for_tier(1),
-                                                        message: msg,
-                                                        created_at: std::time::Instant::now(),
-                                                        kind: ToastKind::LadderClimb,
-                                                        artist_name,
-                                                        positions_climbed: 1,
-                                                        overtaken_artists: if displaced.is_empty() { Vec::new() } else { vec![displaced] },
-                                                    });
+                                                    let kind = if title == "ENTERED TOP 10!" {
+                                                        ToastKind::EnteredTop10
+                                                    } else {
+                                                        ToastKind::Achievement
+                                                    };
+                                                    self.active_notifications.push(
+                                                        StatsNotification {
+                                                            id: nid,
+                                                            title,
+                                                            message: msg,
+                                                            created_at: std::time::Instant::now(),
+                                                            kind,
+                                                            artist_name,
+                                                            positions_climbed: 0,
+                                                            overtaken_artists: Vec::new(),
+                                                        },
+                                                    );
                                                 }
-                                            } else {
-                                                // Entered Top 10 or Achievement — always new toast
-                                                let nid = self.next_notification_id;
-                                                self.next_notification_id += 1;
-                                                let kind = if title == "ENTERED TOP 10!" {
-                                                    ToastKind::EnteredTop10
-                                                } else {
-                                                    ToastKind::Achievement
-                                                };
-                                                self.active_notifications.push(StatsNotification {
-                                                    id: nid,
-                                                    title,
-                                                    message: msg,
-                                                    created_at: std::time::Instant::now(),
-                                                    kind,
-                                                    artist_name,
-                                                    positions_climbed: 0,
-                                                    overtaken_artists: Vec::new(),
-                                                });
                                             }
                                         }
-                                    }
 
-                                    if let Some(t) = Arc::make_mut(&mut self.all_tracks).iter_mut().find(|t| t.path == track.path) {
-                                        t.play_count = count;
+                                        if let Some(t) = Arc::make_mut(&mut self.all_tracks)
+                                            .iter_mut()
+                                            .find(|t| t.path == track.path)
+                                        {
+                                            t.play_count = count;
+                                        }
+                                        if let Some(t) = Arc::make_mut(&mut self.tracks)
+                                            .iter_mut()
+                                            .find(|t| t.path == track.path)
+                                        {
+                                            t.play_count = count;
+                                        }
                                     }
-                                    if let Some(t) = Arc::make_mut(&mut self.tracks).iter_mut().find(|t| t.path == track.path) {
-                                        t.play_count = count;
-                                    }
-                                }
-                                self.current_track_play_counted = true;
+                                    self.current_track_play_counted = true;
                                 }
                             }
                         }
@@ -2431,7 +1861,9 @@ impl AppState {
                             if self.repeat {
                                 tasks.push(self.advance_track(1));
                             } else {
-                                let current_idx = self.current_track.as_ref()
+                                let current_idx = self
+                                    .current_track
+                                    .as_ref()
                                     .and_then(|ct| self.queue.iter().position(|t| t.id == ct.id));
                                 let is_last = match current_idx {
                                     Some(idx) => idx + 1 >= self.queue.len(),
@@ -2470,22 +1902,24 @@ impl AppState {
                                 self.send_mpris(MprisUpdate::Status(PlaybackStatus::Paused));
                             }
                         }
-                        MprisCommand::PlayPause => {
-                            match self.playback_state {
-                                PlaybackState::Playing => {
-                                    self.audio.send(AudioCommand::Pause);
-                                    self.playback_state = PlaybackState::Paused;
-                                    self.send_mpris(MprisUpdate::Status(PlaybackStatus::Paused));
-                                }
-                                _ => {
-                                    self.audio.send(AudioCommand::Resume);
-                                    self.playback_state = PlaybackState::Playing;
-                                    self.send_mpris(MprisUpdate::Status(PlaybackStatus::Playing));
-                                }
+                        MprisCommand::PlayPause => match self.playback_state {
+                            PlaybackState::Playing => {
+                                self.audio.send(AudioCommand::Pause);
+                                self.playback_state = PlaybackState::Paused;
+                                self.send_mpris(MprisUpdate::Status(PlaybackStatus::Paused));
                             }
+                            _ => {
+                                self.audio.send(AudioCommand::Resume);
+                                self.playback_state = PlaybackState::Playing;
+                                self.send_mpris(MprisUpdate::Status(PlaybackStatus::Playing));
+                            }
+                        },
+                        MprisCommand::Next => {
+                            tasks.push(self.advance_track(1));
                         }
-                        MprisCommand::Next     => { tasks.push(self.advance_track(1)); }
-                        MprisCommand::Previous => { tasks.push(self.advance_track(-1)); }
+                        MprisCommand::Previous => {
+                            tasks.push(self.advance_track(-1));
+                        }
                         MprisCommand::Stop => {
                             if let Some(ref ct) = self.current_track {
                                 let p = ct.path.clone();
@@ -2518,9 +1952,8 @@ impl AppState {
                                     .saturating_add(Duration::from_micros(offset_micros as u64))
                                     .min(self.duration)
                             } else {
-                                self.position.saturating_sub(Duration::from_micros(
-                                    (-offset_micros) as u64,
-                                ))
+                                self.position
+                                    .saturating_sub(Duration::from_micros((-offset_micros) as u64))
                             };
                             if let Some(ref ct) = self.current_track {
                                 let p = ct.path.clone();
@@ -2540,10 +1973,12 @@ impl AppState {
                         if !track.lyrics.trim().is_empty() {
                             let lrc_lines = crate::ui::views::player::parse_lrc(&track.lyrics);
                             if !lrc_lines.is_empty() {
-                                let adjusted_pos = self.position.saturating_sub(
-                                    crate::ui::views::player::LYRICS_OFFSET
-                                );
-                                let active_idx = lrc_lines.iter().position(|l| l.time > adjusted_pos)
+                                let adjusted_pos = self
+                                    .position
+                                    .saturating_sub(crate::ui::views::player::LYRICS_OFFSET);
+                                let active_idx = lrc_lines
+                                    .iter()
+                                    .position(|l| l.time > adjusted_pos)
                                     .map(|idx| if idx > 0 { idx - 1 } else { 0 })
                                     .unwrap_or_else(|| lrc_lines.len() - 1);
 
@@ -2556,12 +1991,13 @@ impl AppState {
                                     } else {
                                         (active_idx as f32 + 0.5) / total as f32
                                     };
-                                    tasks.push(
-                                        scrollable::snap_to(
-                                            self.lyrics_scroll_id.clone(),
-                                            scrollable::RelativeOffset { x: 0.0, y: fraction },
-                                        )
-                                    );
+                                    tasks.push(scrollable::snap_to(
+                                        self.lyrics_scroll_id.clone(),
+                                        scrollable::RelativeOffset {
+                                            x: 0.0,
+                                            y: fraction,
+                                        },
+                                    ));
                                 }
                             }
                         }
@@ -2581,7 +2017,6 @@ impl AppState {
                 }
 
                 if tasks.is_empty() {
-
                     Task::none()
                 } else {
                     Task::batch(tasks)
@@ -2618,7 +2053,10 @@ impl AppState {
                         self.loaded_theme_name = current;
                     }
                     if crate::ui::theme::did_theme_load_fail() {
-                        let already = self.active_notifications.iter().any(|n| n.kind == ToastKind::ThemeError);
+                        let already = self
+                            .active_notifications
+                            .iter()
+                            .any(|n| n.kind == ToastKind::ThemeError);
                         if !already {
                             self.active_notifications.push(StatsNotification {
                                 id: self.next_notification_id,
@@ -2685,10 +2123,16 @@ impl AppState {
                 self.show_context_menu = None;
                 let liked = !track.liked;
                 // In-memory + db.json immediate (zero file I/O on audio file, jump-free)
-                if let Some(t) = Arc::make_mut(&mut self.all_tracks).iter_mut().find(|t| t.path == track.path) {
+                if let Some(t) = Arc::make_mut(&mut self.all_tracks)
+                    .iter_mut()
+                    .find(|t| t.path == track.path)
+                {
                     t.liked = liked;
                 }
-                if let Some(t) = Arc::make_mut(&mut self.tracks).iter_mut().find(|t| t.path == track.path) {
+                if let Some(t) = Arc::make_mut(&mut self.tracks)
+                    .iter_mut()
+                    .find(|t| t.path == track.path)
+                {
                     t.liked = liked;
                 }
                 for t in self.queue.iter_mut() {
@@ -2718,7 +2162,9 @@ impl AppState {
                     // Defer until safe: TrackEnded/advance/Stop/Seek/exit
                     crate::library::pending::queue(track.path.clone(), liked);
                 } else {
-                    if let Err(e) = crate::library::scanner::write_like_status_atomic(&track.path, liked) {
+                    if let Err(e) =
+                        crate::library::scanner::write_like_status_atomic(&track.path, liked)
+                    {
                         eprintln!("Failed to write like status to file: {e}");
                         crate::library::pending::queue(track.path.clone(), liked);
                     }
@@ -2747,7 +2193,9 @@ impl AppState {
                 self.search_query.clear();
                 match tab {
                     PlaylistTab::Playlists => {
-                        let custom_playlists = crate::db::get(|db| db.playlists.keys().cloned().collect::<Vec<String>>());
+                        let custom_playlists = crate::db::get(|db| {
+                            db.playlists.keys().cloned().collect::<Vec<String>>()
+                        });
                         if let Some(first) = custom_playlists.first() {
                             self.selected_playlist = Some(first.clone());
                         } else {
@@ -2767,7 +2215,11 @@ impl AppState {
             }
 
             Message::SelectPlaylist(name) => {
-                if name == "Liked Songs" || name == "Recently Played" || name == "Most Played" || name == "New Music" {
+                if name == "Liked Songs"
+                    || name == "Recently Played"
+                    || name == "Most Played"
+                    || name == "New Music"
+                {
                     self.playlist_tab = PlaylistTab::Autoplaylists;
                 } else if crate::db::get(|db| db.smart_playlists.contains_key(&name)) {
                     self.playlist_tab = PlaylistTab::Smart;
@@ -2776,7 +2228,9 @@ impl AppState {
                 }
                 let now = std::time::Instant::now();
                 if let Some((ref prev_name, last_time)) = self.last_click_playlist {
-                    if prev_name == &name && now.duration_since(last_time) < std::time::Duration::from_millis(350) {
+                    if prev_name == &name
+                        && now.duration_since(last_time) < std::time::Duration::from_millis(350)
+                    {
                         self.last_click_playlist = None;
                         return Task::done(Message::DoubleClickPlaylist(name));
                     }
@@ -2802,7 +2256,8 @@ impl AppState {
                 let all_same_artist = tracks.iter().all(|t| t.artist == first.artist);
                 let all_same_album = tracks.iter().all(|t| t.album == first.album);
                 let _all_same_genre = tracks.iter().all(|t| t.genre == first.genre);
-                let all_same_track_num = tracks.iter().all(|t| t.track_number == first.track_number);
+                let all_same_track_num =
+                    tracks.iter().all(|t| t.track_number == first.track_number);
                 let all_same_disc_num = tracks.iter().all(|t| t.disc_number == first.disc_number);
                 let all_same_year = tracks.iter().all(|t| t.year == first.year);
                 let all_same_lyrics = tracks.iter().all(|t| t.lyrics == first.lyrics);
@@ -2818,7 +2273,9 @@ impl AppState {
                 for val in all_genre_values.iter().flat_map(|v| v.iter()).copied() {
                     if !val.is_empty()
                         && !unique_common.contains(&val)
-                        && all_genre_values.iter().all(|track_vals| track_vals.contains(&val))
+                        && all_genre_values
+                            .iter()
+                            .all(|track_vals| track_vals.contains(&val))
                     {
                         unique_common.push(val);
                     }
@@ -2835,17 +2292,44 @@ impl AppState {
                     tracks: tracks.clone(),
                     original_tracks,
                     is_saved: false,
-                    title: if all_same_title { first.title.clone() } else { String::new() },
-                    artist: if all_same_artist { first.artist.clone() } else { String::new() },
-                    album: if all_same_album { first.album.clone() } else { String::new() },
+                    title: if all_same_title {
+                        first.title.clone()
+                    } else {
+                        String::new()
+                    },
+                    artist: if all_same_artist {
+                        first.artist.clone()
+                    } else {
+                        String::new()
+                    },
+                    album: if all_same_album {
+                        first.album.clone()
+                    } else {
+                        String::new()
+                    },
                     genres,
                     genres_original,
                     apply_genres,
-                    track_number: if all_same_track_num { first.track_number.map(|n| n.to_string()).unwrap_or_default() } else { String::new() },
-                    disc_number: if all_same_disc_num { first.disc_number.map(|n| n.to_string()).unwrap_or_default() } else { String::new() },
+                    track_number: if all_same_track_num {
+                        first
+                            .track_number
+                            .map(|n| n.to_string())
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    },
+                    disc_number: if all_same_disc_num {
+                        first.disc_number.map(|n| n.to_string()).unwrap_or_default()
+                    } else {
+                        String::new()
+                    },
                     cover_path: None,
                     apply_to_album: false,
-                    year: if all_same_year { first.year.map(|n| n.to_string()).unwrap_or_default() } else { String::new() },
+                    year: if all_same_year {
+                        first.year.map(|n| n.to_string()).unwrap_or_default()
+                    } else {
+                        String::new()
+                    },
                     apply_title: false,
                     apply_artist: false,
                     apply_album: false,
@@ -2854,8 +2338,14 @@ impl AppState {
                     apply_disc_num: false,
                     apply_cover: false,
                     apply_lyrics: false,
-                    lyrics: if all_same_lyrics { first.lyrics.clone() } else { String::new() },
-                    lyrics_content: iced::widget::text_editor::Content::with_text(if all_same_lyrics { &first.lyrics } else { "" }),
+                    lyrics: if all_same_lyrics {
+                        first.lyrics.clone()
+                    } else {
+                        String::new()
+                    },
+                    lyrics_content: iced::widget::text_editor::Content::with_text(
+                        if all_same_lyrics { &first.lyrics } else { "" },
+                    ),
                     active_tab: TagEditorTab::Main,
                     focused_field: Some(0),
                     pending_offset: 0.0,
@@ -2868,7 +2358,9 @@ impl AppState {
             Message::OpenLocalFolder(path) => {
                 self.show_context_menu = None;
                 if let Some(parent) = path.parent() {
-                    let folder_to_open = parent.canonicalize().unwrap_or_else(|_| parent.to_path_buf());
+                    let folder_to_open = parent
+                        .canonicalize()
+                        .unwrap_or_else(|_| parent.to_path_buf());
                     let mut opened = false;
                     for fm in &["nautilus", "thunar", "dolphin", "nemo", "pcmanfm"] {
                         if std::process::Command::new(fm)
@@ -2910,12 +2402,21 @@ impl AppState {
                             Some(&original_track.lyrics),
                         );
                         if let Err(e) = res {
-                            eprintln!("Error restoring tags for {}: {e}", original_track.path.display());
+                            eprintln!(
+                                "Error restoring tags for {}: {e}",
+                                original_track.path.display()
+                            );
                         } else {
-                            if let Some(t) = Arc::make_mut(&mut self.all_tracks).iter_mut().find(|t| t.path == original_track.path) {
+                            if let Some(t) = Arc::make_mut(&mut self.all_tracks)
+                                .iter_mut()
+                                .find(|t| t.path == original_track.path)
+                            {
                                 *t = original_track.clone();
                             }
-                            if let Some(t) = Arc::make_mut(&mut self.tracks).iter_mut().find(|t| t.path == original_track.path) {
+                            if let Some(t) = Arc::make_mut(&mut self.tracks)
+                                .iter_mut()
+                                .find(|t| t.path == original_track.path)
+                            {
                                 *t = original_track.clone();
                             }
                             if let Some(ref mut ct) = self.current_track {
@@ -2928,7 +2429,10 @@ impl AppState {
                                     *st = original_track.clone();
                                 }
                             }
-                            if let Some(t) = Arc::make_mut(&mut self.selected_tracks).iter_mut().find(|t| t.path == original_track.path) {
+                            if let Some(t) = Arc::make_mut(&mut self.selected_tracks)
+                                .iter_mut()
+                                .find(|t| t.path == original_track.path)
+                            {
                                 *t = original_track.clone();
                             }
                         }
@@ -3067,7 +2571,9 @@ impl AppState {
                 if let Some(ref mut state) = self.show_tag_editor {
                     state.apply_title = val;
                     state.is_saved = false;
-                    if !val { state.just_saved.remove("title"); }
+                    if !val {
+                        state.just_saved.remove("title");
+                    }
                 }
                 Task::none()
             }
@@ -3076,7 +2582,9 @@ impl AppState {
                 if let Some(ref mut state) = self.show_tag_editor {
                     state.apply_artist = val;
                     state.is_saved = false;
-                    if !val { state.just_saved.remove("artist"); }
+                    if !val {
+                        state.just_saved.remove("artist");
+                    }
                 }
                 Task::none()
             }
@@ -3085,7 +2593,9 @@ impl AppState {
                 if let Some(ref mut state) = self.show_tag_editor {
                     state.apply_album = val;
                     state.is_saved = false;
-                    if !val { state.just_saved.remove("album"); }
+                    if !val {
+                        state.just_saved.remove("album");
+                    }
                 }
                 Task::none()
             }
@@ -3094,7 +2604,9 @@ impl AppState {
                 if let Some(ref mut state) = self.show_tag_editor {
                     state.apply_year = val;
                     state.is_saved = false;
-                    if !val { state.just_saved.remove("year"); }
+                    if !val {
+                        state.just_saved.remove("year");
+                    }
                 }
                 Task::none()
             }
@@ -3104,7 +2616,9 @@ impl AppState {
                     if slot < state.apply_genres.len() {
                         state.apply_genres[slot] = val;
                         state.is_saved = false;
-                        if !val { state.just_saved.remove(&format!("genre{}", slot)); }
+                        if !val {
+                            state.just_saved.remove(&format!("genre{}", slot));
+                        }
                     }
                 }
                 Task::none()
@@ -3114,7 +2628,9 @@ impl AppState {
                 if let Some(ref mut state) = self.show_tag_editor {
                     state.apply_track_num = val;
                     state.is_saved = false;
-                    if !val { state.just_saved.remove("track"); }
+                    if !val {
+                        state.just_saved.remove("track");
+                    }
                 }
                 Task::none()
             }
@@ -3123,7 +2639,9 @@ impl AppState {
                 if let Some(ref mut state) = self.show_tag_editor {
                     state.apply_disc_num = val;
                     state.is_saved = false;
-                    if !val { state.just_saved.remove("disc"); }
+                    if !val {
+                        state.just_saved.remove("disc");
+                    }
                 }
                 Task::none()
             }
@@ -3132,7 +2650,9 @@ impl AppState {
                 if let Some(ref mut state) = self.show_tag_editor {
                     state.apply_cover = val;
                     state.is_saved = false;
-                    if !val { state.just_saved.remove("cover"); }
+                    if !val {
+                        state.just_saved.remove("cover");
+                    }
                 }
                 Task::none()
             }
@@ -3146,7 +2666,8 @@ impl AppState {
 
                     let mut tracks_to_update = Vec::new();
                     if state.apply_to_album {
-                        let albums: Vec<String> = state.tracks.iter().map(|t| t.album.clone()).collect();
+                        let albums: Vec<String> =
+                            state.tracks.iter().map(|t| t.album.clone()).collect();
                         for t in self.all_tracks.iter() {
                             if albums.contains(&t.album) {
                                 tracks_to_update.push(t.clone());
@@ -3156,12 +2677,19 @@ impl AppState {
                         tracks_to_update = state.tracks.clone();
                     }
 
-                    println!("SaveTags: apply_to_album={}, updating {} tracks.",
-                        state.apply_to_album, tracks_to_update.len());
+                    println!(
+                        "SaveTags: apply_to_album={}, updating {} tracks.",
+                        state.apply_to_album,
+                        tracks_to_update.len()
+                    );
 
-                    let is_playing_in_update = tracks_to_update.iter().any(|t| {
-                        self.current_track.as_ref().map(|ct| ct.path == t.path).unwrap_or(false)
-                    }) && matches!(self.playback_state, PlaybackState::Playing);
+                    let is_playing_in_update =
+                        tracks_to_update.iter().any(|t| {
+                            self.current_track
+                                .as_ref()
+                                .map(|ct| ct.path == t.path)
+                                .unwrap_or(false)
+                        }) && matches!(self.playback_state, PlaybackState::Playing);
                     let saved_pos = self.position;
                     if is_playing_in_update {
                         // Pause decoder before touching the file to avoid concurrent truncate
@@ -3169,16 +2697,34 @@ impl AppState {
                     }
 
                     for track in tracks_to_update {
-                        let title = if state.apply_title { &state.title } else { &track.title };
-                        let artist = if state.apply_artist { &state.artist } else { &track.artist };
-                        let album = if state.apply_album { &state.album } else { &track.album };
+                        let title = if state.apply_title {
+                            &state.title
+                        } else {
+                            &track.title
+                        };
+                        let artist = if state.apply_artist {
+                            &state.artist
+                        } else {
+                            &track.artist
+                        };
+                        let album = if state.apply_album {
+                            &state.album
+                        } else {
+                            &track.album
+                        };
                         let genre: String = if state.apply_genres.iter().any(|a| *a) {
-                            let mut original_parts: Vec<String> = track.genres().into_iter().map(|s| s.to_string()).collect();
+                            let mut original_parts: Vec<String> =
+                                track.genres().into_iter().map(|s| s.to_string()).collect();
                             for i in 0..state.genres.len() {
                                 if i < state.apply_genres.len() && state.apply_genres[i] {
-                                    if i < state.genres_original.len() && !state.genres_original[i].is_empty() {
+                                    if i < state.genres_original.len()
+                                        && !state.genres_original[i].is_empty()
+                                    {
                                         // Replace first occurrence of original value
-                                        if let Some(pos) = original_parts.iter().position(|p| *p == state.genres_original[i]) {
+                                        if let Some(pos) = original_parts
+                                            .iter()
+                                            .position(|p| *p == state.genres_original[i])
+                                        {
                                             if state.genres[i].is_empty() {
                                                 original_parts.remove(pos);
                                             } else {
@@ -3192,7 +2738,8 @@ impl AppState {
                                 }
                             }
                             for removed in &state.removed_genres {
-                                if let Some(pos) = original_parts.iter().position(|p| p == removed) {
+                                if let Some(pos) = original_parts.iter().position(|p| p == removed)
+                                {
                                     original_parts.remove(pos);
                                 }
                             }
@@ -3201,18 +2748,38 @@ impl AppState {
                         } else {
                             track.genre.clone()
                         };
-                        let track_number = if state.apply_track_num { track_num } else { track.track_number };
-                        let disc_number = if state.apply_disc_num { disc_num } else { track.disc_number };
-                        let year = if state.apply_year { year_num } else { track.year };
-                        let cover_path = if state.apply_cover { state.cover_path.as_deref() } else { None };
-                        let lyrics_val = if state.apply_lyrics { Some(lyrics_text.as_str()) } else { None };
+                        let track_number = if state.apply_track_num {
+                            track_num
+                        } else {
+                            track.track_number
+                        };
+                        let disc_number = if state.apply_disc_num {
+                            disc_num
+                        } else {
+                            track.disc_number
+                        };
+                        let year = if state.apply_year {
+                            year_num
+                        } else {
+                            track.year
+                        };
+                        let cover_path = if state.apply_cover {
+                            state.cover_path.as_deref()
+                        } else {
+                            None
+                        };
+                        let lyrics_val = if state.apply_lyrics {
+                            Some(lyrics_text.as_str())
+                        } else {
+                            None
+                        };
 
                         let res = crate::library::write_tags(
                             &track.path,
                             title,
                             artist,
                             album,
-                             &genre,
+                            &genre,
                             track_number,
                             disc_number,
                             cover_path,
@@ -3222,7 +2789,10 @@ impl AppState {
                         if let Err(e) = res {
                             eprintln!("Error saving tags for {}: {e}", track.path.display());
                         } else {
-                            if let Some(t) = Arc::make_mut(&mut self.all_tracks).iter_mut().find(|t| t.path == track.path) {
+                            if let Some(t) = Arc::make_mut(&mut self.all_tracks)
+                                .iter_mut()
+                                .find(|t| t.path == track.path)
+                            {
                                 t.title = title.clone();
                                 t.artist = artist.clone();
                                 t.album = album.clone();
@@ -3237,7 +2807,10 @@ impl AppState {
                                     t.cover_data = load_cover(&t.path);
                                 }
                             }
-                            if let Some(t) = Arc::make_mut(&mut self.tracks).iter_mut().find(|t| t.path == track.path) {
+                            if let Some(t) = Arc::make_mut(&mut self.tracks)
+                                .iter_mut()
+                                .find(|t| t.path == track.path)
+                            {
                                 t.title = title.clone();
                                 t.artist = artist.clone();
                                 t.album = album.clone();
@@ -3286,7 +2859,10 @@ impl AppState {
                                     }
                                 }
                             }
-                            if let Some(t) = Arc::make_mut(&mut self.selected_tracks).iter_mut().find(|t| t.path == track.path) {
+                            if let Some(t) = Arc::make_mut(&mut self.selected_tracks)
+                                .iter_mut()
+                                .find(|t| t.path == track.path)
+                            {
                                 t.title = title.clone();
                                 t.artist = artist.clone();
                                 t.album = album.clone();
@@ -3309,21 +2885,41 @@ impl AppState {
                 }
                 if let Some(ref mut state) = self.show_tag_editor {
                     for track in &mut state.tracks {
-                        if let Some(updated_track) = self.all_tracks.iter().find(|t| t.path == track.path) {
+                        if let Some(updated_track) =
+                            self.all_tracks.iter().find(|t| t.path == track.path)
+                        {
                             *track = updated_track.clone();
                         }
                     }
                     let mut saved = HashSet::new();
-                    if state.apply_title { saved.insert("title".to_string()); }
-                    if state.apply_artist { saved.insert("artist".to_string()); }
-                    if state.apply_album { saved.insert("album".to_string()); }
-                    if state.apply_year { saved.insert("year".to_string()); }
-                    if state.apply_track_num { saved.insert("track".to_string()); }
-                    if state.apply_disc_num { saved.insert("disc".to_string()); }
-                    if state.apply_cover { saved.insert("cover".to_string()); }
-                    if state.apply_lyrics { saved.insert("lyrics".to_string()); }
+                    if state.apply_title {
+                        saved.insert("title".to_string());
+                    }
+                    if state.apply_artist {
+                        saved.insert("artist".to_string());
+                    }
+                    if state.apply_album {
+                        saved.insert("album".to_string());
+                    }
+                    if state.apply_year {
+                        saved.insert("year".to_string());
+                    }
+                    if state.apply_track_num {
+                        saved.insert("track".to_string());
+                    }
+                    if state.apply_disc_num {
+                        saved.insert("disc".to_string());
+                    }
+                    if state.apply_cover {
+                        saved.insert("cover".to_string());
+                    }
+                    if state.apply_lyrics {
+                        saved.insert("lyrics".to_string());
+                    }
                     for (i, applied) in state.apply_genres.iter().enumerate() {
-                        if *applied { saved.insert(format!("genre{}", i)); }
+                        if *applied {
+                            saved.insert(format!("genre{}", i));
+                        }
                     }
                     if !state.removed_genres.is_empty() {
                         // Mark removal as saved for feedback even though field no longer exists
@@ -3334,7 +2930,9 @@ impl AppState {
                     state.apply_artist = false;
                     state.apply_album = false;
                     state.apply_year = false;
-                    for a in &mut state.apply_genres { *a = false; }
+                    for a in &mut state.apply_genres {
+                        *a = false;
+                    }
                     state.apply_track_num = false;
                     state.apply_disc_num = false;
                     state.apply_cover = false;
@@ -3363,8 +2961,14 @@ impl AppState {
                     if state.genres.len() > 1 && idx < state.genres.len() {
                         let removed_original = if idx < state.genres_original.len() {
                             let orig = state.genres_original[idx].clone();
-                            if !orig.is_empty() { Some(orig) } else { None }
-                        } else { None };
+                            if !orig.is_empty() {
+                                Some(orig)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
                         if let Some(orig) = removed_original {
                             if !state.removed_genres.contains(&orig) {
                                 state.removed_genres.push(orig);
@@ -3413,15 +3017,21 @@ impl AppState {
                     playlist_tab: self.playlist_tab,
                 };
                 self.previous_view_state = Some(saved_view);
-                self.smart_playlist_builder = Some(crate::ui::components::smart_playlist_builder::SmartPlaylistBuilderState {
-                    name: String::new(),
-                    rules: vec![crate::ui::components::smart_playlist_builder::RuleRowState::new(crate::library::smart_playlist::RuleField::Title)],
-                    limit_enabled: false,
-                    limit_str: "25".to_string(),
-                    order_by: crate::library::smart_playlist::SmartPlaylistOrder::Random,
-                    live_updating: true,
-                    editing_name: None,
-                });
+                self.smart_playlist_builder = Some(
+                    crate::ui::components::smart_playlist_builder::SmartPlaylistBuilderState {
+                        name: String::new(),
+                        rules: vec![
+                            crate::ui::components::smart_playlist_builder::RuleRowState::new(
+                                crate::library::smart_playlist::RuleField::Title,
+                            ),
+                        ],
+                        limit_enabled: false,
+                        limit_str: "25".to_string(),
+                        order_by: crate::library::smart_playlist::SmartPlaylistOrder::Random,
+                        live_updating: true,
+                        editing_name: None,
+                    },
+                );
                 self.selected_playlist = None;
                 self.selected_artist = None;
                 self.selected_album = None;
@@ -3441,17 +3051,30 @@ impl AppState {
                         playlist_tab: self.playlist_tab,
                     };
                     self.previous_view_state = Some(saved_view);
-                    
-                    let rules = sp.rules.iter().map(|r| crate::ui::components::smart_playlist_builder::RuleRowState::from_rule(r)).collect();
-                    self.smart_playlist_builder = Some(crate::ui::components::smart_playlist_builder::SmartPlaylistBuilderState {
-                        name: sp.name.clone(),
-                        rules,
-                        limit_enabled: sp.limit.is_some(),
-                        limit_str: sp.limit.map(|l| l.to_string()).unwrap_or_else(|| "25".to_string()),
-                        order_by: sp.order_by,
-                        live_updating: sp.live_updating,
-                        editing_name: Some(sp.name.clone()),
-                    });
+
+                    let rules = sp
+                        .rules
+                        .iter()
+                        .map(|r| {
+                            crate::ui::components::smart_playlist_builder::RuleRowState::from_rule(
+                                r,
+                            )
+                        })
+                        .collect();
+                    self.smart_playlist_builder = Some(
+                        crate::ui::components::smart_playlist_builder::SmartPlaylistBuilderState {
+                            name: sp.name.clone(),
+                            rules,
+                            limit_enabled: sp.limit.is_some(),
+                            limit_str: sp
+                                .limit
+                                .map(|l| l.to_string())
+                                .unwrap_or_else(|| "25".to_string()),
+                            order_by: sp.order_by,
+                            live_updating: sp.live_updating,
+                            editing_name: Some(sp.name.clone()),
+                        },
+                    );
                     self.selected_playlist = None;
                     self.selected_artist = None;
                     self.selected_album = None;
@@ -3477,7 +3100,11 @@ impl AppState {
                             builder.name = s;
                         }
                         SmartPlaylistBuilderEvent::AddRule => {
-                            builder.rules.push(crate::ui::components::smart_playlist_builder::RuleRowState::new(crate::library::smart_playlist::RuleField::Title));
+                            builder.rules.push(
+                                crate::ui::components::smart_playlist_builder::RuleRowState::new(
+                                    crate::library::smart_playlist::RuleField::Title,
+                                ),
+                            );
                         }
                         SmartPlaylistBuilderEvent::RemoveRule(idx) => {
                             if idx < builder.rules.len() {
@@ -3540,7 +3167,8 @@ impl AppState {
                         }
                         SmartPlaylistBuilderEvent::Save => {
                             let name = builder.name.clone();
-                            let rules: Vec<crate::library::smart_playlist::SmartPlaylistRule> = builder.rules.iter().map(|r| r.to_rule()).collect();
+                            let rules: Vec<crate::library::smart_playlist::SmartPlaylistRule> =
+                                builder.rules.iter().map(|r| r.to_rule()).collect();
                             let limit = if builder.limit_enabled {
                                 builder.limit_str.trim().parse::<usize>().ok()
                             } else {
@@ -3559,23 +3187,24 @@ impl AppState {
                                     live_updating,
                                     tracks: Vec::new(),
                                 };
-                                
+
                                 // Evaluate immediately
                                 let evaluated_tracks = self.evaluate_smart_playlist(&sp);
-                                sp.tracks = evaluated_tracks.iter().map(|t| t.path.clone()).collect();
-                                
+                                sp.tracks =
+                                    evaluated_tracks.iter().map(|t| t.path.clone()).collect();
+
                                 // Delete old name if renamed
                                 if let Some(ref old_name) = editing_name {
                                     if old_name != &sp.name {
                                         crate::db::delete_smart_playlist(old_name.clone());
                                     }
                                 }
-                                
+
                                 crate::db::save_smart_playlist(sp.name.clone(), sp);
-                                
+
                                 self.smart_playlist_builder = None;
                                 self.previous_view_state = None;
-                                
+
                                 // Select it
                                 self.selected_playlist = Some(name);
                                 self.playlist_tab = PlaylistTab::Smart;
@@ -3590,11 +3219,19 @@ impl AppState {
             Message::TagEditorPrevTrack => {
                 if let Some(ref state) = self.show_tag_editor {
                     if let Some(first_track) = state.tracks.first() {
-                        if let Some(pos) = self.tracks.iter().position(|t| t.path == first_track.path) {
-                            let prev_idx = if pos == 0 { self.tracks.len() - 1 } else { pos - 1 };
+                        if let Some(pos) =
+                            self.tracks.iter().position(|t| t.path == first_track.path)
+                        {
+                            let prev_idx = if pos == 0 {
+                                self.tracks.len() - 1
+                            } else {
+                                pos - 1
+                            };
                             if let Some(track) = self.tracks.get(prev_idx).cloned() {
                                 self.load_track_in_tag_editor(track);
-                                return iced::widget::text_input::focus(iced::widget::text_input::Id::new("id3_title"));
+                                return iced::widget::text_input::focus(
+                                    iced::widget::text_input::Id::new("id3_title"),
+                                );
                             }
                         }
                     }
@@ -3605,11 +3242,15 @@ impl AppState {
             Message::TagEditorNextTrack => {
                 if let Some(ref state) = self.show_tag_editor {
                     if let Some(first_track) = state.tracks.first() {
-                        if let Some(pos) = self.tracks.iter().position(|t| t.path == first_track.path) {
+                        if let Some(pos) =
+                            self.tracks.iter().position(|t| t.path == first_track.path)
+                        {
                             let next_idx = (pos + 1) % self.tracks.len();
                             if let Some(track) = self.tracks.get(next_idx).cloned() {
                                 self.load_track_in_tag_editor(track);
-                                return iced::widget::text_input::focus(iced::widget::text_input::Id::new("id3_title"));
+                                return iced::widget::text_input::focus(
+                                    iced::widget::text_input::Id::new("id3_title"),
+                                );
                             }
                         }
                     }
@@ -3628,7 +3269,9 @@ impl AppState {
                     let current_path = self.current_track.as_ref().map(|t| t.path.clone());
                     let mut pending_updates: Vec<(PathBuf, bool, bool)> = Vec::new();
                     for track in self.all_tracks.iter() {
-                        if let Some(db_liked) = crate::db::get(|db| db.liked.get(&track.path).copied()) {
+                        if let Some(db_liked) =
+                            crate::db::get(|db| db.liked.get(&track.path).copied())
+                        {
                             if db_liked != track.liked {
                                 let is_playing = Some(&track.path) == current_path.as_ref();
                                 pending_updates.push((track.path.clone(), db_liked, is_playing));
@@ -3636,10 +3279,16 @@ impl AppState {
                         }
                     }
                     for (path, db_liked, is_playing) in pending_updates {
-                        if let Some(t) = Arc::make_mut(&mut self.all_tracks).iter_mut().find(|t| t.path == path) {
+                        if let Some(t) = Arc::make_mut(&mut self.all_tracks)
+                            .iter_mut()
+                            .find(|t| t.path == path)
+                        {
                             t.liked = db_liked;
                         }
-                        if let Some(t) = Arc::make_mut(&mut self.tracks).iter_mut().find(|t| t.path == path) {
+                        if let Some(t) = Arc::make_mut(&mut self.tracks)
+                            .iter_mut()
+                            .find(|t| t.path == path)
+                        {
                             t.liked = db_liked;
                         }
                         for t in self.queue.iter_mut() {
@@ -3657,12 +3306,17 @@ impl AppState {
                                 st.liked = db_liked;
                             }
                         }
-                        if let Some(t) = Arc::make_mut(&mut self.selected_tracks).iter_mut().find(|t| t.path == path) {
+                        if let Some(t) = Arc::make_mut(&mut self.selected_tracks)
+                            .iter_mut()
+                            .find(|t| t.path == path)
+                        {
                             t.liked = db_liked;
                         }
                         if is_playing {
                             crate::library::pending::queue(path, db_liked);
-                        } else if let Err(e) = crate::library::scanner::write_like_status_atomic(&path, db_liked) {
+                        } else if let Err(e) =
+                            crate::library::scanner::write_like_status_atomic(&path, db_liked)
+                        {
                             eprintln!("reconciliation write failed for {}: {}", path.display(), e);
                             crate::library::pending::queue(path, db_liked);
                         }
@@ -3676,7 +3330,10 @@ impl AppState {
                 let mut cache: HashMap<PathBuf, Vec<Track>> = HashMap::new();
                 for track in self.all_tracks.iter() {
                     if let Some(parent) = track.path.parent() {
-                        cache.entry(parent.to_path_buf()).or_default().push(track.clone());
+                        cache
+                            .entry(parent.to_path_buf())
+                            .or_default()
+                            .push(track.clone());
                     }
                 }
                 self.folder_cache = cache;
@@ -3687,21 +3344,39 @@ impl AppState {
                 self.update_filtered_tracks();
 
                 if !had_existing_tracks {
-                    let saved = crate::db::get(|db| (
-                        db.last_view_mode,
-                        db.last_selected_playlist.clone(),
-                        db.last_selected_folder.clone(),
-                        db.last_selected_artist.clone(),
-                        db.last_selected_album.clone(),
-                        db.last_selected_genre.clone(),
-                        db.last_playlist_tab,
-                        db.last_track_path.clone(),
-                        db.last_queue_paths.clone(),
-                        db.last_position_secs,
-                    ));
+                    let saved = crate::db::get(|db| {
+                        (
+                            db.last_view_mode,
+                            db.last_selected_playlist.clone(),
+                            db.last_selected_folder.clone(),
+                            db.last_selected_artist.clone(),
+                            db.last_selected_album.clone(),
+                            db.last_selected_genre.clone(),
+                            db.last_playlist_tab,
+                            db.last_track_path.clone(),
+                            db.last_queue_paths.clone(),
+                            db.last_position_secs,
+                        )
+                    });
 
-                    if let (Some(vm), sel_playlist, sel_folder, sel_artist, sel_album, sel_genre, sel_tab, last_track, last_queue, last_pos) = saved {
-                        let restore_vm = if vm == ViewMode::NowPlaying { ViewMode::Artists } else { vm };
+                    if let (
+                        Some(vm),
+                        sel_playlist,
+                        sel_folder,
+                        sel_artist,
+                        sel_album,
+                        sel_genre,
+                        sel_tab,
+                        last_track,
+                        last_queue,
+                        last_pos,
+                    ) = saved
+                    {
+                        let restore_vm = if vm == ViewMode::NowPlaying {
+                            ViewMode::Artists
+                        } else {
+                            vm
+                        };
                         self.view_mode = restore_vm;
                         self.last_browsing_view = restore_vm;
                         self.selected_playlist = sel_playlist;
@@ -3718,7 +3393,8 @@ impl AppState {
 
                         let mut restored_queue = Vec::new();
                         for path in last_queue {
-                            if let Some(t) = self.all_tracks.iter().find(|track| track.path == path) {
+                            if let Some(t) = self.all_tracks.iter().find(|track| track.path == path)
+                            {
                                 restored_queue.push(t.clone());
                             }
                         }
@@ -3729,9 +3405,14 @@ impl AppState {
                         }
 
                         if let Some(track_path) = last_track {
-                            if let Some(track) = self.all_tracks.iter().find(|t| t.path == track_path) {
+                            if let Some(track) =
+                                self.all_tracks.iter().find(|t| t.path == track_path)
+                            {
                                 let cover_data = load_cover(&track.path);
-                                let t = Track { cover_data, ..track.clone() };
+                                let t = Track {
+                                    cover_data,
+                                    ..track.clone()
+                                };
                                 self.current_track = Some(t.clone());
                                 self.selected_track = Some(t.clone());
                                 self.playback_state = PlaybackState::Paused;
@@ -3741,7 +3422,8 @@ impl AppState {
                                 self.notify_mpris_track(PlaybackStatus::Paused);
 
                                 self.audio.send(AudioCommand::Play(t.path.clone()));
-                                self.audio.send(AudioCommand::Seek(Duration::from_secs(last_pos)));
+                                self.audio
+                                    .send(AudioCommand::Seek(Duration::from_secs(last_pos)));
                                 self.audio.send(AudioCommand::Pause);
                             }
                         }
@@ -3802,11 +3484,12 @@ impl AppState {
                 if let Some(ref track) = self.current_track {
                     let mut t = track.clone();
                     t.cover_data = None;
-                    return Task::done(Message::OpenPlaylistDialog(PlaylistDialogMode::AddTrack(t)));
+                    return Task::done(Message::OpenPlaylistDialog(PlaylistDialogMode::AddTrack(
+                        t,
+                    )));
                 }
                 Task::none()
             }
-
 
             Message::PlaylistDragStart => {
                 self.dragging_playlist_split = true;
@@ -3814,7 +3497,10 @@ impl AppState {
             }
 
             Message::PlaylistDragMove(y) => {
-                self.playlist_height = (self.window_height - y - 60.0).clamp(MIN_PLAYLIST_HEIGHT, (self.window_height - 300.0).max(MIN_PLAYLIST_HEIGHT));
+                self.playlist_height = (self.window_height - y - 60.0).clamp(
+                    MIN_PLAYLIST_HEIGHT,
+                    (self.window_height - 300.0).max(MIN_PLAYLIST_HEIGHT),
+                );
                 Task::none()
             }
 
@@ -3852,7 +3538,10 @@ impl AppState {
                             let offset_y = (idx as f32 * 42.0 - 150.0).max(0.0);
                             return scrollable::scroll_to(
                                 self.queue_scroll_id.clone(),
-                                scrollable::AbsoluteOffset { x: 0.0, y: offset_y },
+                                scrollable::AbsoluteOffset {
+                                    x: 0.0,
+                                    y: offset_y,
+                                },
                             );
                         }
                     }
@@ -3904,7 +3593,9 @@ impl AppState {
             Message::SelectArtist(artist) => {
                 let now = std::time::Instant::now();
                 if let Some((ref prev_artist, last_time)) = self.last_click_artist {
-                    if prev_artist == &artist && now.duration_since(last_time) < std::time::Duration::from_millis(350) {
+                    if prev_artist == &artist
+                        && now.duration_since(last_time) < std::time::Duration::from_millis(350)
+                    {
                         self.last_click_artist = None;
                         return Task::done(Message::DoubleClickArtist(artist));
                     }
@@ -3925,7 +3616,9 @@ impl AppState {
             Message::SelectAlbum(album) => {
                 let now = std::time::Instant::now();
                 if let Some((ref prev_album, last_time)) = self.last_click_album {
-                    if prev_album == &album && now.duration_since(last_time) < std::time::Duration::from_millis(350) {
+                    if prev_album == &album
+                        && now.duration_since(last_time) < std::time::Duration::from_millis(350)
+                    {
                         self.last_click_album = None;
                         return Task::done(Message::DoubleClickAlbum(album));
                     }
@@ -3959,10 +3652,13 @@ impl AppState {
                 let initial_name = match &mode {
                     PlaylistDialogMode::Create => "My Playlist".to_string(),
                     PlaylistDialogMode::AddTrack(_) => String::new(),
-                    PlaylistDialogMode::CreateWithTrack(track) => format!("{} Playlist", track.title),
+                    PlaylistDialogMode::CreateWithTrack(track) => {
+                        format!("{} Playlist", track.title)
+                    }
                     PlaylistDialogMode::Rename(old_name) => old_name.clone(),
                 };
-                let custom_playlists = crate::db::get(|db| db.playlists.keys().cloned().collect::<Vec<String>>());
+                let custom_playlists =
+                    crate::db::get(|db| db.playlists.keys().cloned().collect::<Vec<String>>());
                 let first_playlist = custom_playlists.first().cloned();
                 self.playlist_dialog = Some(PlaylistDialogState {
                     mode,
@@ -4026,7 +3722,9 @@ impl AppState {
                         PlaylistDialogMode::AddTrack(track) => {
                             if let Some(playlist_name) = dialog.selected_playlist {
                                 if dialog.add_album {
-                                    let album_tracks: Vec<Track> = self.all_tracks.iter()
+                                    let album_tracks: Vec<Track> = self
+                                        .all_tracks
+                                        .iter()
                                         .filter(|t| t.album == track.album)
                                         .cloned()
                                         .collect();
@@ -4097,16 +3795,29 @@ impl AppState {
             }
 
             Message::KeyboardArrowUp => {
-                if (self.is_hovering_tracklist || self.active_focus == Some(ActiveFocus::Tracklist)) && !self.tracks.is_empty() {
-                    let current_idx = self.selected_track.as_ref()
+                if (self.is_hovering_tracklist || self.active_focus == Some(ActiveFocus::Tracklist))
+                    && !self.tracks.is_empty()
+                {
+                    let current_idx = self
+                        .selected_track
+                        .as_ref()
                         .and_then(|st| self.tracks.iter().position(|t| t.id == st.id));
                     let next_idx = match current_idx {
-                        Some(i) => if i == 0 { self.tracks.len() - 1 } else { i - 1 },
+                        Some(i) => {
+                            if i == 0 {
+                                self.tracks.len() - 1
+                            } else {
+                                i - 1
+                            }
+                        }
                         None => 0,
                     };
                     if let Some(track) = self.tracks.get(next_idx).cloned() {
                         let cover_data = load_cover(&track.path);
-                        let track = Track { cover_data, ..track };
+                        let track = Track {
+                            cover_data,
+                            ..track
+                        };
                         self.selected_track = Some(track.clone());
                         self.selected_tracks = Arc::new(vec![track.clone()]);
                         self.last_clicked_track = Some(track.clone());
@@ -4114,19 +3825,32 @@ impl AppState {
                             let target_y = (y - 120.0).max(0.0);
                             return iced::widget::scrollable::scroll_to(
                                 iced::widget::scrollable::Id::new("tracklist_scroll"),
-                                iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: target_y }
+                                iced::widget::scrollable::AbsoluteOffset {
+                                    x: 0.0,
+                                    y: target_y,
+                                },
                             );
                         }
                     }
-                } else if self.is_hovering_sidebar_list || self.active_focus == Some(ActiveFocus::SidebarList) {
+                } else if self.is_hovering_sidebar_list
+                    || self.active_focus == Some(ActiveFocus::SidebarList)
+                {
                     match self.view_mode {
                         ViewMode::Artists => {
                             let artists = self.artists();
                             if !artists.is_empty() {
-                                let current_idx = self.selected_artist.as_ref()
+                                let current_idx = self
+                                    .selected_artist
+                                    .as_ref()
                                     .and_then(|sa| artists.iter().position(|a| a == sa));
                                 let next_idx = match current_idx {
-                                    Some(i) => if i == 0 { artists.len() - 1 } else { i - 1 },
+                                    Some(i) => {
+                                        if i == 0 {
+                                            artists.len() - 1
+                                        } else {
+                                            i - 1
+                                        }
+                                    }
                                     None => 0,
                                 };
                                 if let Some(artist) = artists.get(next_idx).cloned() {
@@ -4138,10 +3862,18 @@ impl AppState {
                         ViewMode::Albums => {
                             let albums = self.albums();
                             if !albums.is_empty() {
-                                let current_idx = self.selected_album.as_ref()
+                                let current_idx = self
+                                    .selected_album
+                                    .as_ref()
                                     .and_then(|sa| albums.iter().position(|a| a == sa));
                                 let next_idx = match current_idx {
-                                    Some(i) => if i == 0 { albums.len() - 1 } else { i - 1 },
+                                    Some(i) => {
+                                        if i == 0 {
+                                            albums.len() - 1
+                                        } else {
+                                            i - 1
+                                        }
+                                    }
                                     None => 0,
                                 };
                                 if let Some(album) = albums.get(next_idx).cloned() {
@@ -4153,10 +3885,18 @@ impl AppState {
                         ViewMode::Genres => {
                             let genres = self.genres();
                             if !genres.is_empty() {
-                                let current_idx = self.selected_genre.as_ref()
+                                let current_idx = self
+                                    .selected_genre
+                                    .as_ref()
                                     .and_then(|sg| genres.iter().position(|g| g == sg));
                                 let next_idx = match current_idx {
-                                    Some(i) => if i == 0 { genres.len() - 1 } else { i - 1 },
+                                    Some(i) => {
+                                        if i == 0 {
+                                            genres.len() - 1
+                                        } else {
+                                            i - 1
+                                        }
+                                    }
                                     None => 0,
                                 };
                                 if let Some(genre) = genres.get(next_idx).cloned() {
@@ -4172,8 +3912,12 @@ impl AppState {
             }
 
             Message::KeyboardArrowDown => {
-                if (self.is_hovering_tracklist || self.active_focus == Some(ActiveFocus::Tracklist)) && !self.tracks.is_empty() {
-                    let current_idx = self.selected_track.as_ref()
+                if (self.is_hovering_tracklist || self.active_focus == Some(ActiveFocus::Tracklist))
+                    && !self.tracks.is_empty()
+                {
+                    let current_idx = self
+                        .selected_track
+                        .as_ref()
                         .and_then(|st| self.tracks.iter().position(|t| t.id == st.id));
                     let next_idx = match current_idx {
                         Some(i) => (i + 1) % self.tracks.len(),
@@ -4181,7 +3925,10 @@ impl AppState {
                     };
                     if let Some(track) = self.tracks.get(next_idx).cloned() {
                         let cover_data = load_cover(&track.path);
-                        let track = Track { cover_data, ..track };
+                        let track = Track {
+                            cover_data,
+                            ..track
+                        };
                         self.selected_track = Some(track.clone());
                         self.selected_tracks = Arc::new(vec![track.clone()]);
                         self.last_clicked_track = Some(track.clone());
@@ -4189,16 +3936,23 @@ impl AppState {
                             let target_y = (y - 120.0).max(0.0);
                             return iced::widget::scrollable::scroll_to(
                                 iced::widget::scrollable::Id::new("tracklist_scroll"),
-                                iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: target_y }
+                                iced::widget::scrollable::AbsoluteOffset {
+                                    x: 0.0,
+                                    y: target_y,
+                                },
                             );
                         }
                     }
-                } else if self.is_hovering_sidebar_list || self.active_focus == Some(ActiveFocus::SidebarList) {
+                } else if self.is_hovering_sidebar_list
+                    || self.active_focus == Some(ActiveFocus::SidebarList)
+                {
                     match self.view_mode {
                         ViewMode::Artists => {
                             let artists = self.artists();
                             if !artists.is_empty() {
-                                let current_idx = self.selected_artist.as_ref()
+                                let current_idx = self
+                                    .selected_artist
+                                    .as_ref()
                                     .and_then(|sa| artists.iter().position(|a| a == sa));
                                 let next_idx = match current_idx {
                                     Some(i) => (i + 1) % artists.len(),
@@ -4213,7 +3967,9 @@ impl AppState {
                         ViewMode::Albums => {
                             let albums = self.albums();
                             if !albums.is_empty() {
-                                let current_idx = self.selected_album.as_ref()
+                                let current_idx = self
+                                    .selected_album
+                                    .as_ref()
                                     .and_then(|sa| albums.iter().position(|a| a == sa));
                                 let next_idx = match current_idx {
                                     Some(i) => (i + 1) % albums.len(),
@@ -4228,7 +3984,9 @@ impl AppState {
                         ViewMode::Genres => {
                             let genres = self.genres();
                             if !genres.is_empty() {
-                                let current_idx = self.selected_genre.as_ref()
+                                let current_idx = self
+                                    .selected_genre
+                                    .as_ref()
                                     .and_then(|sg| genres.iter().position(|g| g == sg));
                                 let next_idx = match current_idx {
                                     Some(i) => (i + 1) % genres.len(),
@@ -4268,21 +4026,24 @@ impl AppState {
             Message::GroupByHoverEnter => {
                 self.group_by_state.is_cluster_hovered = true;
                 self.group_by_state.collapse_deadline = None;
-                self.group_by_state.collapse_token = self.group_by_state.collapse_token.wrapping_add(1);
+                self.group_by_state.collapse_token =
+                    self.group_by_state.collapse_token.wrapping_add(1);
                 Task::none()
             }
 
             Message::GroupByHoverExit => {
                 self.group_by_state.is_cluster_hovered = false;
                 if self.group_by_state.hover_progress > 0.0 {
-                    self.group_by_state.collapse_deadline = Some(std::time::Instant::now() + std::time::Duration::from_millis(1500));
-                    self.group_by_state.collapse_token = self.group_by_state.collapse_token.wrapping_add(1);
+                    self.group_by_state.collapse_deadline =
+                        Some(std::time::Instant::now() + std::time::Duration::from_millis(1500));
+                    self.group_by_state.collapse_token =
+                        self.group_by_state.collapse_token.wrapping_add(1);
                     let token = self.group_by_state.collapse_token;
                     Task::perform(
                         async move {
                             tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
                         },
-                        move |_| Message::GroupByCollapseTimeout(token)
+                        move |_| Message::GroupByCollapseTimeout(token),
                     )
                 } else {
                     Task::none()
@@ -4290,7 +4051,9 @@ impl AppState {
             }
 
             Message::GroupByCollapseTimeout(token) => {
-                if token == self.group_by_state.collapse_token && !self.group_by_state.is_cluster_hovered {
+                if token == self.group_by_state.collapse_token
+                    && !self.group_by_state.is_cluster_hovered
+                {
                     self.group_by_state.collapse_deadline = None;
                 }
                 Task::none()
@@ -4306,7 +4069,8 @@ impl AppState {
                 self.group_by_state.force_collapsing = true;
                 self.group_by_state.is_cluster_hovered = false;
                 self.group_by_state.collapse_deadline = None;
-                self.group_by_state.collapse_token = self.group_by_state.collapse_token.wrapping_add(1);
+                self.group_by_state.collapse_token =
+                    self.group_by_state.collapse_token.wrapping_add(1);
                 self.update_filtered_tracks();
                 Task::none()
             }
@@ -4322,7 +4086,8 @@ impl AppState {
                 self.group_by_state.force_collapsing = true;
                 self.group_by_state.is_cluster_hovered = false;
                 self.group_by_state.collapse_deadline = None;
-                self.group_by_state.collapse_token = self.group_by_state.collapse_token.wrapping_add(1);
+                self.group_by_state.collapse_token =
+                    self.group_by_state.collapse_token.wrapping_add(1);
                 self.update_filtered_tracks();
                 Task::none()
             }
@@ -4350,7 +4115,9 @@ impl AppState {
             Message::SelectTrack(track) => {
                 let now = std::time::Instant::now();
                 if let Some((prev_id, last_time)) = self.last_click_track {
-                    if prev_id == track.id && now.duration_since(last_time) < std::time::Duration::from_millis(350) {
+                    if prev_id == track.id
+                        && now.duration_since(last_time) < std::time::Duration::from_millis(350)
+                    {
                         self.last_click_track = None;
                         return Task::done(Message::DoubleClickTrack(track));
                     }
@@ -4389,16 +4156,19 @@ impl AppState {
 
                 let path = track.path.clone();
                 let track_id = track.id;
-                Task::batch([blur_focus(), Task::perform(
-                    async move {
-                        tokio::task::spawn_blocking(move || {
-                            crate::library::scanner::load_cover(&path)
-                        })
-                        .await
-                        .unwrap_or(None)
-                    },
-                    move |cover| Message::CoverLoaded(track_id, cover),
-                )])
+                Task::batch([
+                    blur_focus(),
+                    Task::perform(
+                        async move {
+                            tokio::task::spawn_blocking(move || {
+                                crate::library::scanner::load_cover(&path)
+                            })
+                            .await
+                            .unwrap_or(None)
+                        },
+                        move |cover| Message::CoverLoaded(track_id, cover),
+                    ),
+                ])
             }
 
             Message::CoverLoaded(track_id, cover_data) => {
@@ -4465,10 +4235,10 @@ impl AppState {
             }
 
             Message::KeyPressed(key) => {
-                use iced::keyboard::Key;
                 use iced::keyboard::key::Named;
+                use iced::keyboard::Key;
                 let seek = crate::config::get().seek_step as i64;
-                let vol  = crate::config::get().volume_step;
+                let vol = crate::config::get().volume_step;
                 let has_tag_editor = self.show_tag_editor.is_some();
                 let has_playlist_dialog = self.playlist_dialog.is_some();
                 let has_shortcuts = self.show_shortcuts;
@@ -4498,11 +4268,18 @@ impl AppState {
                             if let Some(ref mut state) = self.show_tag_editor {
                                 // If any genre has ghost suggestion, Tab completes it instead of cycling
                                 {
-                                    let mut unique_genres: Vec<String> = self.all_tracks.iter()
+                                    let mut unique_genres: Vec<String> = self
+                                        .all_tracks
+                                        .iter()
                                         .flat_map(|t| {
                                             if t.genre.contains("; ") {
-                                                t.genre.split("; ").map(|g| g.trim().to_string()).collect::<Vec<_>>()
-                                            } else { vec![t.genre.clone()] }
+                                                t.genre
+                                                    .split("; ")
+                                                    .map(|g| g.trim().to_string())
+                                                    .collect::<Vec<_>>()
+                                            } else {
+                                                vec![t.genre.clone()]
+                                            }
                                         })
                                         .filter(|s| !s.trim().is_empty())
                                         .collect();
@@ -4510,40 +4287,70 @@ impl AppState {
                                     unique_genres.dedup();
                                     for i in 0..state.genres.len() {
                                         let val = state.genres[i].trim().to_string();
-                                        if val.is_empty() { continue; }
-                                        let suggestions = crate::ui::components::autocomplete::get_suggestions(&val, &unique_genres);
+                                        if val.is_empty() {
+                                            continue;
+                                        }
+                                        let suggestions =
+                                            crate::ui::components::autocomplete::get_suggestions(
+                                                &val,
+                                                &unique_genres,
+                                            );
                                         if let Some(first) = suggestions.first() {
-                                            if first.to_lowercase().starts_with(&val.to_lowercase()) && first.len() > val.len() {
+                                            if first.to_lowercase().starts_with(&val.to_lowercase())
+                                                && first.len() > val.len()
+                                            {
                                                 state.genres[i] = first.clone();
                                                 state.apply_genres[i] = true;
                                                 state.is_saved = false;
                                                 state.just_saved.remove(&format!("genre{}", i));
                                                 state.focused_field = Some(3 + i);
-                                                return iced::widget::text_input::focus(iced::widget::text_input::Id::new(format!("id3_genre_{}", i)));
+                                                return iced::widget::text_input::focus(
+                                                    iced::widget::text_input::Id::new(format!(
+                                                        "id3_genre_{}",
+                                                        i
+                                                    )),
+                                                );
                                             }
                                         }
                                     }
                                 }
-                                let mut fields: Vec<String> = vec!["id3_title".to_string(), "id3_artist".to_string(), "id3_album".to_string()];
+                                let mut fields: Vec<String> = vec![
+                                    "id3_title".to_string(),
+                                    "id3_artist".to_string(),
+                                    "id3_album".to_string(),
+                                ];
                                 for i in 0..state.genres.len() {
                                     fields.push(format!("id3_genre_{}", i));
                                 }
-                                fields.extend(["id3_track".to_string(), "id3_disc".to_string(), "id3_year".to_string(), "id3_cover".to_string()]);
+                                fields.extend([
+                                    "id3_track".to_string(),
+                                    "id3_disc".to_string(),
+                                    "id3_year".to_string(),
+                                    "id3_cover".to_string(),
+                                ]);
                                 let current = state.focused_field.unwrap_or(0);
                                 let next = if self.modifiers.shift() {
-                                    if current == 0 { fields.len() - 1 } else { current - 1 }
+                                    if current == 0 {
+                                        fields.len() - 1
+                                    } else {
+                                        current - 1
+                                    }
                                 } else {
                                     (current + 1) % fields.len()
                                 };
                                 state.focused_field = Some(next);
-                                return iced::widget::text_input::focus(iced::widget::text_input::Id::new(fields[next].clone()));
+                                return iced::widget::text_input::focus(
+                                    iced::widget::text_input::Id::new(fields[next].clone()),
+                                );
                             }
                         } else if !has_playlist_dialog && !has_shortcuts && !has_context_menu {
                             if self.active_focus.is_none() {
                                 // Nothing has been clicked yet (fresh launch): the
                                 // documented cycle starts at the sidebar search.
                                 self.active_focus = Some(ActiveFocus::SidebarSearch);
-                                return iced::widget::text_input::focus(iced::widget::text_input::Id::new("sidebar_search_input"));
+                                return iced::widget::text_input::focus(
+                                    iced::widget::text_input::Id::new("sidebar_search_input"),
+                                );
                             } else if self.active_focus == Some(ActiveFocus::SidebarSearch) {
                                 self.active_focus = Some(ActiveFocus::SidebarList);
                                 match self.view_mode {
@@ -4579,7 +4386,10 @@ impl AppState {
                                 if self.selected_track.is_none() {
                                     if let Some(track) = self.tracks.first().cloned() {
                                         let cover_data = load_cover(&track.path);
-                                        let track = Track { cover_data, ..track };
+                                        let track = Track {
+                                            cover_data,
+                                            ..track
+                                        };
                                         self.selected_track = Some(track.clone());
                                         self.selected_tracks = Arc::new(vec![track.clone()]);
                                         self.last_clicked_track = Some(track.clone());
@@ -4591,7 +4401,10 @@ impl AppState {
                                 if self.selected_track.is_none() {
                                     if let Some(track) = self.tracks.first().cloned() {
                                         let cover_data = load_cover(&track.path);
-                                        let track = Track { cover_data, ..track };
+                                        let track = Track {
+                                            cover_data,
+                                            ..track
+                                        };
                                         self.selected_track = Some(track.clone());
                                         self.selected_tracks = Arc::new(vec![track.clone()]);
                                         self.last_clicked_track = Some(track.clone());
@@ -4603,7 +4416,9 @@ impl AppState {
                                 // Focusing a widget that is not mounted does
                                 // nothing; the search row has to be open.
                                 self.show_song_search = true;
-                                return iced::widget::text_input::focus(iced::widget::text_input::Id::new("song_search_input"));
+                                return iced::widget::text_input::focus(
+                                    iced::widget::text_input::Id::new("song_search_input"),
+                                );
                             }
                         }
                     }
@@ -4612,19 +4427,29 @@ impl AppState {
                             return Task::done(Message::PlayPause);
                         }
                     }
-                    Key::Named(Named::ArrowRight) => return Task::done(Message::SeekRelative(seek)),
-                    Key::Named(Named::ArrowLeft)  => return Task::done(Message::SeekRelative(-seek)),
-                    Key::Named(Named::ArrowUp)    => return Task::done(Message::KeyboardArrowUp),
-                    Key::Named(Named::ArrowDown)  => return Task::done(Message::KeyboardArrowDown),
-                    Key::Named(Named::F5)         => return Task::done(Message::RescanLibrary),
+                    Key::Named(Named::ArrowRight) => {
+                        return Task::done(Message::SeekRelative(seek))
+                    }
+                    Key::Named(Named::ArrowLeft) => {
+                        return Task::done(Message::SeekRelative(-seek))
+                    }
+                    Key::Named(Named::ArrowUp) => return Task::done(Message::KeyboardArrowUp),
+                    Key::Named(Named::ArrowDown) => return Task::done(Message::KeyboardArrowDown),
+                    Key::Named(Named::F5) => return Task::done(Message::RescanLibrary),
                     Key::Character(ref c) => {
-                        if has_tag_editor && (self.modifiers.control() || self.modifiers.command()) && c.to_lowercase() == "v" {
+                        if has_tag_editor
+                            && (self.modifiers.control() || self.modifiers.command())
+                            && c.to_lowercase() == "v"
+                        {
                             return Task::done(Message::PasteCoverImage);
                         }
                         // Character shortcuts are plain-key shortcuts. Without
                         // this guard Ctrl+C opens the new-playlist dialog,
                         // Ctrl+E the tag editor, Ctrl+F "liked", and so on.
-                        if self.modifiers.control() || self.modifiers.command() || self.modifiers.alt() {
+                        if self.modifiers.control()
+                            || self.modifiers.command()
+                            || self.modifiers.alt()
+                        {
                             return Task::none();
                         }
                         if !has_playlist_dialog && !has_tag_editor {
@@ -4636,7 +4461,7 @@ impl AppState {
                                 "]" => return Task::done(Message::IncreaseScale),
                                 "[" => return Task::done(Message::DecreaseScale),
                                 "+" | "=" => return Task::done(Message::VolumeStep(vol)),
-                                "-"       => return Task::done(Message::VolumeStep(-vol)),
+                                "-" => return Task::done(Message::VolumeStep(-vol)),
                                 "/" => {
                                     // The input only exists while the search row
                                     // is open, so focusing it without opening
@@ -4645,11 +4470,17 @@ impl AppState {
                                     self.active_focus = Some(ActiveFocus::SongSearch);
                                     self.search_query.clear();
                                     self.update_filtered_tracks();
-                                    return iced::widget::text_input::focus(iced::widget::text_input::Id::new("song_search_input"));
+                                    return iced::widget::text_input::focus(
+                                        iced::widget::text_input::Id::new("song_search_input"),
+                                    );
                                 }
                                 "l" | "L" | "f" | "F" => return Task::done(Message::KeyboardLike),
                                 "e" | "E" => return Task::done(Message::KeyboardEdit),
-                                "c" | "C" => return Task::done(Message::OpenPlaylistDialog(PlaylistDialogMode::Create)),
+                                "c" | "C" => {
+                                    return Task::done(Message::OpenPlaylistDialog(
+                                        PlaylistDialogMode::Create,
+                                    ))
+                                }
                                 "a" | "A" => return Task::done(Message::KeyboardAdd),
                                 _ => {}
                             }
@@ -4731,7 +4562,7 @@ impl AppState {
                 let album_defaults = &crate::config::get().playback_defaults.album;
                 self.shuffle = album_defaults.shuffle;
                 self.repeat = album_defaults.repeat;
-                
+
                 // Sort by track number ascending
                 Arc::make_mut(&mut self.tracks).sort_by_key(|t| t.track_number.unwrap_or(u32::MAX));
                 self.queue = (*self.tracks).clone();
@@ -4752,12 +4583,18 @@ impl AppState {
                 self.search_query.clear();
                 self.update_filtered_tracks();
                 let pd = &crate::config::get().playback_defaults;
-                if playlist_name == "Liked Songs" || playlist_name == "Recently Played" || playlist_name == "Most Played" || playlist_name == "New Music" {
-                    self.playing_context = Some(PlayingContext::Autoplaylist(playlist_name.clone()));
+                if playlist_name == "Liked Songs"
+                    || playlist_name == "Recently Played"
+                    || playlist_name == "Most Played"
+                    || playlist_name == "New Music"
+                {
+                    self.playing_context =
+                        Some(PlayingContext::Autoplaylist(playlist_name.clone()));
                     self.shuffle = pd.artist.shuffle;
                     self.repeat = pd.artist.repeat;
                 } else if crate::db::get(|db| db.smart_playlists.contains_key(&playlist_name)) {
-                    self.playing_context = Some(PlayingContext::SmartPlaylist(playlist_name.clone()));
+                    self.playing_context =
+                        Some(PlayingContext::SmartPlaylist(playlist_name.clone()));
                     self.shuffle = pd.smart_playlist.shuffle;
                     self.repeat = pd.smart_playlist.repeat;
                 } else {
@@ -4790,7 +4627,10 @@ impl AppState {
                         let target_y = (y - 120.0).max(0.0);
                         iced::widget::scrollable::scroll_to(
                             iced::widget::scrollable::Id::new("tracklist_scroll"),
-                            iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: target_y }
+                            iced::widget::scrollable::AbsoluteOffset {
+                                x: 0.0,
+                                y: target_y,
+                            },
                         )
                     } else {
                         Task::none()
@@ -4814,7 +4654,10 @@ impl AppState {
                         let target_y = (y - 120.0).max(0.0);
                         iced::widget::scrollable::scroll_to(
                             iced::widget::scrollable::Id::new("tracklist_scroll"),
-                            iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: target_y }
+                            iced::widget::scrollable::AbsoluteOffset {
+                                x: 0.0,
+                                y: target_y,
+                            },
                         )
                     } else {
                         Task::none()
@@ -4853,7 +4696,9 @@ impl AppState {
             Message::SelectGenre(genre) => {
                 let now = std::time::Instant::now();
                 if let Some((ref prev_genre, last_time)) = self.last_click_genre {
-                    if prev_genre == &genre && now.duration_since(last_time) < std::time::Duration::from_millis(350) {
+                    if prev_genre == &genre
+                        && now.duration_since(last_time) < std::time::Duration::from_millis(350)
+                    {
                         self.last_click_genre = None;
                         return Task::done(Message::DoubleClickGenre(genre));
                     }
@@ -4959,7 +4804,11 @@ impl AppState {
                                 db.table_columns.iter().position(|&c| c == target_col),
                             ) {
                                 let col = db.table_columns.remove(src_pos);
-                                let adjusted_dst = if src_pos < dst_pos { dst_pos - 1 } else { dst_pos };
+                                let adjusted_dst = if src_pos < dst_pos {
+                                    dst_pos - 1
+                                } else {
+                                    dst_pos
+                                };
                                 db.table_columns.insert(adjusted_dst, col);
                             }
                         });
@@ -4998,13 +4847,23 @@ impl AppState {
 
             Message::CreatePlaylistFromContext(target_name, is_artist) => {
                 crate::db::create_playlist(target_name.clone());
-                let matched_tracks: Vec<Track> = self.all_tracks.iter()
+                let matched_tracks: Vec<Track> = self
+                    .all_tracks
+                    .iter()
                     .filter(|t| {
                         if is_artist {
-                            let a = if t.artist.trim().is_empty() { "Unknown Artist" } else { &t.artist };
+                            let a = if t.artist.trim().is_empty() {
+                                "Unknown Artist"
+                            } else {
+                                &t.artist
+                            };
                             a == target_name
                         } else {
-                            let al = if t.album.trim().is_empty() { "Unknown Album" } else { &t.album };
+                            let al = if t.album.trim().is_empty() {
+                                "Unknown Album"
+                            } else {
+                                &t.album
+                            };
                             al == target_name
                         }
                     })
@@ -5019,7 +4878,9 @@ impl AppState {
             }
 
             Message::AddAlbumToPlaylist(album_name, playlist_name) => {
-                let album_tracks: Vec<Track> = self.all_tracks.iter()
+                let album_tracks: Vec<Track> = self
+                    .all_tracks
+                    .iter()
                     .filter(|t| t.album == album_name)
                     .cloned()
                     .collect();
@@ -5075,20 +4936,15 @@ impl AppState {
 
             Message::EqBandChanged(band, gain) => {
                 if let Some(slot) = self.equalizer.bands_db.get_mut(band) {
-                    *slot = gain.clamp(
-                        crate::audio::eq::GAIN_MIN,
-                        crate::audio::eq::GAIN_MAX,
-                    );
+                    *slot = gain.clamp(crate::audio::eq::GAIN_MIN, crate::audio::eq::GAIN_MAX);
                 }
                 self.commit_equalizer();
                 Task::none()
             }
 
             Message::EqPreampChanged(preamp) => {
-                self.equalizer.preamp_db = preamp.clamp(
-                    crate::audio::eq::PREAMP_MIN,
-                    crate::audio::eq::PREAMP_MAX,
-                );
+                self.equalizer.preamp_db =
+                    preamp.clamp(crate::audio::eq::PREAMP_MIN, crate::audio::eq::PREAMP_MAX);
                 self.commit_equalizer();
                 Task::none()
             }
@@ -5119,7 +4975,9 @@ impl AppState {
                 let mut rng = rand::thread_rng();
                 let next_mode = loop {
                     let r = rng.gen_range(0..9);
-                    if r != self.visualizer_mode { break r; }
+                    if r != self.visualizer_mode {
+                        break r;
+                    }
                 };
                 self.visualizer_mode = next_mode;
                 let mut cfg = crate::config::get();
@@ -5135,7 +4993,9 @@ impl AppState {
                     self.update_filtered_tracks();
                     Task::none()
                 } else {
-                    iced::widget::text_input::focus(iced::widget::text_input::Id::new("song_search_input"))
+                    iced::widget::text_input::focus(iced::widget::text_input::Id::new(
+                        "song_search_input",
+                    ))
                 }
             }
 
@@ -5146,7 +5006,9 @@ impl AppState {
                     self.update_filtered_tracks();
                     Task::none()
                 } else {
-                    iced::widget::text_input::focus(iced::widget::text_input::Id::new("sidebar_search_input"))
+                    iced::widget::text_input::focus(iced::widget::text_input::Id::new(
+                        "sidebar_search_input",
+                    ))
                 }
             }
 
@@ -5169,7 +5031,10 @@ impl AppState {
 
                     let px = self.cursor_position.x;
                     let py = self.cursor_position.y;
-                    let clicked_inside_search = px >= search_left && px <= search_right && py >= search_top && py <= search_bottom;
+                    let clicked_inside_search = px >= search_left
+                        && px <= search_right
+                        && py >= search_top
+                        && py <= search_bottom;
                     if !clicked_inside_search {
                         self.show_song_search = false;
                         self.search_query.clear();
@@ -5186,7 +5051,9 @@ impl AppState {
             }
 
             Message::ToastClicked(id) => {
-                let kind = self.active_notifications.iter()
+                let kind = self
+                    .active_notifications
+                    .iter()
                     .find(|n| n.id == id)
                     .map(|n| n.kind);
                 self.active_notifications.retain(|n| n.id != id);
@@ -5315,7 +5182,9 @@ impl AppState {
                 if let Some(ref mut state) = self.show_tag_editor {
                     state.apply_lyrics = val;
                     state.is_saved = false;
-                    if !val { state.just_saved.remove("lyrics"); }
+                    if !val {
+                        state.just_saved.remove("lyrics");
+                    }
                 }
                 Task::none()
             }
@@ -5331,7 +5200,10 @@ impl AppState {
             Message::ApplyPendingLyricOffset => {
                 if let Some(ref mut state) = self.show_tag_editor {
                     let current_text = state.lyrics_content.text();
-                    let new_text = crate::ui::lyrics_shift::shift_lrc_timestamps(&current_text, state.pending_offset);
+                    let new_text = crate::ui::lyrics_shift::shift_lrc_timestamps(
+                        &current_text,
+                        state.pending_offset,
+                    );
                     state.lyrics_content = iced::widget::text_editor::Content::with_text(&new_text);
                     state.apply_lyrics = true;
                     state.pending_offset = 0.0;
@@ -5351,19 +5223,27 @@ impl AppState {
                     let artist = state.artist.trim();
                     let album = state.album.trim();
                     let title = state.title.trim();
-                    
+
                     let mut query_parts = Vec::new();
-                    if !artist.is_empty() { query_parts.push(artist); }
-                    if !album.is_empty() { query_parts.push(album); }
-                    if !title.is_empty() { query_parts.push(title); }
-                    
+                    if !artist.is_empty() {
+                        query_parts.push(artist);
+                    }
+                    if !album.is_empty() {
+                        query_parts.push(album);
+                    }
+                    if !title.is_empty() {
+                        query_parts.push(title);
+                    }
+
                     if !query_parts.is_empty() {
                         let query = query_parts.join(" ");
                         let mut encoded = String::new();
                         for c in query.chars() {
                             match c {
                                 ' ' => encoded.push_str("%20"),
-                                'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => encoded.push(c),
+                                'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => {
+                                    encoded.push(c)
+                                }
                                 _ => {
                                     encoded.push_str(&format!("%{:02X}", c as u32));
                                 }
@@ -5477,13 +5357,15 @@ impl AppState {
             Message::SettingsSave => {
                 if let Some(ref mut state) = self.show_settings {
                     // Don't save if there are validation errors in hex codes
-                    if state.theme_source == "Custom" && !state.custom_validation_errors.is_empty() {
+                    if state.theme_source == "Custom" && !state.custom_validation_errors.is_empty()
+                    {
                         return Task::none();
                     }
 
                     // Contrast warnings
                     if state.theme_source == "Custom" {
-                        let warnings = crate::ui::theme::check_custom_contrast_warnings(&state.custom_theme);
+                        let warnings =
+                            crate::ui::theme::check_custom_contrast_warnings(&state.custom_theme);
                         if !warnings.is_empty() && !state.confirm_save_anyway {
                             state.confirm_save_anyway = true;
                             return Task::none();
@@ -5492,7 +5374,7 @@ impl AppState {
 
                     let mut cfg = crate::config::get();
                     let old_music_path = cfg.music_path();
-                    
+
                     cfg.music_dir = state.music_dir.clone();
                     cfg.language = state.language.clone();
                     if let Ok(seek) = state.seek_step.trim().parse::<u64>() {
@@ -5515,7 +5397,7 @@ impl AppState {
                     cfg.aurora_preset = state.aurora_preset;
                     cfg.depth_warp_speed = state.depth_warp_speed;
                     cfg.kaleidoscope_axes = state.kaleidoscope_axes;
-                    
+
                     self.visualizer_sensitivity = state.visualizer_sensitivity;
                     self.ghost_trail_length = state.ghost_trail_length;
                     self.ghost_decay = state.ghost_decay;
@@ -5526,13 +5408,13 @@ impl AppState {
                     self.aurora_preset = state.aurora_preset;
                     self.depth_warp_speed = state.depth_warp_speed;
                     self.kaleidoscope_axes = state.kaleidoscope_axes;
-                    
+
                     cfg.theme_source = state.theme_source.clone();
                     cfg.theme_preset = state.theme_preset.clone();
                     cfg.custom_theme = Some(state.custom_theme.clone());
-                    
+
                     crate::config::save(cfg.clone());
-                    
+
                     // Reload active theme
                     let active_palette = crate::ui::theme::load_palette_from_config();
                     crate::ui::theme::apply_palette(active_palette);
@@ -5545,9 +5427,9 @@ impl AppState {
 
                     // Reload strings/locale
                     self.strings = crate::locale::get();
-                    
+
                     self.show_settings = None;
-                    
+
                     if cfg.music_path() != old_music_path {
                         self.is_scanning = true;
                         let new_music_dir = cfg.music_path();
@@ -5568,31 +5450,44 @@ impl AppState {
                 if let Some(ref mut state) = self.show_settings {
                     state.theme_source = val.clone();
                     state.confirm_save_anyway = false;
-                    
+
                     let preview_palette = match val.as_str() {
-                        "Preset" => {
-                            crate::ui::theme::get_preset_palette(&state.theme_preset)
-                                .unwrap_or_else(|| crate::ui::theme::Palette::default_lavender())
-                        }
+                        "Preset" => crate::ui::theme::get_preset_palette(&state.theme_preset)
+                            .unwrap_or_else(|| crate::ui::theme::Palette::default_lavender()),
                         "Custom" => {
                             let current_palette = crate::ui::theme::load_palette_from_config();
                             crate::ui::theme::Palette {
-                                base: crate::ui::theme::hex_to_color(&state.custom_theme.base).unwrap_or(current_palette.base),
-                                mantle: crate::ui::theme::hex_to_color(&state.custom_theme.mantle).unwrap_or(current_palette.mantle),
-                                surface0: crate::ui::theme::hex_to_color(&state.custom_theme.surface0).unwrap_or(current_palette.surface0),
-                                overlay0: crate::ui::theme::hex_to_color(&state.custom_theme.overlay0).unwrap_or(current_palette.overlay0),
-                                text: crate::ui::theme::hex_to_color(&state.custom_theme.text).unwrap_or(current_palette.text),
-                                subtext: crate::ui::theme::hex_to_color(&state.custom_theme.subtext).unwrap_or(current_palette.subtext),
-                                accent: crate::ui::theme::hex_to_color(&state.custom_theme.accent).unwrap_or(current_palette.accent),
-                                green: crate::ui::theme::hex_to_color(&state.custom_theme.green).unwrap_or(current_palette.green),
-                                red: crate::ui::theme::hex_to_color(&state.custom_theme.red).unwrap_or(current_palette.red),
-                                yellow: crate::ui::theme::hex_to_color(&state.custom_theme.yellow).unwrap_or(current_palette.yellow),
-                                blue: crate::ui::theme::hex_to_color(&state.custom_theme.blue).unwrap_or(current_palette.blue),
+                                base: crate::ui::theme::hex_to_color(&state.custom_theme.base)
+                                    .unwrap_or(current_palette.base),
+                                mantle: crate::ui::theme::hex_to_color(&state.custom_theme.mantle)
+                                    .unwrap_or(current_palette.mantle),
+                                surface0: crate::ui::theme::hex_to_color(
+                                    &state.custom_theme.surface0,
+                                )
+                                .unwrap_or(current_palette.surface0),
+                                overlay0: crate::ui::theme::hex_to_color(
+                                    &state.custom_theme.overlay0,
+                                )
+                                .unwrap_or(current_palette.overlay0),
+                                text: crate::ui::theme::hex_to_color(&state.custom_theme.text)
+                                    .unwrap_or(current_palette.text),
+                                subtext: crate::ui::theme::hex_to_color(
+                                    &state.custom_theme.subtext,
+                                )
+                                .unwrap_or(current_palette.subtext),
+                                accent: crate::ui::theme::hex_to_color(&state.custom_theme.accent)
+                                    .unwrap_or(current_palette.accent),
+                                green: crate::ui::theme::hex_to_color(&state.custom_theme.green)
+                                    .unwrap_or(current_palette.green),
+                                red: crate::ui::theme::hex_to_color(&state.custom_theme.red)
+                                    .unwrap_or(current_palette.red),
+                                yellow: crate::ui::theme::hex_to_color(&state.custom_theme.yellow)
+                                    .unwrap_or(current_palette.yellow),
+                                blue: crate::ui::theme::hex_to_color(&state.custom_theme.blue)
+                                    .unwrap_or(current_palette.blue),
                             }
                         }
-                        _ => {
-                            crate::ui::theme::load_palette_from_config()
-                        }
+                        _ => crate::ui::theme::load_palette_from_config(),
                     };
                     crate::ui::theme::apply_palette(preview_palette);
                     self.iced_theme = build_iced_theme();
@@ -5604,7 +5499,7 @@ impl AppState {
                 if let Some(ref mut state) = self.show_settings {
                     state.theme_preset = val.clone();
                     state.confirm_save_anyway = false;
-                    
+
                     if let Some(preset) = crate::ui::theme::get_preset_palette(&val) {
                         crate::ui::theme::apply_palette(preset);
                         self.iced_theme = build_iced_theme();
@@ -5626,14 +5521,16 @@ impl AppState {
                         _ => {}
                     }
                     state.confirm_save_anyway = false;
-                    
+
                     let is_valid = crate::ui::theme::hex_to_color(&val).is_some();
                     if is_valid {
                         state.custom_validation_errors.remove(&token);
                     } else {
-                        state.custom_validation_errors.insert(token.clone(), "Invalid hex (format: #RRGGBB)".to_string());
+                        state
+                            .custom_validation_errors
+                            .insert(token.clone(), "Invalid hex (format: #RRGGBB)".to_string());
                     }
-                    
+
                     if is_valid && (token == "base" || token == "text") {
                         if let (Some(base_col), Some(text_col)) = (
                             crate::ui::theme::hex_to_color(&state.custom_theme.base),
@@ -5645,27 +5542,58 @@ impl AppState {
                             let overlay0_col = crate::ui::theme::derive_overlay0(base_col, is_dark);
                             let subtext_col = crate::ui::theme::derive_subtext(text_col, is_dark);
 
-                            state.custom_theme.mantle = format!("#{:02x}{:02x}{:02x}", (mantle_col.r * 255.0) as u8, (mantle_col.g * 255.0) as u8, (mantle_col.b * 255.0) as u8);
-                            state.custom_theme.surface0 = format!("#{:02x}{:02x}{:02x}", (surface0_col.r * 255.0) as u8, (surface0_col.g * 255.0) as u8, (surface0_col.b * 255.0) as u8);
-                            state.custom_theme.overlay0 = format!("#{:02x}{:02x}{:02x}", (overlay0_col.r * 255.0) as u8, (overlay0_col.g * 255.0) as u8, (overlay0_col.b * 255.0) as u8);
-                            state.custom_theme.subtext = format!("#{:02x}{:02x}{:02x}", (subtext_col.r * 255.0) as u8, (subtext_col.g * 255.0) as u8, (subtext_col.b * 255.0) as u8);
+                            state.custom_theme.mantle = format!(
+                                "#{:02x}{:02x}{:02x}",
+                                (mantle_col.r * 255.0) as u8,
+                                (mantle_col.g * 255.0) as u8,
+                                (mantle_col.b * 255.0) as u8
+                            );
+                            state.custom_theme.surface0 = format!(
+                                "#{:02x}{:02x}{:02x}",
+                                (surface0_col.r * 255.0) as u8,
+                                (surface0_col.g * 255.0) as u8,
+                                (surface0_col.b * 255.0) as u8
+                            );
+                            state.custom_theme.overlay0 = format!(
+                                "#{:02x}{:02x}{:02x}",
+                                (overlay0_col.r * 255.0) as u8,
+                                (overlay0_col.g * 255.0) as u8,
+                                (overlay0_col.b * 255.0) as u8
+                            );
+                            state.custom_theme.subtext = format!(
+                                "#{:02x}{:02x}{:02x}",
+                                (subtext_col.r * 255.0) as u8,
+                                (subtext_col.g * 255.0) as u8,
+                                (subtext_col.b * 255.0) as u8
+                            );
                         }
                     }
-                    
+
                     if state.custom_validation_errors.is_empty() {
                         let current_palette = crate::ui::theme::load_palette_from_config();
                         let preview_palette = crate::ui::theme::Palette {
-                            base: crate::ui::theme::hex_to_color(&state.custom_theme.base).unwrap_or(current_palette.base),
-                            mantle: crate::ui::theme::hex_to_color(&state.custom_theme.mantle).unwrap_or(current_palette.mantle),
-                            surface0: crate::ui::theme::hex_to_color(&state.custom_theme.surface0).unwrap_or(current_palette.surface0),
-                            overlay0: crate::ui::theme::hex_to_color(&state.custom_theme.overlay0).unwrap_or(current_palette.overlay0),
-                            text: crate::ui::theme::hex_to_color(&state.custom_theme.text).unwrap_or(current_palette.text),
-                            subtext: crate::ui::theme::hex_to_color(&state.custom_theme.subtext).unwrap_or(current_palette.subtext),
-                            accent: crate::ui::theme::hex_to_color(&state.custom_theme.accent).unwrap_or(current_palette.accent),
-                            green: crate::ui::theme::hex_to_color(&state.custom_theme.green).unwrap_or(current_palette.green),
-                            red: crate::ui::theme::hex_to_color(&state.custom_theme.red).unwrap_or(current_palette.red),
-                            yellow: crate::ui::theme::hex_to_color(&state.custom_theme.yellow).unwrap_or(current_palette.yellow),
-                            blue: crate::ui::theme::hex_to_color(&state.custom_theme.blue).unwrap_or(current_palette.blue),
+                            base: crate::ui::theme::hex_to_color(&state.custom_theme.base)
+                                .unwrap_or(current_palette.base),
+                            mantle: crate::ui::theme::hex_to_color(&state.custom_theme.mantle)
+                                .unwrap_or(current_palette.mantle),
+                            surface0: crate::ui::theme::hex_to_color(&state.custom_theme.surface0)
+                                .unwrap_or(current_palette.surface0),
+                            overlay0: crate::ui::theme::hex_to_color(&state.custom_theme.overlay0)
+                                .unwrap_or(current_palette.overlay0),
+                            text: crate::ui::theme::hex_to_color(&state.custom_theme.text)
+                                .unwrap_or(current_palette.text),
+                            subtext: crate::ui::theme::hex_to_color(&state.custom_theme.subtext)
+                                .unwrap_or(current_palette.subtext),
+                            accent: crate::ui::theme::hex_to_color(&state.custom_theme.accent)
+                                .unwrap_or(current_palette.accent),
+                            green: crate::ui::theme::hex_to_color(&state.custom_theme.green)
+                                .unwrap_or(current_palette.green),
+                            red: crate::ui::theme::hex_to_color(&state.custom_theme.red)
+                                .unwrap_or(current_palette.red),
+                            yellow: crate::ui::theme::hex_to_color(&state.custom_theme.yellow)
+                                .unwrap_or(current_palette.yellow),
+                            blue: crate::ui::theme::hex_to_color(&state.custom_theme.blue)
+                                .unwrap_or(current_palette.blue),
                         };
                         crate::ui::theme::apply_palette(preview_palette);
                         self.iced_theme = build_iced_theme();
@@ -5692,9 +5620,12 @@ impl AppState {
                         };
                         let clean = hex.trim_start_matches('#');
                         if clean.len() >= 6 {
-                            state.color_picker_r = u8::from_str_radix(&clean[0..2], 16).unwrap_or(0) as f32;
-                            state.color_picker_g = u8::from_str_radix(&clean[2..4], 16).unwrap_or(0) as f32;
-                            state.color_picker_b = u8::from_str_radix(&clean[4..6], 16).unwrap_or(0) as f32;
+                            state.color_picker_r =
+                                u8::from_str_radix(&clean[0..2], 16).unwrap_or(0) as f32;
+                            state.color_picker_g =
+                                u8::from_str_radix(&clean[2..4], 16).unwrap_or(0) as f32;
+                            state.color_picker_b =
+                                u8::from_str_radix(&clean[4..6], 16).unwrap_or(0) as f32;
                         }
                         state.color_picker_token = Some(token);
                     }
@@ -5724,54 +5655,78 @@ impl AppState {
             }
 
             Message::SettingsColorPickerRChanged(val) => {
-                let result = self.show_settings.as_mut().map(|state| {
-                    state.color_picker_r = val;
-                    state.color_picker_token.clone().map(|t| {
-                        let hex = format!("#{:02x}{:02x}{:02x}",
-                            state.color_picker_r.round() as u8,
-                            state.color_picker_g.round() as u8,
-                            state.color_picker_b.round() as u8);
-                        (t, hex)
+                let result = self
+                    .show_settings
+                    .as_mut()
+                    .map(|state| {
+                        state.color_picker_r = val;
+                        state.color_picker_token.clone().map(|t| {
+                            let hex = format!(
+                                "#{:02x}{:02x}{:02x}",
+                                state.color_picker_r.round() as u8,
+                                state.color_picker_g.round() as u8,
+                                state.color_picker_b.round() as u8
+                            );
+                            (t, hex)
+                        })
                     })
-                }).flatten();
+                    .flatten();
                 if let Some((token, hex)) = result {
-                    Task::perform(async move { (token, hex) }, |(t, h)| Message::SettingsCustomColorChanged(t, h))
+                    Task::perform(async move { (token, hex) }, |(t, h)| {
+                        Message::SettingsCustomColorChanged(t, h)
+                    })
                 } else {
                     Task::none()
                 }
             }
 
             Message::SettingsColorPickerGChanged(val) => {
-                let result = self.show_settings.as_mut().map(|state| {
-                    state.color_picker_g = val;
-                    state.color_picker_token.clone().map(|t| {
-                        let hex = format!("#{:02x}{:02x}{:02x}",
-                            state.color_picker_r.round() as u8,
-                            state.color_picker_g.round() as u8,
-                            state.color_picker_b.round() as u8);
-                        (t, hex)
+                let result = self
+                    .show_settings
+                    .as_mut()
+                    .map(|state| {
+                        state.color_picker_g = val;
+                        state.color_picker_token.clone().map(|t| {
+                            let hex = format!(
+                                "#{:02x}{:02x}{:02x}",
+                                state.color_picker_r.round() as u8,
+                                state.color_picker_g.round() as u8,
+                                state.color_picker_b.round() as u8
+                            );
+                            (t, hex)
+                        })
                     })
-                }).flatten();
+                    .flatten();
                 if let Some((token, hex)) = result {
-                    Task::perform(async move { (token, hex) }, |(t, h)| Message::SettingsCustomColorChanged(t, h))
+                    Task::perform(async move { (token, hex) }, |(t, h)| {
+                        Message::SettingsCustomColorChanged(t, h)
+                    })
                 } else {
                     Task::none()
                 }
             }
 
             Message::SettingsColorPickerBChanged(val) => {
-                let result = self.show_settings.as_mut().map(|state| {
-                    state.color_picker_b = val;
-                    state.color_picker_token.clone().map(|t| {
-                        let hex = format!("#{:02x}{:02x}{:02x}",
-                            state.color_picker_r.round() as u8,
-                            state.color_picker_g.round() as u8,
-                            state.color_picker_b.round() as u8);
-                        (t, hex)
+                let result = self
+                    .show_settings
+                    .as_mut()
+                    .map(|state| {
+                        state.color_picker_b = val;
+                        state.color_picker_token.clone().map(|t| {
+                            let hex = format!(
+                                "#{:02x}{:02x}{:02x}",
+                                state.color_picker_r.round() as u8,
+                                state.color_picker_g.round() as u8,
+                                state.color_picker_b.round() as u8
+                            );
+                            (t, hex)
+                        })
                     })
-                }).flatten();
+                    .flatten();
                 if let Some((token, hex)) = result {
-                    Task::perform(async move { (token, hex) }, |(t, h)| Message::SettingsCustomColorChanged(t, h))
+                    Task::perform(async move { (token, hex) }, |(t, h)| {
+                        Message::SettingsCustomColorChanged(t, h)
+                    })
                 } else {
                     Task::none()
                 }
@@ -5954,58 +5909,91 @@ impl AppState {
             Message::PasteCoverImage => {
                 return Task::perform(
                     async {
-                        let (bytes, ext) = tokio::task::spawn_blocking(|| -> Result<(Vec<u8>, &'static str), String> {
-                            // 1) Try arboard (Wayland/X11)
-                            if let Ok(mut cb) = arboard::Clipboard::new() {
-                                if let Ok(img) = cb.get_image() {
-                                    let mut png_bytes = Vec::new();
-                                    let buffer = image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(
-                                        img.width as u32,
-                                        img.height as u32,
-                                        img.bytes.to_vec(),
-                                    )
-                                    .ok_or("invalid clipboard image".to_string())?;
-                                    image::DynamicImage::ImageRgba8(buffer)
-                                        .write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png)
-                                        .map_err(|e| e.to_string())?;
-                                    return Ok((png_bytes, "png"));
+                        let (bytes, ext) = tokio::task::spawn_blocking(
+                            || -> Result<(Vec<u8>, &'static str), String> {
+                                // 1) Try arboard (Wayland/X11)
+                                if let Ok(mut cb) = arboard::Clipboard::new() {
+                                    if let Ok(img) = cb.get_image() {
+                                        let mut png_bytes = Vec::new();
+                                        let buffer = image::ImageBuffer::<
+                                                image::Rgba<u8>,
+                                                Vec<u8>,
+                                            >::from_raw(
+                                                img.width as u32,
+                                                img.height as u32,
+                                                img.bytes.to_vec(),
+                                            )
+                                            .ok_or("invalid clipboard image".to_string())?;
+                                        image::DynamicImage::ImageRgba8(buffer)
+                                            .write_to(
+                                                &mut std::io::Cursor::new(&mut png_bytes),
+                                                image::ImageFormat::Png,
+                                            )
+                                            .map_err(|e| e.to_string())?;
+                                        return Ok((png_bytes, "png"));
+                                    }
                                 }
-                            }
-                            // 2) Fallback: wl-paste (Wayland) — browser copies often only visible via wl-paste
-                            for (mime, ext) in [("image/png", "png"), ("image/jpeg", "jpg"), ("image/jpg", "jpg"), ("image/webp", "webp")] {
-                                if let Ok(out) = std::process::Command::new("wl-paste").arg("--type").arg(mime).output() {
-                                    if out.status.success() && !out.stdout.is_empty() {
-                                        // Validate magic
-                                        let b = &out.stdout;
-                                        let is_png = b.starts_with(&[0x89, 0x50, 0x4E, 0x47]);
-                                        let is_jpg = b.starts_with(&[0xFF, 0xD8, 0xFF]);
-                                        let is_webp = b.starts_with(b"RIFF");
-                                        if is_png || is_jpg || is_webp || b.len() > 100 {
-                                            return Ok((b.clone(), ext));
+                                // 2) Fallback: wl-paste (Wayland) — browser copies often only visible via wl-paste
+                                for (mime, ext) in [
+                                    ("image/png", "png"),
+                                    ("image/jpeg", "jpg"),
+                                    ("image/jpg", "jpg"),
+                                    ("image/webp", "webp"),
+                                ] {
+                                    if let Ok(out) = std::process::Command::new("wl-paste")
+                                        .arg("--type")
+                                        .arg(mime)
+                                        .output()
+                                    {
+                                        if out.status.success() && !out.stdout.is_empty() {
+                                            // Validate magic
+                                            let b = &out.stdout;
+                                            let is_png = b.starts_with(&[0x89, 0x50, 0x4E, 0x47]);
+                                            let is_jpg = b.starts_with(&[0xFF, 0xD8, 0xFF]);
+                                            let is_webp = b.starts_with(b"RIFF");
+                                            if is_png || is_jpg || is_webp || b.len() > 100 {
+                                                return Ok((b.clone(), ext));
+                                            }
+                                        }
+                                    }
+                                    // X11 fallback
+                                    if let Ok(out) = std::process::Command::new("xclip")
+                                        .args(["-selection", "clipboard", "-t", mime, "-o"])
+                                        .output()
+                                    {
+                                        if out.status.success() && !out.stdout.is_empty() {
+                                            return Ok((out.stdout, ext));
                                         }
                                     }
                                 }
-                                // X11 fallback
-                                if let Ok(out) = std::process::Command::new("xclip").args(["-selection", "clipboard", "-t", mime, "-o"]).output() {
-                                    if out.status.success() && !out.stdout.is_empty() {
-                                        return Ok((out.stdout, ext));
+                                // 3) Try text fallback (maybe URL copied)
+                                if let Ok(mut cb) = arboard::Clipboard::new() {
+                                    if let Ok(txt) = cb.get_text() {
+                                        let t = txt.trim();
+                                        if t.starts_with("http")
+                                            && (t.ends_with(".png")
+                                                || t.ends_with(".jpg")
+                                                || t.ends_with(".jpeg")
+                                                || t.ends_with(".webp"))
+                                        {
+                                            return Err(format!(
+                                                "clipboard contains URL, not image: {}",
+                                                t
+                                            ));
+                                        }
                                     }
                                 }
-                            }
-                            // 3) Try text fallback (maybe URL copied)
-                            if let Ok(mut cb) = arboard::Clipboard::new() {
-                                if let Ok(txt) = cb.get_text() {
-                                    let t = txt.trim();
-                                    if t.starts_with("http") && (t.ends_with(".png") || t.ends_with(".jpg") || t.ends_with(".jpeg") || t.ends_with(".webp")) {
-                                        return Err(format!("clipboard contains URL, not image: {}", t));
-                                    }
-                                }
-                            }
-                            Err("clipboard has no image (try Copy image, not Copy link)".to_string())
-                        })
+                                Err("clipboard has no image (try Copy image, not Copy link)"
+                                    .to_string())
+                            },
+                        )
                         .await
                         .map_err(|e| e.to_string())??;
-                        let tmp = std::env::temp_dir().join(format!("omatunes_clip_{}.{}", chrono::Utc::now().timestamp_millis(), ext));
+                        let tmp = std::env::temp_dir().join(format!(
+                            "omatunes_clip_{}.{}",
+                            chrono::Utc::now().timestamp_millis(),
+                            ext
+                        ));
                         std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
                         Ok(tmp) as Result<std::path::PathBuf, String>
                     },
@@ -6037,7 +6025,9 @@ impl AppState {
                         return self.play_track_internal(first);
                     }
                 } else {
-                    let current_idx = self.current_track.as_ref()
+                    let current_idx = self
+                        .current_track
+                        .as_ref()
                         .and_then(|ct| self.queue.iter().position(|t| t.id == ct.id));
                     if let Some(idx) = current_idx {
                         for (offset, track) in tracks.into_iter().enumerate() {
@@ -6046,7 +6036,8 @@ impl AppState {
                     } else {
                         self.queue.extend(tracks);
                     }
-                    let queue_paths: Vec<PathBuf> = self.queue.iter().map(|t| t.path.clone()).collect();
+                    let queue_paths: Vec<PathBuf> =
+                        self.queue.iter().map(|t| t.path.clone()).collect();
                     crate::db::write(|db| {
                         db.last_queue_paths = queue_paths;
                     });
@@ -6079,7 +6070,9 @@ impl AppState {
             Message::SelectQueueTrack(index, track) => {
                 let now = std::time::Instant::now();
                 if let Some((prev_id, last_time)) = self.last_click_track {
-                    if prev_id == track.id && now.duration_since(last_time) < std::time::Duration::from_millis(350) {
+                    if prev_id == track.id
+                        && now.duration_since(last_time) < std::time::Duration::from_millis(350)
+                    {
                         self.last_click_track = None;
                         return Task::done(Message::PlayQueueTrack(index));
                     }
@@ -6087,7 +6080,10 @@ impl AppState {
                 self.last_click_track = Some((track.id, now));
                 self.active_focus = Some(ActiveFocus::Tracklist);
                 let cover_data = load_cover(&track.path);
-                let track = Track { cover_data, ..track };
+                let track = Track {
+                    cover_data,
+                    ..track
+                };
 
                 let shift_held = self.modifiers.shift();
                 let ctrl_held = self.modifiers.control() || self.modifiers.command();
@@ -6123,7 +6119,8 @@ impl AppState {
             Message::RemoveQueueTrack(index) => {
                 if index < self.queue.len() {
                     self.queue.remove(index);
-                    let queue_paths: Vec<PathBuf> = self.queue.iter().map(|t| t.path.clone()).collect();
+                    let queue_paths: Vec<PathBuf> =
+                        self.queue.iter().map(|t| t.path.clone()).collect();
                     crate::db::write(|db| {
                         db.last_queue_paths = queue_paths;
                     });
@@ -6134,7 +6131,8 @@ impl AppState {
             Message::MoveQueueTrackUp(index) => {
                 if index > 0 && index < self.queue.len() {
                     self.queue.swap(index, index - 1);
-                    let queue_paths: Vec<PathBuf> = self.queue.iter().map(|t| t.path.clone()).collect();
+                    let queue_paths: Vec<PathBuf> =
+                        self.queue.iter().map(|t| t.path.clone()).collect();
                     crate::db::write(|db| {
                         db.last_queue_paths = queue_paths;
                     });
@@ -6145,7 +6143,8 @@ impl AppState {
             Message::MoveQueueTrackDown(index) => {
                 if index + 1 < self.queue.len() {
                     self.queue.swap(index, index + 1);
-                    let queue_paths: Vec<PathBuf> = self.queue.iter().map(|t| t.path.clone()).collect();
+                    let queue_paths: Vec<PathBuf> =
+                        self.queue.iter().map(|t| t.path.clone()).collect();
                     crate::db::write(|db| {
                         db.last_queue_paths = queue_paths;
                     });
@@ -6169,11 +6168,15 @@ impl AppState {
 
             Message::QueueDragOver(target_idx) => {
                 if let Some(source_idx) = self.dragging_queue_index {
-                    if source_idx != target_idx && source_idx < self.queue.len() && target_idx < self.queue.len() {
+                    if source_idx != target_idx
+                        && source_idx < self.queue.len()
+                        && target_idx < self.queue.len()
+                    {
                         let item = self.queue.remove(source_idx);
                         self.queue.insert(target_idx, item);
                         self.dragging_queue_index = Some(target_idx);
-                        let queue_paths: Vec<PathBuf> = self.queue.iter().map(|t| t.path.clone()).collect();
+                        let queue_paths: Vec<PathBuf> =
+                            self.queue.iter().map(|t| t.path.clone()).collect();
                         crate::db::write(|db| {
                             db.last_queue_paths = queue_paths;
                         });
@@ -6224,13 +6227,17 @@ impl AppState {
 
             Message::TrackListDragOver(target_idx) => {
                 if let Some(source_idx) = self.dragging_track_index {
-                    if source_idx != target_idx && source_idx < self.tracks.len() && target_idx < self.tracks.len() {
+                    if source_idx != target_idx
+                        && source_idx < self.tracks.len()
+                        && target_idx < self.tracks.len()
+                    {
                         let tracks = Arc::make_mut(&mut self.tracks);
                         let track = tracks.remove(source_idx);
                         tracks.insert(target_idx, track);
                         self.dragging_track_index = Some(target_idx);
 
-                        let new_paths: Vec<PathBuf> = self.tracks.iter().map(|t| t.path.clone()).collect();
+                        let new_paths: Vec<PathBuf> =
+                            self.tracks.iter().map(|t| t.path.clone()).collect();
                         if let Some(name) = &self.selected_playlist.clone() {
                             let name = name.clone();
                             if crate::db::get(|db| db.playlists.contains_key(&name)) {
@@ -6311,14 +6318,11 @@ impl AppState {
 
         let left_top: Element<'_, Message> = if tab_strip_visible {
             let tab_strip = views::player::tab_strip(self);
-            row![
-                main_left_content,
-                tab_strip
-            ]
-            .spacing(0)
-            .width(Length::Fill)
-            .height(iced::Length::Fixed(self.player_height))
-            .into()
+            row![main_left_content, tab_strip]
+                .spacing(0)
+                .width(Length::Fill)
+                .height(iced::Length::Fixed(self.player_height))
+                .into()
         } else {
             main_left_content.into()
         };
@@ -6333,17 +6337,18 @@ impl AppState {
 
         let player_drag_handle = mouse_area(
             container(
-                container(Space::new(Length::Fill, Length::Fixed(1.0)))
-                    .style(move |_| iced::widget::container::Style {
+                container(Space::new(Length::Fill, Length::Fixed(1.0))).style(move |_| {
+                    iced::widget::container::Style {
                         background: Some(iced::Background::Color(
                             if self.dragging_player_split || self.is_hovering_player_resizer {
                                 theme::accent()
                             } else {
                                 theme::surface0()
-                            }
+                            },
                         )),
                         ..Default::default()
-                    })
+                    }
+                }),
             )
             .width(Length::Fill)
             .height(6.0)
@@ -6351,21 +6356,17 @@ impl AppState {
             .style(|_| iced::widget::container::Style {
                 background: Some(iced::Background::Color(theme::base())),
                 ..Default::default()
-            })
+            }),
         )
         .on_press(Message::PlayerDragStart)
         .on_enter(Message::HoverPlayerResizer(true))
         .on_exit(Message::HoverPlayerResizer(false))
         .interaction(iced::mouse::Interaction::ResizingVertically);
 
-        let main = column![
-            top_row,
-            player_drag_handle,
-            views::library::view(self),
-        ]
-        .spacing(0)
-        .width(Length::Fill)
-        .height(Length::Fill);
+        let main = column![top_row, player_drag_handle, views::library::view(self),]
+            .spacing(0)
+            .width(Length::Fill)
+            .height(Length::Fill);
 
         let app_container = container(main)
             .style(|_: &Theme| iced::widget::container::Style {
@@ -6378,18 +6379,33 @@ impl AppState {
         let mut view_stack = stack![app_container];
 
         if let Some(ref editor_state) = self.show_tag_editor {
-            let mut unique_artists: Vec<String> = self.all_tracks.iter().map(|t| t.artist.clone()).filter(|s| !s.trim().is_empty()).collect();
+            let mut unique_artists: Vec<String> = self
+                .all_tracks
+                .iter()
+                .map(|t| t.artist.clone())
+                .filter(|s| !s.trim().is_empty())
+                .collect();
             unique_artists.sort();
             unique_artists.dedup();
 
-            let mut unique_albums: Vec<String> = self.all_tracks.iter().map(|t| t.album.clone()).filter(|s| !s.trim().is_empty()).collect();
+            let mut unique_albums: Vec<String> = self
+                .all_tracks
+                .iter()
+                .map(|t| t.album.clone())
+                .filter(|s| !s.trim().is_empty())
+                .collect();
             unique_albums.sort();
             unique_albums.dedup();
 
-            let mut unique_genres: Vec<String> = self.all_tracks.iter()
+            let mut unique_genres: Vec<String> = self
+                .all_tracks
+                .iter()
                 .flat_map(|t| {
                     if t.genre.contains("; ") {
-                        t.genre.split("; ").map(|g| g.trim().to_string()).collect::<Vec<_>>()
+                        t.genre
+                            .split("; ")
+                            .map(|g| g.trim().to_string())
+                            .collect::<Vec<_>>()
                     } else {
                         vec![t.genre.clone()]
                     }
@@ -6406,9 +6422,12 @@ impl AppState {
                 &unique_genres,
             ));
         } else if let Some(ref playlist_dialog_state) = self.playlist_dialog {
-            view_stack = view_stack.push(crate::ui::components::playlist_dialog::view(playlist_dialog_state));
+            view_stack = view_stack.push(crate::ui::components::playlist_dialog::view(
+                playlist_dialog_state,
+            ));
         } else if let Some(ref settings_state) = self.show_settings {
-            view_stack = view_stack.push(crate::ui::components::settings_dialog::view(settings_state));
+            view_stack =
+                view_stack.push(crate::ui::components::settings_dialog::view(settings_state));
         } else if self.show_shortcuts {
             view_stack = view_stack.push(self.shortcuts_modal_view());
         }
@@ -6416,16 +6435,16 @@ impl AppState {
         // Period breakdown popup overlay
         if let Some(ref breakdown) = self.show_period_breakdown {
             if let Some(ref song_view) = self.breakdown_song_view {
-                view_stack = view_stack.push(
-                    crate::ui::views::player::song_breakdown_view(
-                        &song_view.0, &song_view.1, self.breakdown_period_idx, &self.all_tracks,
-                    )
-                );
+                view_stack = view_stack.push(crate::ui::views::player::song_breakdown_view(
+                    &song_view.0,
+                    &song_view.1,
+                    self.breakdown_period_idx,
+                    &self.all_tracks,
+                ));
             } else {
                 view_stack = view_stack.push(crate::ui::views::player::period_breakdown_view(self));
             }
         }
-
 
         // Queue popover overlay
         if self.show_queue_popover
@@ -6438,13 +6457,26 @@ impl AppState {
         }
 
         if let Some(ref target) = self.show_context_menu {
-            let custom_playlists = crate::db::get(|db| db.playlists.keys().cloned().collect::<Vec<String>>());
-            
+            let custom_playlists =
+                crate::db::get(|db| db.playlists.keys().cloned().collect::<Vec<String>>());
+
             let item_style = |_theme: &iced::Theme, status: iced::widget::button::Status| {
-                let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
+                let is_hovered = status == iced::widget::button::Status::Hovered
+                    || status == iced::widget::button::Status::Pressed;
                 iced::widget::button::Style {
-                    background: if is_hovered { Some(iced::Background::Color(theme::with_alpha(theme::accent(), 0.2))) } else { None },
-                    text_color: if is_hovered { theme::accent() } else { theme::text() },
+                    background: if is_hovered {
+                        Some(iced::Background::Color(theme::with_alpha(
+                            theme::accent(),
+                            0.2,
+                        )))
+                    } else {
+                        None
+                    },
+                    text_color: if is_hovered {
+                        theme::accent()
+                    } else {
+                        theme::text()
+                    },
                     border: iced::Border {
                         radius: 4.0.into(),
                         ..Default::default()
@@ -6454,9 +6486,17 @@ impl AppState {
             };
 
             let accent_item_style = |_theme: &iced::Theme, status: iced::widget::button::Status| {
-                let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
+                let is_hovered = status == iced::widget::button::Status::Hovered
+                    || status == iced::widget::button::Status::Pressed;
                 iced::widget::button::Style {
-                    background: if is_hovered { Some(iced::Background::Color(theme::with_alpha(theme::accent(), 0.2))) } else { None },
+                    background: if is_hovered {
+                        Some(iced::Background::Color(theme::with_alpha(
+                            theme::accent(),
+                            0.2,
+                        )))
+                    } else {
+                        None
+                    },
                     text_color: theme::accent(),
                     border: iced::Border {
                         radius: 4.0.into(),
@@ -6477,15 +6517,23 @@ impl AppState {
             let mut playlist_select = column![].spacing(4);
 
             if is_playlist_target {
-                let arrow_icon = if self.playlist_menu_expanded { "▼ " } else { "▶ " };
+                let arrow_icon = if self.playlist_menu_expanded {
+                    "▼ "
+                } else {
+                    "▶ "
+                };
                 let header_btn = button(
                     row![
-                        text(arrow_icon).font(crate::ui::icons::NERD_FONT_MONO).size(11).color(theme::subtext()),
+                        text(arrow_icon)
+                            .font(crate::ui::icons::NERD_FONT_MONO)
+                            .size(11)
+                            .color(theme::subtext()),
                         text("Add to Playlist")
                             .size(14)
                             .color(theme::subtext())
                             .font(crate::ui::icons::UI_FONT_BOLD)
-                    ].spacing(4)
+                    ]
+                    .spacing(4),
                 )
                 .on_press(Message::TogglePlaylistMenuExpanded)
                 .style(iced::widget::button::text)
@@ -6495,413 +6543,467 @@ impl AppState {
                 playlist_select = playlist_select.push(header_btn);
             }
 
-            let (title, hide_btn, create_btn): (String, Option<Element<'_, Message>>, _) = match target {
-                ContextMenuTarget::Artist(artist_name) => {
-                    let title = format!("Artist Menu: {artist_name}");
-                    let hide = button(text("Hide from UI").size(15))
-                        .on_press(Message::HideAlbumOrArtist(artist_name.clone(), true))
-                        .style(item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-                    
-                    if self.playlist_menu_expanded {
-                        let mut pl_col = column![].spacing(4);
-                        for pl in &custom_playlists {
-                            let artist_tracks: Vec<Track> = self.all_tracks.iter()
-                                .filter(|t| {
-                                    let a = if t.artist.trim().is_empty() { "Unknown Artist" } else { &t.artist };
-                                    a == artist_name
-                                })
-                                .cloned()
-                                .collect();
-                            pl_col = pl_col.push(
-                                button(text(format!("  + {}", pl)).size(15))
-                                    .on_press(Message::AddTracksToPlaylist(pl.clone(), artist_tracks))
-                                    .style(item_style)
-                                    .padding([4, 8])
-                                    .width(Length::Fill)
-                            );
-                        }
-                        playlist_select = playlist_select.push(pl_col);
-                    }
-
-                    let create = button(text("+ Create playlist with this artist").size(15))
-                        .on_press(Message::CreatePlaylistFromContext(artist_name.clone(), true))
-                        .style(accent_item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-
-                    (title, Some(hide.into()), create)
-                }
-                ContextMenuTarget::Album(album_name) => {
-                    let title = format!("Album Menu: {album_name}");
-                    let hide = button(text("Hide from UI").size(15))
-                        .on_press(Message::HideAlbumOrArtist(album_name.clone(), false))
-                        .style(item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-
-                    if self.playlist_menu_expanded {
-                        let mut pl_col = column![].spacing(4);
-                        for pl in &custom_playlists {
-                            let album_tracks: Vec<Track> = self.all_tracks.iter()
-                                .filter(|t| {
-                                    let al = if t.album.trim().is_empty() { "Unknown Album" } else { &t.album };
-                                    al == album_name
-                                })
-                                .cloned()
-                                .collect();
-                            pl_col = pl_col.push(
-                                button(text(format!("  + {}", pl)).size(15))
-                                    .on_press(Message::AddTracksToPlaylist(pl.clone(), album_tracks))
-                                    .style(item_style)
-                                    .padding([4, 8])
-                                    .width(Length::Fill)
-                            );
-                        }
-                        playlist_select = playlist_select.push(pl_col);
-                    }
-
-                    let create = button(text("+ Create playlist with this album").size(15))
-                        .on_press(Message::CreatePlaylistFromContext(album_name.clone(), false))
-                        .style(accent_item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-
-                    (title, Some(hide.into()), create)
-                }
-                ContextMenuTarget::Track(track) => {
-                    let title = format!("Song Menu: {}", track.title);
-                    
-                    if self.playlist_menu_expanded {
-                        let mut pl_col = column![].spacing(4);
-                        for pl in &custom_playlists {
-                            pl_col = pl_col.push(
-                                button(text(format!("  + {}", pl)).size(15))
-                                    .on_press(Message::AddTracksToPlaylist(pl.clone(), vec![track.clone()]))
-                                    .style(item_style)
-                                    .padding([4, 8])
-                                    .width(Length::Fill)
-                            );
-                        }
-                        playlist_select = playlist_select.push(pl_col);
-                    }
-
-                    let create = button(text("+ Create playlist with this song").size(15))
-                        .on_press(Message::CreatePlaylistWithTracks(track.title.clone(), vec![track.clone()]))
-                        .style(accent_item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-
-                    let play_next_btn = button(text("Play Next").size(15))
-                        .on_press(Message::PlayNext(vec![track.clone()]))
-                        .style(item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-
-                    let add_queue_btn = button(text("Add to Queue").size(15))
-                        .on_press(Message::AddToQueue(vec![track.clone()]))
-                        .style(item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-
-                    let like_label = if track.liked { "Unlike this song" } else { "Like this song" };
-                    let like_btn = button(text(like_label).size(15))
-                        .on_press(Message::ToggleLikeTrack(track.clone()))
-                        .style(item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-
-                    let tag_btn = button(text("Edit ID3 tag").size(15))
-                        .on_press(Message::OpenTagEditor(vec![track.clone()]))
-                        .style(item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-
-                    let folder_btn = button(text("Open local file folder").size(15))
-                        .on_press(Message::OpenLocalFolder(track.path.clone()))
-                        .style(item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-
-                    let mut track_actions = column![
-                        play_next_btn,
-                        Space::with_height(4),
-                        add_queue_btn,
-                        Space::with_height(4),
-                        like_btn,
-                        Space::with_height(4),
-                        tag_btn,
-                        Space::with_height(4),
-                        folder_btn,
-                    ];
-
-                    if self.playlist_tab == PlaylistTab::Playlists {
-                        if let Some(playlist_name) = &self.selected_playlist {
-                            let is_member = crate::db::get(|db| {
-                                db.playlists.get(playlist_name)
-                                    .map(|paths| paths.contains(&track.path))
-                                    .unwrap_or(false)
-                            });
-
-                            if is_member {
-                                let remove_btn = button(text("Remove from current playlist").size(15))
-                                    .on_press(Message::RemoveTrackFromPlaylist(playlist_name.clone(), track.clone()))
-                                    .style(item_style)
-                                    .padding([4, 8])
-                                    .width(Length::Fill);
-                                track_actions = track_actions.push(Space::with_height(4)).push(remove_btn);
-                            }
-                        }
-                    }
-
-                    let mut show_reset_order = false;
-                    if let Some(name) = &self.selected_playlist {
-                        if name != "Recently Played" && name != "Most Played" {
-                            let has_smart = crate::db::get(|db| db.smart_playlist_song_order.contains_key(name));
-                            let has_auto = crate::db::get(|db| db.auto_playlist_song_order.contains_key(name));
-                            show_reset_order = has_smart || has_auto;
-                        }
-                    }
-
-                    if show_reset_order {
-                        let reset_order_btn = button(text("Reset to natural order").size(15))
-                            .on_press(Message::ResetPlaylistSongOrder)
+            let (title, hide_btn, create_btn): (String, Option<Element<'_, Message>>, _) =
+                match target {
+                    ContextMenuTarget::Artist(artist_name) => {
+                        let title = format!("Artist Menu: {artist_name}");
+                        let hide = button(text("Hide from UI").size(15))
+                            .on_press(Message::HideAlbumOrArtist(artist_name.clone(), true))
                             .style(item_style)
                             .padding([4, 8])
                             .width(Length::Fill);
 
-                        track_actions = track_actions.push(Space::with_height(4)).push(reset_order_btn);
-                    }
-
-                    (title, Some(track_actions.into()), create)
-                }
-                ContextMenuTarget::MultipleTracks(tracks) => {
-                    let title = format!("Selection Menu: {} Songs", tracks.len());
-
-                    if self.playlist_menu_expanded {
-                        let mut pl_col = column![].spacing(4);
-                        for pl in &custom_playlists {
-                            pl_col = pl_col.push(
-                                button(text(format!("  + {}", pl)).size(15))
-                                    .on_press(Message::AddTracksToPlaylist(pl.clone(), tracks.clone()))
-                                    .style(item_style)
-                                    .padding([4, 8])
-                                    .width(Length::Fill)
-                            );
-                        }
-                        playlist_select = playlist_select.push(pl_col);
-                    }
-
-                    let play_next_btn = button(text("Play Next").size(15))
-                        .on_press(Message::PlayNext(tracks.clone()))
-                        .style(item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-
-                    let add_queue_btn = button(text("Add to Queue").size(15))
-                        .on_press(Message::AddToQueue(tracks.clone()))
-                        .style(item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-
-                    let tag_btn = button(text("Edit ID3 tags").size(15))
-                        .on_press(Message::OpenTagEditor(tracks.clone()))
-                        .style(item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-
-                    let create = button(text("+ Create playlist with selection").size(15))
-                        .on_press(Message::CreatePlaylistWithTracks("Selected Tracks Playlist".to_string(), tracks.clone()))
-                        .style(accent_item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-
-                    let selection_actions = column![
-                        play_next_btn,
-                        Space::with_height(4),
-                        add_queue_btn,
-                        Space::with_height(4),
-                        tag_btn,
-                    ];
-
-                    (title, Some(selection_actions.into()), create)
-                }
-                ContextMenuTarget::Playlist(name) => {
-                    let title = format!("Playlist: {name}");
-                    let rename_btn = button(text("Rename Playlist").size(15))
-                        .on_press(Message::OpenPlaylistDialog(PlaylistDialogMode::Rename(name.clone())))
-                        .style(item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-                    let delete_btn = button(text("Delete Playlist").size(15))
-                        .on_press(Message::DeletePlaylist(name.clone()))
-                        .style(item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-                    let playlist_actions = column![
-                        rename_btn,
-                        Space::with_height(4),
-                        delete_btn,
-                    ];
-                    let dummy_create = button(text(""))
-                        .style(iced::widget::button::text)
-                        .padding(0);
-                    (title, Some(playlist_actions.into()), dummy_create)
-                }
-                ContextMenuTarget::SmartPlaylist(name) => {
-                    let title = format!("Smart Playlist: {name}");
-                    let edit_btn = button(text("Edit Smart Playlist").size(15))
-                        .on_press(Message::EditSmartPlaylist(name.clone()))
-                        .style(item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-                    let delete_btn = button(text("Delete Smart Playlist").size(15))
-                        .on_press(Message::DeleteSmartPlaylist(name.clone()))
-                        .style(item_style)
-                        .padding([4, 8])
-                        .width(Length::Fill);
-                    let playlist_actions = column![
-                        edit_btn,
-                        Space::with_height(4),
-                        delete_btn,
-                    ];
-                    let dummy_create = button(text(""))
-                        .style(iced::widget::button::text)
-                        .padding(0);
-                    (title, Some(playlist_actions.into()), dummy_create)
-                }
-                ContextMenuTarget::Header(_clicked_col) => {
-                    let title = "Table Columns".to_string();
-                    let active_cols = crate::db::get(|db| db.table_columns.clone());
-
-                    let mut cols_col = column![
-                        text("Show / Hide:")
-                            .size(13)
-                            .color(theme::subtext())
-                            .font(crate::ui::icons::UI_FONT_BOLD),
-                        Space::with_height(4)
-                    ].spacing(2);
-
-                    // All columns in order (visible and hidden in one list)
-                    for &col in &active_cols {
-                        let col_label = col.label();
-                        let is_visible = crate::db::get(|db| !db.hidden_columns.contains(&col));
-                        let is_dragging_this = self.context_dragging_column == Some(col);
-                        let is_hover_target = self.context_drag_hover_column == Some(col);
-
-                        let drag_handle_color = if is_dragging_this {
-                            theme::accent()
-                        } else {
-                            theme::subtext()
-                        };
-
-                        let label_color = if is_hover_target {
-                            theme::accent()
-                        } else if is_visible {
-                            theme::text()
-                        } else {
-                            theme::overlay0()
-                        };
-
-                        let drag_handle = mouse_area(
-                            container(
-                                text("\u{f0c9}")
-                                    .font(crate::ui::icons::NERD_FONT_MONO)
-                                    .color(drag_handle_color)
-                                    .size(14)
-                            ).padding([4, 4])
-                        )
-                        .on_press(Message::ContextColumnDragStart(col))
-                        .on_release(Message::ContextColumnDragEnd)
-                        .interaction(iced::mouse::Interaction::Grab);
-
-                        let (checkbox_icon, checkbox_color) = if is_visible {
-                            ("\u{f0fe}", theme::accent())
-                        } else {
-                            ("\u{f096}", theme::overlay0())
-                        };
-
-                        let toggle_btn = button(
-                            text(checkbox_icon)
-                                .font(crate::ui::icons::NERD_FONT_MONO)
-                                .color(checkbox_color)
-                                .size(14)
-                        )
-                        .on_press(Message::ToggleColumnVisibility(col))
-                        .style(iced::widget::button::text)
-                        .padding([4, 4]);
-
-                        let row_content = row![
-                            drag_handle,
-                            toggle_btn,
-                            text(col_label).size(14).color(label_color),
-                        ]
-                        .spacing(2)
-                        .align_y(Alignment::Center);
-
-                        let row_el: Element<'_, Message> = if self.context_dragging_column.is_some() {
-                            let inner: Element<'_, Message> = if is_hover_target {
-                                container(row_content)
-                                    .style(|_| iced::widget::container::Style {
-                                        background: Some(iced::Background::Color(theme::with_alpha(theme::accent(), 0.15))),
-                                        border: iced::Border {
-                                            radius: 4.0.into(),
-                                            ..Default::default()
-                                        },
-                                        ..Default::default()
+                        if self.playlist_menu_expanded {
+                            let mut pl_col = column![].spacing(4);
+                            for pl in &custom_playlists {
+                                let artist_tracks: Vec<Track> = self
+                                    .all_tracks
+                                    .iter()
+                                    .filter(|t| {
+                                        let a = if t.artist.trim().is_empty() {
+                                            "Unknown Artist"
+                                        } else {
+                                            &t.artist
+                                        };
+                                        a == artist_name
                                     })
-                                    .into()
-                            } else {
-                                row_content.into()
-                            };
-                            mouse_area(inner)
-                                .on_enter(Message::ContextColumnDragOver(col))
-                                .into()
-                        } else {
-                            row_content.into()
-                        };
+                                    .cloned()
+                                    .collect();
+                                pl_col = pl_col.push(
+                                    button(text(format!("  + {}", pl)).size(15))
+                                        .on_press(Message::AddTracksToPlaylist(
+                                            pl.clone(),
+                                            artist_tracks,
+                                        ))
+                                        .style(item_style)
+                                        .padding([4, 8])
+                                        .width(Length::Fill),
+                                );
+                            }
+                            playlist_select = playlist_select.push(pl_col);
+                        }
 
-                        cols_col = cols_col.push(row_el);
+                        let create = button(text("+ Create playlist with this artist").size(15))
+                            .on_press(Message::CreatePlaylistFromContext(
+                                artist_name.clone(),
+                                true,
+                            ))
+                            .style(accent_item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+
+                        (title, Some(hide.into()), create)
                     }
+                    ContextMenuTarget::Album(album_name) => {
+                        let title = format!("Album Menu: {album_name}");
+                        let hide = button(text("Hide from UI").size(15))
+                            .on_press(Message::HideAlbumOrArtist(album_name.clone(), false))
+                            .style(item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
 
-                    // Reset buttons
-                    cols_col = cols_col.push(Space::with_height(8));
-                    cols_col = cols_col.push(
-                        button(
-                            text("Reset Default Order")
+                        if self.playlist_menu_expanded {
+                            let mut pl_col = column![].spacing(4);
+                            for pl in &custom_playlists {
+                                let album_tracks: Vec<Track> = self
+                                    .all_tracks
+                                    .iter()
+                                    .filter(|t| {
+                                        let al = if t.album.trim().is_empty() {
+                                            "Unknown Album"
+                                        } else {
+                                            &t.album
+                                        };
+                                        al == album_name
+                                    })
+                                    .cloned()
+                                    .collect();
+                                pl_col = pl_col.push(
+                                    button(text(format!("  + {}", pl)).size(15))
+                                        .on_press(Message::AddTracksToPlaylist(
+                                            pl.clone(),
+                                            album_tracks,
+                                        ))
+                                        .style(item_style)
+                                        .padding([4, 8])
+                                        .width(Length::Fill),
+                                );
+                            }
+                            playlist_select = playlist_select.push(pl_col);
+                        }
+
+                        let create = button(text("+ Create playlist with this album").size(15))
+                            .on_press(Message::CreatePlaylistFromContext(
+                                album_name.clone(),
+                                false,
+                            ))
+                            .style(accent_item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+
+                        (title, Some(hide.into()), create)
+                    }
+                    ContextMenuTarget::Track(track) => {
+                        let title = format!("Song Menu: {}", track.title);
+
+                        if self.playlist_menu_expanded {
+                            let mut pl_col = column![].spacing(4);
+                            for pl in &custom_playlists {
+                                pl_col = pl_col.push(
+                                    button(text(format!("  + {}", pl)).size(15))
+                                        .on_press(Message::AddTracksToPlaylist(
+                                            pl.clone(),
+                                            vec![track.clone()],
+                                        ))
+                                        .style(item_style)
+                                        .padding([4, 8])
+                                        .width(Length::Fill),
+                                );
+                            }
+                            playlist_select = playlist_select.push(pl_col);
+                        }
+
+                        let create = button(text("+ Create playlist with this song").size(15))
+                            .on_press(Message::CreatePlaylistWithTracks(
+                                track.title.clone(),
+                                vec![track.clone()],
+                            ))
+                            .style(accent_item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+
+                        let play_next_btn = button(text("Play Next").size(15))
+                            .on_press(Message::PlayNext(vec![track.clone()]))
+                            .style(item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+
+                        let add_queue_btn = button(text("Add to Queue").size(15))
+                            .on_press(Message::AddToQueue(vec![track.clone()]))
+                            .style(item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+
+                        let like_label = if track.liked {
+                            "Unlike this song"
+                        } else {
+                            "Like this song"
+                        };
+                        let like_btn = button(text(like_label).size(15))
+                            .on_press(Message::ToggleLikeTrack(track.clone()))
+                            .style(item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+
+                        let tag_btn = button(text("Edit ID3 tag").size(15))
+                            .on_press(Message::OpenTagEditor(vec![track.clone()]))
+                            .style(item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+
+                        let folder_btn = button(text("Open local file folder").size(15))
+                            .on_press(Message::OpenLocalFolder(track.path.clone()))
+                            .style(item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+
+                        let mut track_actions = column![
+                            play_next_btn,
+                            Space::with_height(4),
+                            add_queue_btn,
+                            Space::with_height(4),
+                            like_btn,
+                            Space::with_height(4),
+                            tag_btn,
+                            Space::with_height(4),
+                            folder_btn,
+                        ];
+
+                        if self.playlist_tab == PlaylistTab::Playlists {
+                            if let Some(playlist_name) = &self.selected_playlist {
+                                let is_member = crate::db::get(|db| {
+                                    db.playlists
+                                        .get(playlist_name)
+                                        .map(|paths| paths.contains(&track.path))
+                                        .unwrap_or(false)
+                                });
+
+                                if is_member {
+                                    let remove_btn =
+                                        button(text("Remove from current playlist").size(15))
+                                            .on_press(Message::RemoveTrackFromPlaylist(
+                                                playlist_name.clone(),
+                                                track.clone(),
+                                            ))
+                                            .style(item_style)
+                                            .padding([4, 8])
+                                            .width(Length::Fill);
+                                    track_actions =
+                                        track_actions.push(Space::with_height(4)).push(remove_btn);
+                                }
+                            }
+                        }
+
+                        let mut show_reset_order = false;
+                        if let Some(name) = &self.selected_playlist {
+                            if name != "Recently Played" && name != "Most Played" {
+                                let has_smart = crate::db::get(|db| {
+                                    db.smart_playlist_song_order.contains_key(name)
+                                });
+                                let has_auto = crate::db::get(|db| {
+                                    db.auto_playlist_song_order.contains_key(name)
+                                });
+                                show_reset_order = has_smart || has_auto;
+                            }
+                        }
+
+                        if show_reset_order {
+                            let reset_order_btn = button(text("Reset to natural order").size(15))
+                                .on_press(Message::ResetPlaylistSongOrder)
+                                .style(item_style)
+                                .padding([4, 8])
+                                .width(Length::Fill);
+
+                            track_actions = track_actions
+                                .push(Space::with_height(4))
+                                .push(reset_order_btn);
+                        }
+
+                        (title, Some(track_actions.into()), create)
+                    }
+                    ContextMenuTarget::MultipleTracks(tracks) => {
+                        let title = format!("Selection Menu: {} Songs", tracks.len());
+
+                        if self.playlist_menu_expanded {
+                            let mut pl_col = column![].spacing(4);
+                            for pl in &custom_playlists {
+                                pl_col = pl_col.push(
+                                    button(text(format!("  + {}", pl)).size(15))
+                                        .on_press(Message::AddTracksToPlaylist(
+                                            pl.clone(),
+                                            tracks.clone(),
+                                        ))
+                                        .style(item_style)
+                                        .padding([4, 8])
+                                        .width(Length::Fill),
+                                );
+                            }
+                            playlist_select = playlist_select.push(pl_col);
+                        }
+
+                        let play_next_btn = button(text("Play Next").size(15))
+                            .on_press(Message::PlayNext(tracks.clone()))
+                            .style(item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+
+                        let add_queue_btn = button(text("Add to Queue").size(15))
+                            .on_press(Message::AddToQueue(tracks.clone()))
+                            .style(item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+
+                        let tag_btn = button(text("Edit ID3 tags").size(15))
+                            .on_press(Message::OpenTagEditor(tracks.clone()))
+                            .style(item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+
+                        let create = button(text("+ Create playlist with selection").size(15))
+                            .on_press(Message::CreatePlaylistWithTracks(
+                                "Selected Tracks Playlist".to_string(),
+                                tracks.clone(),
+                            ))
+                            .style(accent_item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+
+                        let selection_actions = column![
+                            play_next_btn,
+                            Space::with_height(4),
+                            add_queue_btn,
+                            Space::with_height(4),
+                            tag_btn,
+                        ];
+
+                        (title, Some(selection_actions.into()), create)
+                    }
+                    ContextMenuTarget::Playlist(name) => {
+                        let title = format!("Playlist: {name}");
+                        let rename_btn = button(text("Rename Playlist").size(15))
+                            .on_press(Message::OpenPlaylistDialog(PlaylistDialogMode::Rename(
+                                name.clone(),
+                            )))
+                            .style(item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+                        let delete_btn = button(text("Delete Playlist").size(15))
+                            .on_press(Message::DeletePlaylist(name.clone()))
+                            .style(item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+                        let playlist_actions =
+                            column![rename_btn, Space::with_height(4), delete_btn,];
+                        let dummy_create = button(text(""))
+                            .style(iced::widget::button::text)
+                            .padding(0);
+                        (title, Some(playlist_actions.into()), dummy_create)
+                    }
+                    ContextMenuTarget::SmartPlaylist(name) => {
+                        let title = format!("Smart Playlist: {name}");
+                        let edit_btn = button(text("Edit Smart Playlist").size(15))
+                            .on_press(Message::EditSmartPlaylist(name.clone()))
+                            .style(item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+                        let delete_btn = button(text("Delete Smart Playlist").size(15))
+                            .on_press(Message::DeleteSmartPlaylist(name.clone()))
+                            .style(item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+                        let playlist_actions =
+                            column![edit_btn, Space::with_height(4), delete_btn,];
+                        let dummy_create = button(text(""))
+                            .style(iced::widget::button::text)
+                            .padding(0);
+                        (title, Some(playlist_actions.into()), dummy_create)
+                    }
+                    ContextMenuTarget::Header(_clicked_col) => {
+                        let title = "Table Columns".to_string();
+                        let active_cols = crate::db::get(|db| db.table_columns.clone());
+
+                        let mut cols_col = column![
+                            text("Show / Hide:")
                                 .size(13)
-                                .font(crate::ui::icons::UI_FONT_BOLD)
-                                .color(theme::accent())
-                        )
-                        .on_press(Message::ResetColumnOrder)
-                        .style(item_style)
-                        .padding([6, 12])
-                        .width(Length::Fill)
-                    );
-                    cols_col = cols_col.push(Space::with_height(4));
-                    cols_col = cols_col.push(
-                        button(
-                            text("Reset Default Columns")
-                                .size(13)
-                                .font(crate::ui::icons::UI_FONT_BOLD)
-                                .color(theme::accent())
-                        )
-                        .on_press(Message::ResetDefaultVisibility)
-                        .style(item_style)
-                        .padding([6, 12])
-                        .width(Length::Fill)
-                    );
+                                .color(theme::subtext())
+                                .font(crate::ui::icons::UI_FONT_BOLD),
+                            Space::with_height(4)
+                        ]
+                        .spacing(2);
 
-                    playlist_select = cols_col;
+                        // All columns in order (visible and hidden in one list)
+                        for &col in &active_cols {
+                            let col_label = col.label();
+                            let is_visible = crate::db::get(|db| !db.hidden_columns.contains(&col));
+                            let is_dragging_this = self.context_dragging_column == Some(col);
+                            let is_hover_target = self.context_drag_hover_column == Some(col);
 
-                    let dummy_create = button(text(""))
-                        .style(iced::widget::button::text)
-                        .padding(0);
+                            let drag_handle_color = if is_dragging_this {
+                                theme::accent()
+                            } else {
+                                theme::subtext()
+                            };
 
-                    (title, None, dummy_create)
-                }
-            };
+                            let label_color = if is_hover_target {
+                                theme::accent()
+                            } else if is_visible {
+                                theme::text()
+                            } else {
+                                theme::overlay0()
+                            };
+
+                            let drag_handle = mouse_area(
+                                container(
+                                    text("\u{f0c9}")
+                                        .font(crate::ui::icons::NERD_FONT_MONO)
+                                        .color(drag_handle_color)
+                                        .size(14),
+                                )
+                                .padding([4, 4]),
+                            )
+                            .on_press(Message::ContextColumnDragStart(col))
+                            .on_release(Message::ContextColumnDragEnd)
+                            .interaction(iced::mouse::Interaction::Grab);
+
+                            let (checkbox_icon, checkbox_color) = if is_visible {
+                                ("\u{f0fe}", theme::accent())
+                            } else {
+                                ("\u{f096}", theme::overlay0())
+                            };
+
+                            let toggle_btn = button(
+                                text(checkbox_icon)
+                                    .font(crate::ui::icons::NERD_FONT_MONO)
+                                    .color(checkbox_color)
+                                    .size(14),
+                            )
+                            .on_press(Message::ToggleColumnVisibility(col))
+                            .style(iced::widget::button::text)
+                            .padding([4, 4]);
+
+                            let row_content = row![
+                                drag_handle,
+                                toggle_btn,
+                                text(col_label).size(14).color(label_color),
+                            ]
+                            .spacing(2)
+                            .align_y(Alignment::Center);
+
+                            let row_el: Element<'_, Message> =
+                                if self.context_dragging_column.is_some() {
+                                    let inner: Element<'_, Message> = if is_hover_target {
+                                        container(row_content)
+                                            .style(|_| iced::widget::container::Style {
+                                                background: Some(iced::Background::Color(
+                                                    theme::with_alpha(theme::accent(), 0.15),
+                                                )),
+                                                border: iced::Border {
+                                                    radius: 4.0.into(),
+                                                    ..Default::default()
+                                                },
+                                                ..Default::default()
+                                            })
+                                            .into()
+                                    } else {
+                                        row_content.into()
+                                    };
+                                    mouse_area(inner)
+                                        .on_enter(Message::ContextColumnDragOver(col))
+                                        .into()
+                                } else {
+                                    row_content.into()
+                                };
+
+                            cols_col = cols_col.push(row_el);
+                        }
+
+                        // Reset buttons
+                        cols_col = cols_col.push(Space::with_height(8));
+                        cols_col = cols_col.push(
+                            button(
+                                text("Reset Default Order")
+                                    .size(13)
+                                    .font(crate::ui::icons::UI_FONT_BOLD)
+                                    .color(theme::accent()),
+                            )
+                            .on_press(Message::ResetColumnOrder)
+                            .style(item_style)
+                            .padding([6, 12])
+                            .width(Length::Fill),
+                        );
+                        cols_col = cols_col.push(Space::with_height(4));
+                        cols_col = cols_col.push(
+                            button(
+                                text("Reset Default Columns")
+                                    .size(13)
+                                    .font(crate::ui::icons::UI_FONT_BOLD)
+                                    .color(theme::accent()),
+                            )
+                            .on_press(Message::ResetDefaultVisibility)
+                            .style(item_style)
+                            .padding([6, 12])
+                            .width(Length::Fill),
+                        );
+
+                        playlist_select = cols_col;
+
+                        let dummy_create = button(text(""))
+                            .style(iced::widget::button::text)
+                            .padding(0);
+
+                        (title, None, dummy_create)
+                    }
+                };
 
             if !is_playlist_target || self.playlist_menu_expanded {
                 playlist_select = playlist_select.push(Space::with_height(4)).push(create_btn);
@@ -6914,9 +7016,14 @@ impl AppState {
                         .font(crate::ui::icons::UI_FONT_BOLD)
                         .color(theme::accent()),
                     Space::with_width(Length::Fill),
-                    button(text("\u{f00d}").font(crate::ui::icons::NERD_FONT_MONO).color(theme::red()).size(14))
-                        .on_press(Message::ToggleContextMenu(None))
-                        .style(iced::widget::button::text)
+                    button(
+                        text("\u{f00d}")
+                            .font(crate::ui::icons::NERD_FONT_MONO)
+                            .color(theme::red())
+                            .size(14)
+                    )
+                    .on_press(Message::ToggleContextMenu(None))
+                    .style(iced::widget::button::text)
                 ]
                 .align_y(Alignment::Center),
                 Space::with_height(8),
@@ -6926,26 +7033,25 @@ impl AppState {
                 menu_col = menu_col.push(hide).push(Space::with_height(6));
             }
 
-            let menu_content = menu_col.push(playlist_select)
-                .spacing(6)
-                .padding(16);
+            let menu_content = menu_col.push(playlist_select).spacing(6).padding(16);
 
-            let menu_card = container(menu_content)
-                .width(260)
-                .style(|_| iced::widget::container::Style {
-                    background: Some(iced::Background::Color(theme::mantle())),
-                    border: iced::Border {
-                        color: theme::accent(),
-                        width: 1.0,
-                        radius: 8.0.into(),
-                    },
-                    shadow: iced::Shadow {
-                        color: theme::base(),
-                        offset: [0.0, 4.0].into(),
-                        blur_radius: 8.0,
-                    },
-                    ..Default::default()
-                });
+            let menu_card =
+                container(menu_content)
+                    .width(260)
+                    .style(|_| iced::widget::container::Style {
+                        background: Some(iced::Background::Color(theme::mantle())),
+                        border: iced::Border {
+                            color: theme::accent(),
+                            width: 1.0,
+                            radius: 8.0.into(),
+                        },
+                        shadow: iced::Shadow {
+                            color: theme::base(),
+                            offset: [0.0, 4.0].into(),
+                            blur_radius: 8.0,
+                        },
+                        ..Default::default()
+                    });
 
             let full_overlay = container(menu_card)
                 .width(Length::Fill)
@@ -6953,7 +7059,9 @@ impl AppState {
                 .center_x(Length::Fill)
                 .center_y(Length::Fill)
                 .style(|_| iced::widget::container::Style {
-                    background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.5))),
+                    background: Some(iced::Background::Color(iced::Color::from_rgba(
+                        0.0, 0.0, 0.0, 0.5,
+                    ))),
                     ..Default::default()
                 });
 
@@ -6967,7 +7075,7 @@ impl AppState {
                     text("\u{f00d}")
                         .size(12)
                         .font(crate::ui::icons::NERD_FONT_MONO)
-                        .color(theme::subtext())
+                        .color(theme::subtext()),
                 )
                 .on_press(Message::DismissNotification(n.id))
                 .padding(4)
@@ -6975,7 +7083,11 @@ impl AppState {
                     let is_hovered = matches!(status, iced::widget::button::Status::Hovered);
                     iced::widget::button::Style {
                         background: None,
-                        text_color: if is_hovered { theme::accent() } else { theme::subtext() },
+                        text_color: if is_hovered {
+                            theme::accent()
+                        } else {
+                            theme::subtext()
+                        },
                         border: iced::Border::default(),
                         ..Default::default()
                     }
@@ -6988,13 +7100,20 @@ impl AppState {
                         let text_to_check = format!("{} {}", n.title, n.message).to_lowercase();
                         if text_to_check.contains("bronze") || text_to_check.contains("ribbon") {
                             iced::Color::from_rgb(0.80, 0.52, 0.25)
-                        } else if text_to_check.contains("silver") || text_to_check.contains("medal") {
+                        } else if text_to_check.contains("silver")
+                            || text_to_check.contains("medal")
+                        {
                             iced::Color::from_rgb(0.70, 0.70, 0.70)
                         } else if text_to_check.contains("gold") {
                             iced::Color::from_rgb(0.95, 0.78, 0.18)
-                        } else if text_to_check.contains("platinum") || text_to_check.contains("crown") {
+                        } else if text_to_check.contains("platinum")
+                            || text_to_check.contains("crown")
+                        {
                             iced::Color::from_rgb(0.48, 0.82, 0.88)
-                        } else if text_to_check.contains("legendary") || text_to_check.contains("gem") || text_to_check.contains("diamond") {
+                        } else if text_to_check.contains("legendary")
+                            || text_to_check.contains("gem")
+                            || text_to_check.contains("diamond")
+                        {
                             iced::Color::from_rgb(0.78, 0.47, 0.94)
                         } else {
                             theme::accent()
@@ -7024,7 +7143,10 @@ impl AppState {
                             line_color = iced::Color::from_rgb(0.95, 0.78, 0.18);
                         } else if lower.contains("platinum") || lower.contains("crown") {
                             line_color = iced::Color::from_rgb(0.48, 0.82, 0.88);
-                        } else if lower.contains("legendary") || lower.contains("gem") || lower.contains("diamond") {
+                        } else if lower.contains("legendary")
+                            || lower.contains("gem")
+                            || lower.contains("diamond")
+                        {
                             line_color = iced::Color::from_rgb(0.78, 0.47, 0.94);
                         }
                     }
@@ -7041,23 +7163,12 @@ impl AppState {
                             } else {
                                 line_font
                             };
-                            spans.push(
-                                iced::widget::span(*seg)
-                                    .font(font)
-                                    .color(line_color)
-                            );
+                            spans.push(iced::widget::span(*seg).font(font).color(line_color));
                         }
-                        msg_col = msg_col.push(
-                            iced::widget::rich_text(spans)
-                                .size(13)
-                        );
+                        msg_col = msg_col.push(iced::widget::rich_text(spans).size(13));
                     } else {
-                        msg_col = msg_col.push(
-                            text(line)
-                                .size(13)
-                                .font(line_font)
-                                .color(line_color)
-                        );
+                        msg_col =
+                            msg_col.push(text(line).size(13).font(line_font).color(line_color));
                     }
                 }
 
@@ -7095,7 +7206,7 @@ impl AppState {
                         Space::with_height(6),
                         msg_col,
                     ]
-                    .spacing(0)
+                    .spacing(0),
                 )
                 .width(Length::Fixed(420.0))
                 .padding(12)
@@ -7108,33 +7219,54 @@ impl AppState {
                     },
                     ..Default::default()
                 });
-                toasts_col = toasts_col.push(mouse_area(toast_card).on_press(Message::ToastClicked(n.id)));
+                toasts_col =
+                    toasts_col.push(mouse_area(toast_card).on_press(Message::ToastClicked(n.id)));
             }
-            
+
             let toasts_overlay = container(toasts_col)
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .align_x(iced::alignment::Horizontal::Right)
                 .align_y(iced::alignment::Vertical::Bottom)
-                .padding(iced::Padding { top: 0.0, right: 24.0, bottom: 68.0, left: 0.0 });
-                
+                .padding(iced::Padding {
+                    top: 0.0,
+                    right: 24.0,
+                    bottom: 68.0,
+                    left: 0.0,
+                });
+
             view_stack = view_stack.push(toasts_overlay);
         }
 
         if self.is_scanning {
             let scanning_card = container(
                 row![
-                    text(crate::ui::icons::ICON_REPEAT).font(crate::ui::icons::NERD_FONT_MONO).size(16).color(theme::accent()),
+                    text(crate::ui::icons::ICON_REPEAT)
+                        .font(crate::ui::icons::NERD_FONT_MONO)
+                        .size(16)
+                        .color(theme::accent()),
                     Space::with_width(10),
-                    text("Updating library…").size(13).font(crate::ui::icons::UI_FONT_BOLD).color(theme::text()),
-                ].align_y(Alignment::Center)
+                    text("Updating library…")
+                        .size(13)
+                        .font(crate::ui::icons::UI_FONT_BOLD)
+                        .color(theme::text()),
+                ]
+                .align_y(Alignment::Center),
             )
             .padding([14, 22])
             .width(Length::Fixed(260.0))
             .style(|_| iced::widget::container::Style {
                 background: Some(iced::Background::Color(theme::mantle())),
-                border: iced::Border { color: theme::accent(), width: 1.0, radius: 8.0.into() },
-                shadow: iced::Shadow { color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.35), offset: [0.0, 4.0].into(), blur_radius: 12.0 },
+                border: iced::Border {
+                    color: theme::accent(),
+                    width: 1.0,
+                    radius: 8.0.into(),
+                },
+                shadow: iced::Shadow {
+                    color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.35),
+                    offset: [0.0, 4.0].into(),
+                    blur_radius: 12.0,
+                },
                 ..Default::default()
             });
 
@@ -7143,7 +7275,12 @@ impl AppState {
                 .height(Length::Fill)
                 .align_x(iced::alignment::Horizontal::Center)
                 .align_y(iced::alignment::Vertical::Bottom)
-                .padding(iced::Padding { top: 0.0, right: 0.0, bottom: 24.0, left: 0.0 });
+                .padding(iced::Padding {
+                    top: 0.0,
+                    right: 0.0,
+                    bottom: 24.0,
+                    left: 0.0,
+                });
 
             view_stack = view_stack.push(scanning_overlay);
         }
@@ -7151,355 +7288,12 @@ impl AppState {
         view_stack.into()
     }
 
-    fn queue_popover_view(&self) -> Element<'_, Message> {
-        use iced::widget::{button, column, container, mouse_area, row, scrollable, Space, stack};
-        use crate::ui::txt::text;
-        use iced::{Alignment, Length};
-        use crate::ui::theme;
-
-        // Dismiss layer: transparent full-window click target behind the panel
-        let dismiss_layer = mouse_area(
-            container(Space::new(Length::Fill, Length::Fill))
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .style(|_| iced::widget::container::Style {
-                    background: Some(iced::Background::Color(
-                        iced::Color::from_rgba(0.0, 0.0, 0.0, 0.0)
-                    )),
-                    ..Default::default()
-                })
-        )
-        .on_press(Message::CloseQueuePopover);
-
-        // Header row: "Queue" label + count + Clear button
-        let queue_count = self.queue.len();
-        let header = row![
-            text(format!("Queue ({queue_count})"))
-                .size(12)
-                .font(crate::ui::icons::UI_FONT_BOLD)
-                .color(theme::subtext())
-                .width(Length::Fill),
-            button(
-                text("Clear")
-                    .size(11)
-                    .color(theme::red())
-            )
-            .on_press(Message::ClearQueue)
-            .style(move |_: &iced::Theme, status: iced::widget::button::Status| {
-                let hovered = status == iced::widget::button::Status::Hovered
-                    || status == iced::widget::button::Status::Pressed;
-                iced::widget::button::Style {
-                    text_color: theme::red(),
-                    background: if hovered {
-                        Some(iced::Background::Color(theme::surface0()))
-                    } else {
-                        None
-                    },
-                    border: iced::Border {
-                        color: if hovered { theme::red() } else { iced::Color::TRANSPARENT },
-                        width: 1.0,
-                        radius: 4.0.into(),
-                    },
-                    ..Default::default()
-                }
-            })
-            .padding([2, 6]),
-        ]
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .padding([8, 12]);
-
-        // Queue rows
-        let current_track_id = self.current_track.as_ref().map(|t| t.id);
-        let mut rows: Vec<Element<'_, Message>> = Vec::new();
-
-        if self.queue.is_empty() {
-            rows.push(
-                container(
-                    text("The play queue is empty.")
-                        .size(13)
-                        .color(theme::overlay0())
-                )
-                .padding([12, 12])
-                .width(Length::Fill)
-                .into()
-            );
-        } else {
-            for (idx, track) in self.queue.iter().enumerate() {
-                let is_current = current_track_id == Some(track.id);
-                let title_color = if is_current { theme::accent() } else { theme::text() };
-
-                // Drag handle
-                let drag_handle = mouse_area(
-                    container(
-                        text("\u{f0c9}")
-                            .font(crate::ui::icons::NERD_FONT_MONO)
-                            .color(if self.dragging_queue_index == Some(idx) {
-                                theme::accent()
-                            } else {
-                                theme::overlay0()
-                            })
-                            .size(11)
-                    )
-                    .padding([4, 6])
-                )
-                .on_press(Message::QueueDragStart(idx))
-                .on_release(Message::QueueDragEnd)
-                .interaction(iced::mouse::Interaction::Grab);
-
-                // Remove (✕) button
-                let remove_btn = button(
-                    text("\u{f00d}")
-                        .font(crate::ui::icons::NERD_FONT_MONO)
-                        .size(12)
-                        .color(theme::red())
-                )
-                .on_press(Message::RemoveQueueTrack(idx))
-                .style(iced::widget::button::text)
-                .padding([4, 4]);
-
-                // Track info
-                let title_txt = text(track.title.clone())
-                    .size(13)
-                    .color(title_color)
-                    .width(Length::Fill);
-                let artist_txt = text(track.artist.clone())
-                    .size(13)
-                    .color(theme::subtext())
-                    .width(Length::Fill);
-
-                let info_col = column![title_txt, artist_txt]
-                    .spacing(2)
-                    .width(Length::Fill);
-
-                // Position number
-                let pos_txt = text(format!("{}", idx + 1))
-                    .size(13)
-                    .color(theme::overlay0())
-                    .width(Length::Fixed(20.0));
-
-                let track_row_inner = row![
-                    drag_handle,
-                    pos_txt,
-                    info_col,
-                    remove_btn,
-                ]
-                .spacing(4)
-                .align_y(Alignment::Center)
-                .padding([4, 8]);
-
-                // Detect if background is light or dark to compute the custom saturated panel style
-                let base_color = theme::base();
-                let is_dark = (base_color.r + base_color.g + base_color.b) / 3.0 < 0.5;
-
-                // Alternate background logic:
-                // We construct two contrasting colors using base and mantle, slightly shifting saturation/lightness.
-                let row_bg_even = if is_current {
-                    Some(iced::Background::Color(theme::with_alpha(theme::accent(), 0.12)))
-                } else if idx % 2 == 1 {
-                    if is_dark {
-                        // Less saturated/slightly lighter for alternate rows on dark theme
-                        Some(iced::Background::Color(theme::mantle()))
-                    } else {
-                        // More saturated/slightly darker for alternate rows on light theme
-                        Some(iced::Background::Color(theme::mantle()))
-                    }
-                } else {
-                    if is_dark {
-                        Some(iced::Background::Color(theme::base()))
-                    } else {
-                        None
-                    }
-                };
-
-                let mut row_element: Element<'_, Message> = mouse_area(
-                    container(track_row_inner)
-                        .width(Length::Fill)
-                        .style(move |_| iced::widget::container::Style {
-                            background: row_bg_even,
-                            ..Default::default()
-                        })
-                )
-                .on_press(Message::PlayQueueTrack(idx))
-                .into();
-
-                // Drag-over highlight: when dragging, wrap with mouse_area to detect hover
-                if self.dragging_queue_index.is_some() {
-                    row_element = mouse_area(row_element)
-                        .on_enter(Message::QueueDragOver(idx))
-                        .into();
-                }
-
-                rows.push(row_element);
-            }
-        }
-
-        let scroll_content = scrollable(
-            column(rows).spacing(0).width(Length::Fill)
-        )
-        .id(self.queue_scroll_id.clone())
-        .height(Length::Shrink);
-
-        // The panel itself (30% wider: 360 * 1.3 = 468)
-        let panel_content = column![
-            header,
-            container(Space::new(Length::Fill, Length::Fixed(1.0)))
-                .style(|_| iced::widget::container::Style {
-                    background: Some(iced::Background::Color(theme::surface0())),
-                    ..Default::default()
-                })
-                .width(Length::Fill),
-            scroll_content,
-        ]
-        .spacing(0)
-        .width(Length::Fixed(468.0));
-
-        // Background color styling based on theme light/dark saturation shift
-        let base_col = theme::base();
-        let is_dark = (base_col.r + base_col.g + base_col.b) / 3.0 < 0.5;
-        let popover_bg = if is_dark {
-            // For dark backgrounds: blend with mantle to make it slightly less saturated / deeper
-            theme::lerp_color(base_col, theme::mantle(), 0.5)
-        } else {
-            // For light backgrounds: blend with mantle or surface0 to make it more saturated / distinct
-            theme::lerp_color(base_col, theme::surface0(), 0.15)
-        };
-
-        let panel = container(panel_content)
-            .width(Length::Fixed(468.0))
-            .max_height(706.0) // 20% taller: 588 * 1.2 = 706
-            .style(move |_| iced::widget::container::Style {
-                background: Some(iced::Background::Color(popover_bg)),
-                border: iced::Border {
-                    color: theme::surface0(),
-                    width: 1.0,
-                    radius: 8.0.into(),
-                },
-                shadow: iced::Shadow {
-                    color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.4),
-                    offset: [0.0, 4.0].into(),
-                    blur_radius: 12.0,
-                },
-                ..Default::default()
-            });
-
-        // Position: Anchored directly above the floating Now Playing button at the bottom
-        let panel_left_offset = (self.sidebar_width.round() + 18.0).max(0.0);
-
-        let positioned_panel = container(panel)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_x(iced::alignment::Horizontal::Left)
-            .align_y(iced::alignment::Vertical::Bottom)
-            .padding(iced::Padding {
-                top: 0.0,
-                left: panel_left_offset,
-                right: 0.0,
-                bottom: 68.0,
-            });
-
-        // Stack: dismiss layer behind, panel in front
-        stack![
-            dismiss_layer,
-            positioned_panel,
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
-    }
-
-    fn shortcuts_modal_view(&self) -> Element<'_, Message> {
-        let title = text("Keyboard Shortcuts")
-            .size(20)
-            .font(crate::ui::icons::UI_FONT_BOLD)
-            .color(theme::accent());
-
-        let row_item = |keys: &'static str, desc: &'static str| {
-            row![
-                text(keys)
-                    .width(Length::Fixed(120.0))
-                    .font(crate::ui::icons::UI_FONT_BOLD)
-                    .color(theme::accent())
-                    .size(13),
-                text(desc)
-                    .color(theme::text())
-                    .size(13),
-            ]
-            .spacing(12)
-            .align_y(Alignment::Center)
-        };
-
-        let content = column![
-            row![
-                title,
-                Space::with_width(Length::Fill),
-                button(
-                    text("\u{f00d}")
-                        .font(crate::ui::icons::NERD_FONT_MONO)
-                        .color(theme::red())
-                        .size(16)
-                )
-                .on_press(Message::CloseShortcuts)
-                .style(iced::widget::button::text)
-            ]
-            .align_y(Alignment::Center),
-            Space::with_height(16),
-            row_item("Space", "Play / Pause / Play Selected Track"),
-            row_item("N", "Next Track"),
-            row_item("P", "Previous Track"),
-            row_item("L / F", "Like / Unlike Song"),
-            row_item("E", "Edit Metadata Tags"),
-            row_item("C", "Create Custom Playlist"),
-            row_item("A", "Add Current Song to Playlist"),
-            row_item("Arrow Up/Down", "Navigate Lists (Sidebar/Tracks)"),
-            row_item("F5", "Rescan Music Library Folder"),
-            row_item("+ / -", "Increase / Decrease Volume"),
-            row_item("] / [", "Increase / Decrease Scaling"),
-            row_item("Right/Left", "Seek Forward / Backward"),
-            row_item("Tab", "Focus next field / cycle ID3 inputs"),
-            row_item("Shift + Tab", "Cycle ID3 input backwards"),
-            row_item("/", "Focus song search input"),
-        ]
-        .spacing(10)
-        .padding(24);
-
-        let dialog = container(content)
-            .width(420)
-            .style(|_| iced::widget::container::Style {
-                background: Some(iced::Background::Color(theme::base())),
-                border: iced::Border {
-                    color: theme::accent(),
-                    width: 1.0,
-                    radius: 8.0.into(),
-                },
-                shadow: iced::Shadow {
-                    color: theme::mantle(),
-                    offset: [0.0, 4.0].into(),
-                    blur_radius: 12.0,
-                },
-                ..Default::default()
-            });
-
-        container(dialog)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .style(|_| iced::widget::container::Style {
-                background: Some(iced::Background::Color(iced::Color::from_rgba(0.0, 0.0, 0.0, 0.6))),
-                ..Default::default()
-            })
-            .into()
-    }
-
     fn subscription(&self) -> Subscription<Message> {
         let mut base_subs = vec![
             iced::time::every(Duration::from_millis(100)).map(|_| Message::PollAudio),
             iced::time::every(Duration::from_secs(3)).map(|_| Message::CheckTheme),
             iced::time::every(Duration::from_secs(5)).map(|_| Message::FlushBuffers),
-            iced::keyboard::on_key_press(|key, _mods| {
-                Some(Message::KeyPressed(key))
-            }),
+            iced::keyboard::on_key_press(|key, _mods| Some(Message::KeyPressed(key))),
             // `on_key_press` only sees events no widget captured, and a focused
             // text_input captures `Escape` for itself. Watch it at window level
             // so the first press always closes the panel the user is looking at.
@@ -7510,27 +7304,28 @@ impl AppState {
                 }) => Some(Message::EscapePressed),
                 _ => None,
             }),
-            iced::event::listen_with(|event, _, _| {
-                match event {
-                    iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(mods)) => {
-                        Some(Message::ModifiersChanged(mods))
-                    }
-                    iced::Event::Window(iced::window::Event::Resized(size)) => {
-                        Some(Message::WindowResized(size.width as f32, size.height as f32))
-                    }
-                    iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
-                        Some(Message::GlobalCursorMoved(position))
-                    }
-                    iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)) => {
-                        Some(Message::GlobalClick)
-                    }
-                    _ => None,
+            iced::event::listen_with(|event, _, _| match event {
+                iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(mods)) => {
+                    Some(Message::ModifiersChanged(mods))
                 }
+                iced::Event::Window(iced::window::Event::Resized(size)) => Some(
+                    Message::WindowResized(size.width as f32, size.height as f32),
+                ),
+                iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
+                    Some(Message::GlobalCursorMoved(position))
+                }
+                iced::Event::Mouse(iced::mouse::Event::ButtonPressed(
+                    iced::mouse::Button::Left,
+                )) => Some(Message::GlobalClick),
+                _ => None,
             }),
         ];
 
-        if matches!(self.playback_state, PlaybackState::Playing) && self.right_panel_tab == Some(RightPanelTab::Visualizer) {
-            base_subs.push(iced::time::every(Duration::from_millis(33)).map(|_| Message::PollSpectrum));
+        if matches!(self.playback_state, PlaybackState::Playing)
+            && self.right_panel_tab == Some(RightPanelTab::Visualizer)
+        {
+            base_subs
+                .push(iced::time::every(Duration::from_millis(33)).map(|_| Message::PollSpectrum));
         }
 
         let mut subs = vec![Subscription::batch(base_subs)];
@@ -7618,9 +7413,9 @@ impl AppState {
                             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                             None
                         }
-                    }
+                    },
                 };
-                
+
                 if let Some(s) = socket {
                     let mut buf = [0u8; 1024];
                     loop {
@@ -7629,7 +7424,10 @@ impl AppState {
                             let msg_str = msg.trim();
                             if msg_str.starts_with("seek ") {
                                 if let Ok(secs) = msg_str[5..].trim().parse::<u64>() {
-                                    return Some((Message::Seek(std::time::Duration::from_secs(secs)), Some(s)));
+                                    return Some((
+                                        Message::Seek(std::time::Duration::from_secs(secs)),
+                                        Some(s),
+                                    ));
                                 }
                             }
                             // `play <absolute path>` — used by omatunes-open so a file
@@ -7658,226 +7456,19 @@ impl AppState {
                 } else {
                     Some((Message::PollAudio, None))
                 }
-            })
+            }),
         ));
 
         let target = self.group_by_state.target();
         let is_animating = (self.group_by_state.hover_progress - target).abs() > 0.001;
         if is_animating {
-            subs.push(iced::time::every(Duration::from_millis(16)).map(|_| Message::GroupByAnimationTick(std::time::Instant::now())));
+            subs.push(
+                iced::time::every(Duration::from_millis(16))
+                    .map(|_| Message::GroupByAnimationTick(std::time::Instant::now())),
+            );
         }
 
         Subscription::batch(subs)
-    }
-
-    fn header_view(&self) -> Element<'_, Message> {
-        container(
-            row![
-                text(crate::ui::icons::ICON_MUSIC)
-                    .font(crate::ui::icons::NERD_FONT_MONO)
-                    .color(theme::accent())
-                    .size(16),
-                Space::with_width(6),
-                text("omatunes")
-                    .color(theme::accent())
-                    .size(16)
-                    .font(crate::ui::icons::UI_FONT_BOLD),
-            ]
-            .align_y(Alignment::Center),
-        )
-        .style(theme::header)
-        .width(Length::Fill)
-        .padding([0, 16])
-        .into()
-    }
-
-    fn maybe_shuffle_queue(&mut self, anchor: Option<i64>) {
-        if !self.shuffle || self.queue.is_empty() {
-            return;
-        }
-        use rand::seq::SliceRandom;
-        let mut rng = rand::thread_rng();
-        if let Some(id) = anchor {
-            if let Some(pos) = self.queue.iter().position(|t| t.id == id) {
-                let item = self.queue.remove(pos);
-                self.queue.shuffle(&mut rng);
-                self.queue.insert(0, item);
-                let queue_paths: Vec<PathBuf> = self.queue.iter().map(|t| t.path.clone()).collect();
-                crate::db::write(|db| db.last_queue_paths = queue_paths);
-                return;
-            }
-        }
-        self.queue.shuffle(&mut rng);
-        let queue_paths: Vec<PathBuf> = self.queue.iter().map(|t| t.path.clone()).collect();
-        crate::db::write(|db| db.last_queue_paths = queue_paths);
-    }
-
-    fn advance_track(&mut self, delta: i32) -> Task<Message> {
-        // Flush pending liked tag for the track we're leaving (fd will be cancelled before next Play)
-        if let Some(ref ct) = self.current_track {
-            let p = ct.path.clone();
-            if crate::library::pending::flush_one(&p) {
-                eprintln!("Flushed pending liked on advance for {}", p.display());
-            }
-        }
-        if self.queue.is_empty() {
-            return Task::none();
-        }
-
-        let current_idx = self.current_track.as_ref()
-            .and_then(|ct| self.queue.iter().position(|t| t.id == ct.id));
-        let next_idx = match current_idx {
-            Some(i) => {
-                let new = i as i32 + delta;
-                if new < 0 { self.queue.len() - 1 } else { new as usize % self.queue.len() }
-            }
-            None => 0,
-        };
-
-        if let Some(track) = self.queue.get(next_idx).cloned() {
-            self.play_track_internal(track)
-        } else {
-            Task::none()
-        }
-    }
-
-    pub fn calculate_scroll_offset(&self, track_id: i64) -> Option<f32> {
-        let track_height = 34.0;
-        let spacing = 1.0;
-        if self.group_by != crate::db::GroupBy::None {
-            let mut y = 0.0;
-            let mut groups: Vec<(String, Vec<&crate::library::models::Track>)> = Vec::new();
-            for track in self.tracks.iter() {
-                let group_key = match self.group_by {
-                    crate::db::GroupBy::Album => track.album.clone(),
-                    crate::db::GroupBy::Artist => track.artist.clone(),
-                    crate::db::GroupBy::Genre => track.primary_genre().to_string(),
-                    crate::db::GroupBy::Year => track.year.map(|y| y.to_string()).unwrap_or_default(),
-                    crate::db::GroupBy::None => unreachable!(),
-                };
-                if let Some(last) = groups.last_mut() {
-                    if last.0 == group_key {
-                        last.1.push(track);
-                        continue;
-                    }
-                }
-                groups.push((group_key, vec![track]));
-            }
-            for (_group_name, tracks) in groups {
-                let header_height = 28.0;
-                if let Some(index_in_album) = tracks.iter().position(|t| t.id == track_id) {
-                    y += header_height + spacing;
-                    y += index_in_album as f32 * (track_height + spacing);
-                    return Some(y);
-                } else {
-                    y += header_height + spacing;
-                    y += tracks.len() as f32 * (track_height + spacing);
-                    y += 8.0 + spacing;
-                }
-            }
-        } else {
-            if let Some(idx) = self.tracks.iter().position(|t| t.id == track_id) {
-                return Some(idx as f32 * (track_height + spacing));
-            }
-        }
-        None
-    }
-
-    pub fn evaluate_smart_playlist(&self, sp: &crate::library::smart_playlist::SmartPlaylist) -> Vec<Track> {
-        let rp = crate::db::get(|db| db.recently_played.clone());
-        let mut matched_tracks: Vec<Track> = self.all_tracks.iter()
-            .filter(|t| crate::library::smart_playlist::evaluate_rules(t, &sp.rules, &rp))
-            .cloned()
-            .collect();
-
-        // Hydrate date_played if available in recently_played
-        for t in &mut matched_tracks {
-            if let Some((_, date_str)) = rp.iter().find(|(p, _)| p == &t.path) {
-                t.date_played = Some(date_str.clone());
-            }
-        }
-
-        crate::library::smart_playlist::sort_and_limit_tracks(&mut matched_tracks, sp.order_by, sp.limit, &rp);
-        matched_tracks
-    }
-
-    pub fn update_live_smart_playlists(&mut self) {
-        let smart_playlists = crate::db::get(|db| db.smart_playlists.clone());
-        for (name, mut sp) in smart_playlists {
-            if sp.live_updating {
-                let evaluated = self.evaluate_smart_playlist(&sp);
-                sp.tracks = evaluated.iter().map(|t| t.path.clone()).collect();
-                crate::db::save_smart_playlist(name, sp);
-            }
-        }
-    }
-
-    pub fn set_playing_context_from_current_view(&mut self) {
-        if let Some(ref name) = self.selected_playlist {
-            if name == "Liked Songs" || name == "Recently Played" || name == "Most Played" || name == "New Music" {
-                self.playing_context = Some(PlayingContext::Autoplaylist(name.clone()));
-            } else if crate::db::get(|db| db.smart_playlists.contains_key(name)) {
-                self.playing_context = Some(PlayingContext::SmartPlaylist(name.clone()));
-            } else {
-                self.playing_context = Some(PlayingContext::Playlist(name.clone()));
-            }
-        } else if let Some(ref album) = self.selected_album {
-            self.playing_context = Some(PlayingContext::Album(album.clone()));
-        } else if let Some(ref artist) = self.selected_artist {
-            self.playing_context = Some(PlayingContext::Artist(artist.clone()));
-        } else if let Some(ref genre) = self.selected_genre {
-            self.playing_context = Some(PlayingContext::Genre(genre.clone()));
-        } else {
-            self.playing_context = None;
-        }
-    }
-
-    fn play_track_internal(&mut self, mut track: Track) -> Task<Message> {
-        if let Some(t) = self.all_tracks.iter().find(|t| t.path == track.path) {
-            track.liked = t.liked;
-        }
-        let cover_data = load_cover(&track.path);
-        let track = Track { cover_data, ..track };
-        self.audio.send(AudioCommand::Play(track.path.clone()));
-        self.audio.send(AudioCommand::SetVolume(self.volume));
-        self.current_track = Some(track.clone());
-        self.selected_track = Some(track.clone());
-        self.update_live_smart_playlists();
-        self.playback_state = PlaybackState::Playing;
-        self.position = Duration::ZERO;
-        self.duration = Duration::ZERO;
-        self.last_accumulated_position = Duration::ZERO;
-        self.current_track_play_counted = false;
-        self.notify_mpris_track(PlaybackStatus::Playing);
-
-        let queue_paths: Vec<PathBuf> = self.queue.iter().map(|t| t.path.clone()).collect();
-        crate::db::write(|db| {
-            db.last_track_path = Some(track.path.clone());
-            db.last_queue_paths = queue_paths;
-            db.last_position_secs = 0;
-            db.last_view_mode = Some(self.view_mode);
-            db.last_selected_playlist = self.selected_playlist.clone();
-            db.last_selected_folder = self.selected_folder.clone();
-            db.last_selected_artist = self.selected_artist.clone();
-            db.last_selected_album = self.selected_album.clone();
-            db.last_selected_genre = self.selected_genre.clone();
-            db.last_playlist_tab = Some(self.playlist_tab);
-        });
-
-        crate::db::add_to_recently_played(track.path.clone());
-        if self.selected_playlist.as_deref() == Some("Recently Played") {
-            self.update_filtered_tracks();
-        }
-
-        if let Some(y) = self.calculate_scroll_offset(track.id) {
-            let target_y = (y - 120.0).max(0.0);
-            iced::widget::scrollable::scroll_to(
-                iced::widget::scrollable::Id::new("tracklist_scroll"),
-                iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: target_y }
-            )
-        } else {
-            Task::none()
-        }
     }
 }
 
@@ -7893,22 +7484,41 @@ fn open_url(url: &str) {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string() == "vivaldi-stable.desktop")
         .unwrap_or(false);
     if is_vivaldi_default {
-        if std::process::Command::new("vivaldi-stable").arg(url).spawn().is_ok() {
+        if std::process::Command::new("vivaldi-stable")
+            .arg(url)
+            .spawn()
+            .is_ok()
+        {
             return;
         }
-        if std::process::Command::new("/usr/bin/vivaldi-stable").arg(url).spawn().is_ok() {
+        if std::process::Command::new("/usr/bin/vivaldi-stable")
+            .arg(url)
+            .spawn()
+            .is_ok()
+        {
             return;
         }
     }
     // gio respects mimeapps.list (we now copy it in test script)
-    if std::process::Command::new("gio").arg("open").arg(url).spawn().is_ok() {
+    if std::process::Command::new("gio")
+        .arg("open")
+        .arg(url)
+        .spawn()
+        .is_ok()
+    {
         return;
     }
-    if std::process::Command::new("xdg-open").arg(url).spawn().is_ok() {
+    if std::process::Command::new("xdg-open")
+        .arg(url)
+        .spawn()
+        .is_ok()
+    {
         return;
     }
     // Final fallback: try Vivaldi directly even if not default
-    let _ = std::process::Command::new("vivaldi-stable").arg(url).spawn();
+    let _ = std::process::Command::new("vivaldi-stable")
+        .arg(url)
+        .spawn();
 }
 
 fn music_subfolders(music_dir: &PathBuf) -> Vec<PathBuf> {
@@ -7927,8 +7537,12 @@ fn music_subfolders(music_dir: &PathBuf) -> Vec<PathBuf> {
 }
 
 fn sidebar_width_path() -> PathBuf {
-    let xdg = std::env::var("XDG_CONFIG_HOME")
-        .unwrap_or_else(|_| format!("{}/.config", std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())));
+    let xdg = std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| {
+        format!(
+            "{}/.config",
+            std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())
+        )
+    });
     PathBuf::from(xdg).join("omatunes").join("sidebar_width")
 }
 
@@ -7949,9 +7563,15 @@ fn save_sidebar_width(width: f32) {
 }
 
 fn right_panel_width_path() -> PathBuf {
-    let xdg = std::env::var("XDG_CONFIG_HOME")
-        .unwrap_or_else(|_| format!("{}/.config", std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())));
-    PathBuf::from(xdg).join("omatunes").join("right_panel_width")
+    let xdg = std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| {
+        format!(
+            "{}/.config",
+            std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())
+        )
+    });
+    PathBuf::from(xdg)
+        .join("omatunes")
+        .join("right_panel_width")
 }
 
 fn load_right_panel_width() -> Option<f32> {
@@ -7973,17 +7593,18 @@ fn build_iced_theme() -> Theme {
         "Omarchy".into(),
         iced::theme::Palette {
             background: theme::base(),
-            text:       theme::text(),
-            primary:    theme::accent(),
-            success:    theme::green(),
-            danger:     theme::red(),
+            text: theme::text(),
+            primary: theme::accent(),
+            success: theme::green(),
+            danger: theme::red(),
         },
     )
 }
 
 fn merge_song_order(manual_order: &[PathBuf], live_set: &[PathBuf]) -> Vec<PathBuf> {
     let live_set_hs: std::collections::HashSet<&PathBuf> = live_set.iter().collect();
-    let mut result: Vec<PathBuf> = manual_order.iter()
+    let mut result: Vec<PathBuf> = manual_order
+        .iter()
         .filter(|p| live_set_hs.contains(p))
         .cloned()
         .collect();
@@ -8000,7 +7621,9 @@ fn merge_song_order(manual_order: &[PathBuf], live_set: &[PathBuf]) -> Vec<PathB
 pub fn run() -> iced::Result {
     iced::application("omatunes", AppState::update, AppState::view)
         .subscription(AppState::subscription)
-        .font(include_bytes!("../../assets/JetBrainsMonoNerdFontMono-Regular.ttf"))
+        .font(include_bytes!(
+            "../../assets/JetBrainsMonoNerdFontMono-Regular.ttf"
+        ))
         .font(include_bytes!("../../assets/NotoSansArabic-Regular.ttf"))
         .font(include_bytes!("../../assets/NotoSansArabic-Bold.ttf"))
         .default_font(iced::Font {
