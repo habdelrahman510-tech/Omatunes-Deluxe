@@ -83,8 +83,17 @@ for pkg in "${PACKAGES[@]}"; do
     continue
   fi
 
+  # The AUR checkout is its own repository and inherits nothing: without an
+  # identity set here, git refuses to commit and the push never happens.
+  git -C "$dir" config user.name \
+    "$(git -C "$REPO_ROOT" config user.name || echo 'prof. dog')"
+  git -C "$dir" config user.email \
+    "$(git -C "$REPO_ROOT" config user.email || echo 'prof.dog@users.noreply.github.com')"
+
   git -C "$dir" add PKGBUILD .SRCINFO
-  [ -f "$dir/omatunes.install" ] && git -C "$dir" add omatunes.install
+  if [ -f "$dir/omatunes.install" ]; then
+    git -C "$dir" add omatunes.install
+  fi
   git -C "$dir" commit -q -m "upgpkg: $pkg $ver-$rel"
   git -C "$dir" push -q origin master
   echo "==> published $pkg $ver-$rel"
