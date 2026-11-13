@@ -1,5 +1,5 @@
 # Maintainer: prof.dog <prof.dog@users.noreply.github.com>
-pkgname=omatunes-deluxe
+pkgname=omatunes
 pkgver=2.0.0
 pkgrel=1
 pkgdesc="Native Wayland music player for Omarchy, with a 10-band parametric equalizer and Arabic/RTL support"
@@ -8,8 +8,7 @@ url="https://github.com/habdelrahman510-tech/Omatunes-Deluxe"
 license=('MIT')
 depends=('glibc' 'gcc-libs' 'alsa-lib' 'opus' 'wayland' 'libxkbcommon' 'fontconfig' 'freetype2' 'vulkan-icd-loader' 'hicolor-icon-theme')
 makedepends=('cargo' 'rust' 'pkgconf')
-provides=('omatunes')
-conflicts=('omatunes' 'omatunes-deluxe-bin')
+conflicts=('omatunes-bin')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
 sha256sums=('10aa7d68407f8cf1e4033ebc193a41222c4a99c947f7706da9570f89ca69b4e2')
 

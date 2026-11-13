@@ -6,7 +6,7 @@
 # can never drift from the PKGBUILD, and pushes. Run it after a version bump:
 #
 #   ./scripts/aur-publish.sh            # both packages
-#   ./scripts/aur-publish.sh -bin       # only omatunes-deluxe-bin
+#   ./scripts/aur-publish.sh -bin       # only omatunes-bin
 #
 # Requires an AUR account with an SSH key registered:
 #   https://aur.archlinux.org -> My Account -> SSH Public Key
@@ -15,13 +15,13 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 WORKDIR="${AUR_WORKDIR:-$HOME/.cache/omatunes-aur}"
 
-ALL_PACKAGES=("omatunes-deluxe-bin" "omatunes-deluxe")
+ALL_PACKAGES=("omatunes-bin" "omatunes")
 PACKAGES=()
 
 for arg in "$@"; do
   case "$arg" in
-    -bin) PACKAGES+=("omatunes-deluxe-bin") ;;
-    src | source) PACKAGES+=("omatunes-deluxe") ;;
+    -bin) PACKAGES+=("omatunes-bin") ;;
+    src | source) PACKAGES+=("omatunes") ;;
     -h | --help)
       sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
@@ -100,5 +100,5 @@ for pkg in "${PACKAGES[@]}"; do
 done
 
 echo
-echo "Install with:  yay -S omatunes-deluxe-bin"
-echo "Build locally: yay -S omatunes-deluxe"
+echo "Install with:  yay -S omatunes-bin"
+echo "Build locally: yay -S omatunes"

@@ -1,5 +1,5 @@
 # Maintainer: prof.dog <prof.dog@users.noreply.github.com>
-pkgname=omatunes-deluxe-bin
+pkgname=omatunes-bin
 pkgver=2.0.0
 pkgrel=1
 pkgdesc="Native Wayland music player for Omarchy, with a 10-band parametric equalizer and Arabic/RTL support (prebuilt)"
@@ -8,7 +8,7 @@ url="https://github.com/habdelrahman510-tech/Omatunes-Deluxe"
 license=('MIT')
 depends=('glibc' 'gcc-libs' 'alsa-lib' 'opus' 'wayland' 'libxkbcommon' 'fontconfig' 'freetype2' 'vulkan-icd-loader' 'hicolor-icon-theme')
 provides=('omatunes')
-conflicts=('omatunes' 'omatunes-deluxe')
+conflicts=('omatunes')
 # The binary arrives already stripped from the release build; repackaging it
 # here would only produce a second, emptier debug package.
 options=('!strip' '!debug')
