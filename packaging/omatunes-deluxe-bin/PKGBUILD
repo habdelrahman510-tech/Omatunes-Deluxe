@@ -9,6 +9,9 @@ license=('MIT')
 depends=('glibc' 'gcc-libs' 'alsa-lib' 'opus' 'wayland' 'libxkbcommon' 'fontconfig' 'freetype2' 'vulkan-icd-loader' 'hicolor-icon-theme')
 provides=('omatunes')
 conflicts=('omatunes' 'omatunes-deluxe')
+# The binary arrives already stripped from the release build; repackaging it
+# here would only produce a second, emptier debug package.
+options=('!strip' '!debug')
 source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/omatunes-$pkgver-x86_64-linux.tar.gz"
         "omatunes.desktop::$url/raw/v$pkgver/scripts/omatunes.desktop"
         "omatunes-open::$url/raw/v$pkgver/scripts/omatunes-open"
