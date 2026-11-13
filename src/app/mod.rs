@@ -11,6 +11,7 @@ use mpris_server::{LoopStatus, PlaybackStatus};
 
 mod achievements;
 mod browse;
+mod dnd;
 mod overlays;
 mod playback;
 mod smart_playlists;
@@ -118,6 +119,8 @@ pub enum ToastKind {
     EnteredTop10,
     Achievement,
     ThemeError,
+    /// Plain confirmation: an import finished, a file was written, and so on.
+    Info,
 }
 
 #[derive(Debug, Clone)]
@@ -229,6 +232,14 @@ pub enum Message {
 
     PlayTrack(Track),
     PlayTracks(Vec<Track>),
+    /// A file is being dragged over the window (one message per file).
+    DragHovered(std::path::PathBuf),
+    /// The drag left the window.
+    DragHoverLeft,
+    /// A file was dropped; batched in `pending_drops` and handled on the tick.
+    DragDropped(std::path::PathBuf),
+    /// A dropped folder finished scanning on the blocking pool.
+    DroppedFolderScanned(Vec<Track>),
     /// A path handed in from outside the app (file manager, `omatunes-open`).
     /// Resolved against the library; if it is not in the library the file's own
     /// tags are read so any audio file can be played on click.
@@ -838,6 +849,10 @@ pub struct AppState {
         std::sync::Mutex<std::collections::HashMap<String, iced::widget::image::Handle>>,
     pub achievements_items: Vec<AchievementItem>,
     pub is_scanning: bool,
+    /// Files hovering over the window; drives the drop overlay.
+    pub drag_hovered: Option<Vec<PathBuf>>,
+    /// Files dropped since the last timer tick, flushed in one batch.
+    pending_drops: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -1150,6 +1165,8 @@ impl AppState {
             achievements_cover_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
             achievements_items: Vec::new(),
             is_scanning: true,
+            drag_hovered: None,
+            pending_drops: Vec::new(),
         };
 
         if let Some(cached_tracks) = crate::library::load_cache() {
@@ -1298,6 +1315,41 @@ impl AppState {
                 self.maybe_shuffle_queue(anchor);
                 self.set_playing_context_from_current_view();
                 Task::batch([blur_focus(), self.play_track_internal(track)])
+            }
+
+            Message::DragHovered(path) => {
+                let hovered = self.drag_hovered.get_or_insert_with(Vec::new);
+                if !hovered.contains(&path) {
+                    hovered.push(path);
+                }
+                Task::none()
+            }
+
+            Message::DragHoverLeft => {
+                self.drag_hovered = None;
+                Task::none()
+            }
+
+            Message::DragDropped(path) => {
+                // iced sends one of these per file; collect them and act once.
+                self.drag_hovered = None;
+                if !self.pending_drops.contains(&path) {
+                    self.pending_drops.push(path);
+                }
+                Task::none()
+            }
+
+            Message::DroppedFolderScanned(tracks) => {
+                if tracks.is_empty() {
+                    self.push_toast(
+                        "Nothing to play",
+                        "That folder holds no audio files.",
+                        ToastKind::Info,
+                    );
+                    Task::none()
+                } else {
+                    self.play_dropped_queue(tracks)
+                }
             }
 
             Message::PlayPath(path) => {
@@ -1661,6 +1713,12 @@ impl AppState {
                 while self.watch_rx.try_recv().is_ok() {
                     library_changed = true;
                 }
+                // Files dropped since the last tick become one action.
+                if !self.pending_drops.is_empty() {
+                    let dropped = std::mem::take(&mut self.pending_drops);
+                    tasks.push(self.handle_drops(dropped));
+                }
+
                 if library_changed && !self.is_scanning {
                     self.is_scanning = true;
                     let roots = crate::config::get().music_paths();
@@ -5202,6 +5260,7 @@ impl AppState {
                             self.stats_modal_tab = StatsModalTab::Leaderboard;
                             self.recalculate_achievements_items();
                         }
+                        ToastKind::Info => {}
                         ToastKind::Achievement => {
                             let breakdown = crate::stats::get_period_breakdown(0, &self.all_tracks);
                             self.show_period_breakdown = Some(breakdown);
@@ -7306,6 +7365,7 @@ impl AppState {
                 let toast_color = match n.kind {
                     ToastKind::LadderClimb | ToastKind::EnteredTop10 => theme::green(),
                     ToastKind::ThemeError => theme::red(),
+                    ToastKind::Info => theme::accent(),
                     ToastKind::Achievement => {
                         let text_to_check = format!("{} {}", n.title, n.message).to_lowercase();
                         if text_to_check.contains("bronze") || text_to_check.contains("ribbon") {
@@ -7395,6 +7455,7 @@ impl AppState {
                     ToastKind::EnteredTop10 => crate::ui::icons::ICON_ARROW_UP,
                     ToastKind::Achievement => crate::ui::icons::ICON_TROPHY,
                     ToastKind::ThemeError => "\u{f071}", // warning triangle
+                    ToastKind::Info => crate::ui::icons::ICON_CHECK,
                 };
 
                 let toast_card = container(
@@ -7495,7 +7556,27 @@ impl AppState {
             view_stack = view_stack.push(scanning_overlay);
         }
 
+        if let Some(drop_overlay) = self.drop_overlay() {
+            view_stack = view_stack.push(drop_overlay);
+        }
+
         view_stack.into()
+    }
+
+    /// Push a transient toast into the notification stack.
+    pub(crate) fn push_toast(&mut self, title: &str, message: &str, kind: ToastKind) {
+        let id = self.next_notification_id;
+        self.next_notification_id += 1;
+        self.active_notifications.push(StatsNotification {
+            id,
+            title: title.to_string(),
+            message: message.to_string(),
+            created_at: std::time::Instant::now(),
+            kind,
+            artist_name: None,
+            positions_climbed: 0,
+            overtaken_artists: Vec::new(),
+        });
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -7527,6 +7608,20 @@ impl AppState {
                 iced::Event::Mouse(iced::mouse::Event::ButtonPressed(
                     iced::mouse::Button::Left,
                 )) => Some(Message::GlobalClick),
+                _ => None,
+            }),
+            // Drag & drop. iced reports one event per file, so hovers are
+            // accumulated and drops are batched until the next tick.
+            iced::event::listen_with(|event, _, _| match event {
+                iced::Event::Window(iced::window::Event::FileHovered(path)) => {
+                    Some(Message::DragHovered(path))
+                }
+                iced::Event::Window(iced::window::Event::FilesHoveredLeft) => {
+                    Some(Message::DragHoverLeft)
+                }
+                iced::Event::Window(iced::window::Event::FileDropped(path)) => {
+                    Some(Message::DragDropped(path))
+                }
                 _ => None,
             }),
         ];

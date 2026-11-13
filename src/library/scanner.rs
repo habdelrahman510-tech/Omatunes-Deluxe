@@ -106,7 +106,7 @@ fn fingerprint(path: &Path) -> (u64, u64) {
     }
 }
 
-fn is_audio_file(path: &Path) -> bool {
+pub fn is_audio_file(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| AUDIO_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
