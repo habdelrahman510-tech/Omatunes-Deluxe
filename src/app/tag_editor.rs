@@ -64,4 +64,41 @@ impl AppState {
             removed_genres: Vec::new(),
         });
     }
+
+    /// Reload cached cover bytes for one path after its tags changed on disk.
+    pub(super) fn refresh_track_cover(&mut self, path: &std::path::Path) {
+        let cover = crate::library::load_cover(path);
+        for track in Arc::make_mut(&mut self.all_tracks).iter_mut() {
+            if track.path == path {
+                track.cover_data = cover.clone();
+            }
+        }
+        for track in Arc::make_mut(&mut self.tracks).iter_mut() {
+            if track.path == path {
+                track.cover_data = cover.clone();
+            }
+        }
+        if let Some(track) = self.current_track.as_mut() {
+            if track.path == path {
+                track.cover_data = cover.clone();
+            }
+        }
+        if let Some(track) = self.selected_track.as_mut() {
+            if track.path == path {
+                track.cover_data = cover.clone();
+            }
+        }
+        for track in Arc::make_mut(&mut self.selected_tracks).iter_mut() {
+            if track.path == path {
+                track.cover_data = cover.clone();
+            }
+        }
+        if let Some(state) = self.show_tag_editor.as_mut() {
+            for track in state.tracks.iter_mut() {
+                if track.path == path {
+                    track.cover_data = cover.clone();
+                }
+            }
+        }
+    }
 }

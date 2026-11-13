@@ -524,6 +524,62 @@ fn cover_from_folder(path: &Path) -> Option<Vec<u8>> {
     None
 }
 
+/// Path of the artwork sitting next to `path`, if any.
+pub fn folder_cover(path: &Path) -> Option<PathBuf> {
+    let dir = path.parent()?;
+    COVER_FILENAMES
+        .iter()
+        .map(|name| dir.join(name))
+        .find(|candidate| candidate.is_file())
+}
+
+/// The embedded picture of a file, preferring the front cover.
+pub fn embedded_cover(path: &Path) -> Option<Vec<u8>> {
+    let file = Probe::open(path).ok()?.read().ok()?;
+    let tag = file.primary_tag().or_else(|| file.first_tag())?;
+    let pictures = tag.pictures();
+    let picture = pictures
+        .iter()
+        .find(|p| p.pic_type() == lofty::picture::PictureType::CoverFront)
+        .or_else(|| pictures.first())?;
+    Some(picture.data().to_vec())
+}
+
+/// Write the file's embedded artwork beside it as `cover.jpg`/`cover.png`.
+///
+/// Returns the path written, or `None` when the file carries no picture. An
+/// existing file is never clobbered: a second extraction gets a suffix, so
+/// running this on a whole album cannot quietly destroy hand-picked artwork.
+pub fn extract_cover_to_folder(path: &Path) -> Result<Option<PathBuf>> {
+    let Some(data) = embedded_cover(path) else {
+        return Ok(None);
+    };
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("{} has no parent directory", path.display()))?;
+    let ext = if data.starts_with(b"\x89PNG") {
+        "png"
+    } else if data.starts_with(b"GIF8") {
+        "gif"
+    } else if data.len() > 12 && &data[8..12] == b"WEBP" {
+        "webp"
+    } else {
+        "jpg"
+    };
+
+    let mut candidate = parent.join(format!("cover.{ext}"));
+    let mut n = 2;
+    while candidate.exists() {
+        candidate = parent.join(format!("cover ({n}).{ext}"));
+        n += 1;
+    }
+
+    let tmp = candidate.with_extension(format!("tmp.{ext}"));
+    std::fs::write(&tmp, &data)?;
+    std::fs::rename(&tmp, &candidate)?;
+    Ok(Some(candidate))
+}
+
 pub fn write_tags(
     path: &Path,
     title: &str,
@@ -585,10 +641,15 @@ pub fn write_tags(
             }
             tag.push_picture(picture);
 
-            // Also write a copy to parent folder as cover.jpg for quick filesystem access
+            // Also drop a copy beside the file so file managers and other
+            // players see the new art. Only when there is nothing there yet:
+            // overwriting an album's hand-picked cover.jpg from a single track
+            // edit is not ours to decide.
             if let Some(parent) = path.parent() {
                 let folder_cover = parent.join("cover.jpg");
-                let _ = std::fs::write(folder_cover, cover_data);
+                if !folder_cover.exists() {
+                    let _ = std::fs::write(folder_cover, cover_data);
+                }
             }
         }
     }

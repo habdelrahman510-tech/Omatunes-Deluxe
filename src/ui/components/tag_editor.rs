@@ -272,6 +272,31 @@ pub fn view<'a>(
         }
     });
 
+    let folder_cover_btn = button(
+        text(crate::ui::icons::ICON_MUSIC)
+            .font(crate::ui::icons::NERD_FONT_MONO)
+            .size(16)
+            .color(theme::subtext()),
+    )
+    .on_press(Message::LoadFolderCover)
+    .padding([8, 10])
+    .style(|_: &iced::Theme, status: iced::widget::button::Status| {
+        let hovered = matches!(
+            status,
+            iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+        );
+        iced::widget::button::Style {
+            background: None,
+            text_color: if hovered {
+                theme::accent()
+            } else {
+                theme::subtext()
+            },
+            border: iced::Border::default(),
+            ..Default::default()
+        }
+    });
+
     let search_btn = button(
         text(crate::ui::icons::ICON_GLOBE)
             .font(crate::ui::icons::NERD_FONT_MONO)
@@ -363,6 +388,26 @@ pub fn view<'a>(
             }),
             iced::widget::tooltip::Position::Top,
         );
+        let folder_tip = iced::widget::tooltip(
+            folder_cover_btn,
+            container(
+                text("Use artwork from the album folder")
+                    .size(11)
+                    .font(crate::ui::icons::UI_FONT)
+                    .color(theme::text()),
+            )
+            .padding([4, 8])
+            .style(|_| iced::widget::container::Style {
+                background: Some(iced::Background::Color(theme::surface0())),
+                border: iced::Border {
+                    color: theme::overlay0(),
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            }),
+            iced::widget::tooltip::Position::Top,
+        );
         let paste_tip = iced::widget::tooltip(
             paste_btn,
             container(
@@ -385,9 +430,15 @@ pub fn view<'a>(
         );
         let cover_saved = state.just_saved.contains("cover");
         container(
-            row![cover_input_field, browse_tip, paste_tip, search_tip,]
-                .align_y(Alignment::Center)
-                .spacing(2),
+            row![
+                cover_input_field,
+                folder_tip,
+                browse_tip,
+                paste_tip,
+                search_tip,
+            ]
+            .align_y(Alignment::Center)
+            .spacing(2),
         )
         .padding([4, 6])
         .style(move |_| iced::widget::container::Style {
