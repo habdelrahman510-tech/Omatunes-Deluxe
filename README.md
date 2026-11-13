@@ -73,6 +73,24 @@ The [USER_MANUAL.md](USER_MANUAL.md) covers everything in detail — every keybi
 
 ## Install Instructions
 
+### Arch Linux (binary repository)
+
+The prebuilt package is served from a pacman repository, so `pacman` — and `yay`/`paru`, which wrap it — install and update it like any other package. Add this to `/etc/pacman.conf`, above the Arch mirrors:
+
+```ini
+[omatunes-bin]
+SigLevel = Optional TrustAll
+Server = https://habdelrahman510-tech.github.io/omatunes-repo/x86_64
+```
+
+Then:
+
+```bash
+sudo pacman -Sy omatunes-bin
+```
+
+From that point `sudo pacman -Syu` (or `yay -Syu`) carries new releases. The packages are not GPG-signed, which is what `TrustAll` acknowledges — see [the repository's README](https://github.com/habdelrahman510-tech/omatunes-repo) if you would rather build from source instead.
+
 ### Arch Linux (PKGBUILD)
 
 Two packages ship in [`packaging/`](packaging/):
