@@ -293,6 +293,12 @@ pub enum Message {
     CloseTagEditor,
     CancelTagEditor,
     SearchCoverOnline,
+    /// Write the current track's embedded artwork next to the file.
+    ExtractCover(std::path::PathBuf),
+    /// Take `cover.jpg` from the track's folder and embed it.
+    EmbedFolderCover(Track),
+    /// Pull the folder artwork into the tag editor's cover field.
+    LoadFolderCover,
     UpdateTagFieldTitle(String),
     UpdateTagFieldArtist(String),
     UpdateTagFieldAlbum(String),
@@ -2826,7 +2832,108 @@ impl AppState {
                 Task::none()
             }
 
+            Message::ExtractCover(path) => {
+                match crate::library::scanner::extract_cover_to_folder(&path) {
+                    Ok(Some(dest)) => self.push_toast(
+                        "Cover saved",
+                        &dest.to_string_lossy().to_string(),
+                        ToastKind::Info,
+                    ),
+                    Ok(None) => self.push_toast(
+                        "No artwork",
+                        "That file has no embedded cover.",
+                        ToastKind::Info,
+                    ),
+                    Err(err) => self.push_toast(
+                        "Could not save cover",
+                        &format!("{err}"),
+                        ToastKind::ThemeError,
+                    ),
+                }
+                Task::none()
+            }
+
+            Message::EmbedFolderCover(track) => {
+                let Some(cover) = crate::library::folder_cover(&track.path) else {
+                    self.push_toast(
+                        "No folder artwork",
+                        "Drop a cover.jpg next to the track or search online.",
+                        ToastKind::Info,
+                    );
+                    return Task::none();
+                };
+                let cover_str = cover.to_string_lossy().to_string();
+                let was_playing = self
+                    .current_track
+                    .as_ref()
+                    .map(|t| t.path == track.path)
+                    .unwrap_or(false)
+                    && matches!(self.playback_state, PlaybackState::Playing);
+                let saved_pos = self.position;
+                if was_playing {
+                    // Do not let the decoder hold an open handle while the file
+                    // is rewritten.
+                    self.audio.send(AudioCommand::Pause);
+                }
+                let result = crate::library::write_tags(
+                    &track.path,
+                    &track.title,
+                    &track.artist,
+                    &track.album,
+                    &track.genre,
+                    track.track_number,
+                    track.disc_number,
+                    Some(&cover_str),
+                    track.year,
+                    None,
+                );
+                if was_playing {
+                    self.audio.send(AudioCommand::Seek(saved_pos));
+                }
+                match result {
+                    Ok(()) => {
+                        self.refresh_track_cover(&track.path);
+                        self.cover_cache_version = self.cover_cache_version.wrapping_add(1);
+                        self.update_filtered_tracks();
+                        self.push_toast("Artwork embedded", &cover_str, ToastKind::Info);
+                    }
+                    Err(err) => self.push_toast(
+                        "Could not embed artwork",
+                        &format!("{err}"),
+                        ToastKind::ThemeError,
+                    ),
+                }
+                Task::none()
+            }
+
+            Message::LoadFolderCover => {
+                let folder_cover = self
+                    .show_tag_editor
+                    .as_ref()
+                    .and_then(|state| state.tracks.first())
+                    .and_then(|track| crate::library::folder_cover(&track.path));
+                match folder_cover {
+                    Some(path) => {
+                        if let Some(state) = self.show_tag_editor.as_mut() {
+                            state.cover_path = Some(path.to_string_lossy().to_string());
+                            state.apply_cover = true;
+                            state.is_saved = false;
+                            state.just_saved.remove("cover");
+                        }
+                    }
+                    None => self.push_toast(
+                        "No folder artwork",
+                        "There is no cover.jpg or cover.png beside this track.",
+                        ToastKind::Info,
+                    ),
+                }
+                Task::none()
+            }
+
             Message::SaveTags => {
+                // Files actually rewritten, and files whose tags already matched.
+                let mut written = 0usize;
+                let mut skipped = 0usize;
                 if let Some(ref state) = self.show_tag_editor {
                     let track_num = state.track_number.trim().parse::<u32>().ok();
                     let disc_num = state.disc_number.trim().parse::<u32>().ok();
@@ -6973,6 +7080,12 @@ impl AppState {
                             .padding([4, 8])
                             .width(Length::Fill);
 
+                        let extract_cover_btn = button(text("Save cover art to folder").size(15))
+                            .on_press(Message::ExtractCover(track.path.clone()))
+                            .style(item_style)
+                            .padding([4, 8])
+                            .width(Length::Fill);
+
                         let mut track_actions = column![
                             play_next_btn,
                             Space::with_height(4),
@@ -6983,7 +7096,20 @@ impl AppState {
                             tag_btn,
                             Space::with_height(4),
                             folder_btn,
+                            Space::with_height(4),
+                            extract_cover_btn,
                         ];
+
+                        if crate::library::folder_cover(&track.path).is_some() {
+                            let embed_cover_btn = button(text("Embed folder artwork").size(15))
+                                .on_press(Message::EmbedFolderCover(track.clone()))
+                                .style(item_style)
+                                .padding([4, 8])
+                                .width(Length::Fill);
+                            track_actions = track_actions
+                                .push(Space::with_height(4))
+                                .push(embed_cover_btn);
+                        }
 
                         if self.playlist_tab == PlaylistTab::Playlists {
                             if let Some(playlist_name) = &self.selected_playlist {
