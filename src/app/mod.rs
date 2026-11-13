@@ -3050,6 +3050,26 @@ impl AppState {
                             None
                         };
 
+                        // Diff against what is already on disk: rewriting
+                        // unchanged tags would bump mtime, and the watcher would
+                        // then rescan the whole library for nothing.
+                        let cover_changed = state.apply_cover && cover_path.is_some();
+                        let lyrics_changed = state.apply_lyrics && lyrics_text != track.lyrics;
+                        let unchanged = title == &track.title
+                            && artist == &track.artist
+                            && album == &track.album
+                            && genre == track.genre
+                            && track_number == track.track_number
+                            && disc_number == track.disc_number
+                            && year == track.year
+                            && !cover_changed
+                            && !lyrics_changed;
+                        if unchanged {
+                            skipped += 1;
+                            continue;
+                        }
+                        written += 1;
+
                         let res = crate::library::write_tags(
                             &track.path,
                             title,
@@ -3158,6 +3178,13 @@ impl AppState {
                     if is_playing_in_update {
                         self.audio.send(AudioCommand::Seek(saved_pos));
                     }
+                }
+                if skipped > 0 {
+                    let message = match written {
+                        0 => format!("{skipped} file(s) already matched — nothing written."),
+                        n => format!("{n} file(s) written, {skipped} already matched."),
+                    };
+                    self.push_toast("Tags saved", &message, ToastKind::Info);
                 }
                 if let Some(ref mut state) = self.show_tag_editor {
                     for track in &mut state.tracks {
