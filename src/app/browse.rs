@@ -96,7 +96,7 @@ impl AppState {
         if let Some(name) = self.selected_playlist.clone() {
             let known = matches!(
                 name.as_str(),
-                "Liked Songs" | "Most Played" | "Recently Played" | "New Music"
+                "Liked Songs" | "Most Played" | "Recently Played" | "New Music" | "Duplicates"
             ) || crate::db::get(|db| {
                 db.playlists.contains_key(&name) || db.smart_playlists.contains_key(&name)
             });
@@ -220,6 +220,9 @@ impl AppState {
                     }
                 }
                 self.tracks = Arc::new(temp_tracks);
+            } else if playlist_name == "Duplicates" {
+                let groups = crate::library::scanner::duplicates::find(&self.all_tracks);
+                self.tracks = Arc::new(groups.into_iter().flatten().collect::<Vec<_>>());
             } else if playlist_name == "New Music" {
                 use std::time::SystemTime;
                 let mut album_times: std::collections::HashMap<String, SystemTime> =
@@ -433,7 +436,10 @@ impl AppState {
 
         // Apply sorting
         if let Some(ref playlist_name) = self.selected_playlist {
-            if playlist_name == "Recently Played" || playlist_name == "Most Played" {
+            if playlist_name == "Recently Played"
+                || playlist_name == "Most Played"
+                || playlist_name == "Duplicates"
+            {
                 return;
             }
         }
@@ -542,6 +548,7 @@ impl AppState {
             Some(name) => {
                 name != "Recently Played"
                     && name != "Most Played"
+                    && name != "Duplicates"
                     && (crate::db::get(|db| db.playlists.contains_key(name.as_str()))
                         || crate::db::get(|db| db.smart_playlists.contains_key(name.as_str()))
                         || name == "Liked Songs"

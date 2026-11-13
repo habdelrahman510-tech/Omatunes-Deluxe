@@ -8,6 +8,7 @@ use lofty::file::TaggedFileExt;
 use lofty::prelude::*;
 use lofty::probe::Probe;
 use lofty::tag::{ItemKey, ItemValue, Tag, TagItem};
+use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 use super::models::Track;
@@ -71,94 +72,280 @@ pub fn write_like_status_atomic(path: &Path, is_liked: bool) -> Result<()> {
     Ok(())
 }
 
-/// Scan `dir` recursively and return tracks sorted by album/number/title.
-/// `cover_data` is always `None` — loaded on demand via `load_cover`.
-pub fn scan_folder(dir: &Path) -> Vec<Track> {
-    use rayon::prelude::*;
+/// One cached track plus the filesystem fingerprint it was read from.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CachedFile {
+    pub path: PathBuf,
+    pub mtime: u64,
+    pub size: u64,
+    pub track: Track,
+}
 
-    let paths: Vec<PathBuf> = WalkDir::new(dir)
-        .into_iter()
-        .filter_entry(|e| !e.file_name().to_string_lossy().starts_with('.'))
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .map(|entry| entry.path().to_path_buf())
-        .filter(|path| {
-            path.extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| AUDIO_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
-                .unwrap_or(false)
-        })
-        .collect();
+/// On-disk scan cache. Version 2 carries fingerprints so an unchanged file is
+/// never opened again.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct LibraryCache {
+    #[serde(default)]
+    pub version: u32,
+    #[serde(default)]
+    pub entries: Vec<CachedFile>,
+}
 
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(4).build().ok();
+fn fingerprint(path: &Path) -> (u64, u64) {
+    match std::fs::metadata(path) {
+        Ok(meta) => {
+            let mtime = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_nanos() as u64)
+                .unwrap_or(0);
+            (mtime, meta.len())
+        }
+        Err(_) => (0, 0),
+    }
+}
 
-    let mut pairs: Vec<(PathBuf, TrackInfo)> = if let Some(p) = pool {
-        p.install(|| {
-            paths
-                .into_par_iter()
-                .filter_map(|path| read_tags(&path).ok().map(|info| (path, info)))
-                .collect()
-        })
-    } else {
-        paths
-            .into_par_iter()
-            .filter_map(|path| read_tags(&path).ok().map(|info| (path, info)))
-            .collect()
-    };
+fn is_audio_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| AUDIO_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+        .unwrap_or(false)
+}
 
-    pairs.sort_by(|(_, a), (_, b)| {
+/// Every audio file under every root, deduplicated (roots may nest).
+fn collect_audio_files(roots: &[PathBuf]) -> Vec<PathBuf> {
+    let mut seen = std::collections::HashSet::new();
+    let mut paths = Vec::new();
+    for root in roots {
+        for entry in WalkDir::new(root)
+            .into_iter()
+            .filter_entry(|e| !e.file_name().to_string_lossy().starts_with('.'))
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
+            let path = entry.path().to_path_buf();
+            if is_audio_file(&path) && seen.insert(path.clone()) {
+                paths.push(path);
+            }
+        }
+    }
+    paths
+}
+
+fn track_from_info(path: PathBuf, info: TrackInfo) -> Track {
+    let play_count = crate::db::get(|db| db.play_counts.get(&path).copied().unwrap_or(0));
+    Track {
+        id: {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            path.hash(&mut hasher);
+            hasher.finish() as i64
+        },
+        path,
+        title: info.title,
+        artist: info.artist,
+        album: info.album,
+        album_id: 0,
+        track_number: info.track_number,
+        disc_number: info.disc_number,
+        duration: Duration::from_millis(info.duration_ms),
+        cover_data: None,
+        genre: info.genre,
+        year: info.year,
+        play_count,
+        liked: info.liked,
+        date_played: None,
+        lyrics: info.lyrics,
+    }
+}
+
+fn sort_tracks(tracks: &mut [Track]) {
+    tracks.sort_by(|a, b| {
         a.album
             .cmp(&b.album)
             .then(a.disc_number.cmp(&b.disc_number))
             .then(a.track_number.cmp(&b.track_number))
             .then(a.title.cmp(&b.title))
     });
+}
 
-    pairs
+/// Scan one directory (kept for callers that only have a single path).
+pub fn scan_folder(dir: &Path) -> Vec<Track> {
+    scan_roots(&[dir.to_path_buf()])
+}
+
+/// Scan every root, reusing cached tags for any file whose mtime and size are
+/// unchanged. Returns tracks sorted by album/disc/number/title.
+pub fn scan_roots(roots: &[PathBuf]) -> Vec<Track> {
+    use rayon::prelude::*;
+
+    let cached = load_library_cache();
+    let index: std::collections::HashMap<PathBuf, CachedFile> = cached
+        .entries
         .into_iter()
-        .enumerate()
-        .map(|(_i, (path, info))| {
-            let play_count = crate::db::get(|db| db.play_counts.get(&path).copied().unwrap_or(0));
-            Track {
-                id: {
-                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                    path.hash(&mut hasher);
-                    hasher.finish() as i64
-                },
-                path,
-                title: info.title,
-                artist: info.artist,
-                album: info.album,
-                album_id: 0,
-                track_number: info.track_number,
-                disc_number: info.disc_number,
-                duration: Duration::from_millis(info.duration_ms),
-                cover_data: None,
-                genre: info.genre,
-                year: info.year,
-                play_count,
-                liked: info.liked,
-                date_played: None,
-                lyrics: info.lyrics,
+        .map(|e| (e.path.clone(), e))
+        .collect();
+
+    let paths = collect_audio_files(roots);
+
+    let read_one = |path: &PathBuf| -> Option<Track> {
+        let (mtime, size) = fingerprint(path);
+        if mtime != 0 {
+            if let Some(hit) = index.get(path) {
+                if hit.mtime == mtime && hit.size == size {
+                    let mut track = hit.track.clone();
+                    track.play_count =
+                        crate::db::get(|db| db.play_counts.get(path).copied().unwrap_or(0));
+                    return Some(track);
+                }
             }
-        })
-        .collect()
+        }
+        read_tags(path)
+            .ok()
+            .map(|info| track_from_info(path.clone(), info))
+    };
+
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(4).build().ok();
+    let mut tracks: Vec<Track> = match pool {
+        Some(pool) => pool.install(|| paths.par_iter().filter_map(read_one).collect()),
+        None => paths.iter().filter_map(read_one).collect(),
+    };
+    sort_tracks(&mut tracks);
+    tracks
+}
+
+pub fn load_library_cache() -> LibraryCache {
+    let path = crate::paths::library_cache();
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return LibraryCache::default();
+    };
+    if let Ok(cache) = serde_json::from_str::<LibraryCache>(&content) {
+        return cache;
+    }
+    // Version 1 was a bare array of tracks with no fingerprints.
+    if let Ok(legacy) = serde_json::from_str::<Vec<Track>>(&content) {
+        return LibraryCache {
+            version: 1,
+            entries: legacy
+                .into_iter()
+                .map(|track| CachedFile {
+                    path: track.path.clone(),
+                    mtime: 0,
+                    size: 0,
+                    track,
+                })
+                .collect(),
+        };
+    }
+    LibraryCache::default()
 }
 
 pub fn load_cache() -> Option<Vec<Track>> {
-    let p = crate::paths::library_cache();
-    if p.exists() {
-        let content = std::fs::read_to_string(p).ok()?;
-        serde_json::from_str(&content).ok()
-    } else {
+    let cache = load_library_cache();
+    if cache.entries.is_empty() {
         None
+    } else {
+        Some(cache.entries.into_iter().map(|e| e.track).collect())
     }
 }
 
+/// Persist tracks plus fresh fingerprints, atomically.
 pub fn save_cache(tracks: &[Track]) {
-    let p = crate::paths::library_cache();
-    if let Ok(json) = serde_json::to_string(tracks) {
-        std::fs::write(p, json).ok();
+    let entries = tracks
+        .iter()
+        .map(|track| {
+            let (mtime, size) = fingerprint(&track.path);
+            CachedFile {
+                path: track.path.clone(),
+                mtime,
+                size,
+                track: track.clone(),
+            }
+        })
+        .collect();
+    let cache = LibraryCache {
+        version: 2,
+        entries,
+    };
+    let Ok(json) = serde_json::to_string(&cache) else {
+        return;
+    };
+    let path = crate::paths::library_cache();
+    let tmp = path.with_extension("json.tmp");
+    if std::fs::write(&tmp, json).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
+    }
+}
+
+/// Tracks that look like the same recording in more than one place.
+pub mod duplicates {
+    use super::Track;
+
+    pub type Group = Vec<Track>;
+
+    pub fn normalise(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut last_space = false;
+        for c in s.chars().flat_map(|c| c.to_lowercase()) {
+            if c.is_alphanumeric() {
+                out.push(c);
+                last_space = false;
+            } else if !last_space && !out.is_empty() {
+                out.push(' ');
+                last_space = true;
+            }
+        }
+        out.trim().to_string()
+    }
+
+    /// Group by normalised artist + title, then split when durations differ by
+    /// more than two seconds (same title, different recording).
+    pub fn find(tracks: &[Track]) -> Vec<Group> {
+        use std::collections::HashMap;
+
+        let mut buckets: HashMap<(String, String), Vec<Track>> = HashMap::new();
+        for track in tracks {
+            let key = (normalise(&track.artist), normalise(&track.title));
+            buckets.entry(key).or_default().push(track.clone());
+        }
+
+        let mut groups = Vec::new();
+        for (_, mut bucket) in buckets {
+            if bucket.len() < 2 {
+                continue;
+            }
+            bucket.sort_by_key(|t| t.duration.as_secs());
+            let mut current: Group = Vec::new();
+            for track in bucket {
+                let fits = current
+                    .last()
+                    .map(|prev| track.duration.as_secs().abs_diff(prev.duration.as_secs()) <= 2)
+                    .unwrap_or(true);
+                if fits {
+                    current.push(track);
+                } else {
+                    if current.len() > 1 {
+                        groups.push(std::mem::take(&mut current));
+                    } else {
+                        current.clear();
+                    }
+                    current.push(track);
+                }
+            }
+            if current.len() > 1 {
+                groups.push(current);
+            }
+        }
+
+        groups.sort_by(|a, b| {
+            let ka = (&a[0].artist, &a[0].title);
+            let kb = (&b[0].artist, &b[0].title);
+            ka.cmp(&kb)
+        });
+        for group in &mut groups {
+            group.sort_by(|a, b| a.path.cmp(&b.path));
+        }
+        groups
     }
 }
 
@@ -459,5 +646,58 @@ mod tests {
             return;
         }
         assert!(!tracks.is_empty(), "scan_folder should find tracks!");
+    }
+
+    fn fake_track(path: &str, artist: &str, title: &str, secs: u64) -> Track {
+        Track {
+            id: 0,
+            path: PathBuf::from(path),
+            title: title.to_string(),
+            artist: artist.to_string(),
+            album: "Album".to_string(),
+            album_id: 0,
+            track_number: Some(1),
+            disc_number: Some(1),
+            duration: Duration::from_secs(secs),
+            cover_data: None,
+            genre: "Test".to_string(),
+            year: Some(2026),
+            play_count: 0,
+            liked: false,
+            date_played: None,
+            lyrics: String::new(),
+        }
+    }
+
+    #[test]
+    fn duplicates_find_same_recording() {
+        let tracks = vec![
+            fake_track("/a/one.flac", "Boards of Canada", "Roygbiv", 152),
+            fake_track("/b/one.mp3", "boards of canada", "Roygbiv!", 153),
+            fake_track("/c/other.flac", "Boards of Canada", "Rue The Whirl", 400),
+        ];
+        let groups = duplicates::find(&tracks);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].len(), 2);
+        assert_eq!(groups[0][0].path, PathBuf::from("/a/one.flac"));
+    }
+
+    #[test]
+    fn duplicates_respect_duration() {
+        // Same artist and title, but ten minutes apart: a different recording.
+        let tracks = vec![
+            fake_track("/a/live.flac", "Portishead", "Roads", 300),
+            fake_track("/b/live.flac", "Portishead", "Roads", 900),
+        ];
+        assert!(duplicates::find(&tracks).is_empty());
+    }
+
+    #[test]
+    fn normalisation_ignores_punctuation() {
+        assert_eq!(
+            duplicates::normalise("Boards of Canada"),
+            duplicates::normalise("Boards  of, Canada!")
+        );
+        assert_eq!(duplicates::normalise("Sigur Rós"), "sigur rós");
     }
 }

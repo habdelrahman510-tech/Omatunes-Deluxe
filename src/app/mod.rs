@@ -24,7 +24,7 @@ use crate::audio::{
     AudioCommand, AudioEvent, AudioPlayer, MprisCommand, MprisUpdate, PlaybackState,
 };
 use crate::library::models::Track;
-use crate::library::{load_cover, scan_folder};
+use crate::library::{load_cover, scan_folder, scan_roots};
 use crate::ui::{theme, views};
 
 pub const MIN_SIDEBAR_WIDTH: f32 = 180.0;
@@ -52,6 +52,48 @@ pub enum ContextMenuTarget {
     Header(crate::db::TableColumn),
     Playlist(String),
     SmartPlaylist(String),
+}
+
+/// How the queue repeats after the last track.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RepeatMode {
+    #[default]
+    Off,
+    /// Repeat the whole queue.
+    All,
+    /// Repeat the current track only.
+    One,
+}
+
+impl RepeatMode {
+    pub fn is_on(self) -> bool {
+        !matches!(self, RepeatMode::Off)
+    }
+
+    /// Off -> All -> One -> Off, matching the button order in the player.
+    pub fn cycle(self) -> Self {
+        match self {
+            RepeatMode::Off => RepeatMode::All,
+            RepeatMode::All => RepeatMode::One,
+            RepeatMode::One => RepeatMode::Off,
+        }
+    }
+
+    pub fn mpris(self) -> LoopStatus {
+        match self {
+            RepeatMode::Off => LoopStatus::None,
+            RepeatMode::All => LoopStatus::Playlist,
+            RepeatMode::One => LoopStatus::Track,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            RepeatMode::Off => "Repeat: Off",
+            RepeatMode::All => "Repeat: Queue",
+            RepeatMode::One => "Repeat: Track",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -383,6 +425,9 @@ pub enum Message {
     OpenSettings,
     CloseSettings,
     SettingsMusicDirChanged(String),
+    SettingsMusicRootAdded,
+    SettingsMusicRootRemoved(usize),
+    SettingsWatchLibraryChanged(bool),
     SettingsLanguageChanged(String),
     SettingsSeekStepChanged(String),
     SettingsVolumeStepChanged(f32),
@@ -467,7 +512,10 @@ pub enum SettingsTab {
 
 #[derive(Debug, Clone)]
 pub struct SettingsState {
+    /// Draft value for the "add a root" input; the real list is `music_dirs`.
     pub music_dir: String,
+    pub music_dirs: Vec<String>,
+    pub watch_library: bool,
     pub language: String,
     pub seek_step: String,
     pub volume_step: f32,
@@ -641,7 +689,7 @@ pub struct AppState {
     pub duration: Duration,
     pub volume: f32,
     pub shuffle: bool,
-    pub repeat: bool,
+    pub repeat: RepeatMode,
 
     pub folders: Vec<PathBuf>,
     pub selected_folder: Option<PathBuf>,
@@ -754,6 +802,10 @@ pub struct AppState {
     pub spectrum_bands: [f32; crate::audio::spectrum::NUM_BANDS],
     spectrum_analyzer: SpectrumAnalyzer,
     audio: AudioPlayer,
+    /// Filesystem watcher signal, drained on the timer tick.
+    watch_rx: tokio::sync::mpsc::UnboundedReceiver<()>,
+    watch_tx: tokio::sync::mpsc::UnboundedSender<()>,
+    watcher: Option<crate::library::watcher::LibraryWatcher>,
     mpris_cmd_rx: tokio::sync::mpsc::UnboundedReceiver<MprisCommand>,
     mpris_update_tx: tokio::sync::mpsc::UnboundedSender<MprisUpdate>,
     pub cover_cache: std::sync::Mutex<CoverCache>,
@@ -892,15 +944,23 @@ impl AppState {
             }
         });
 
-        let music_dir = cfg.music_path();
+        let music_roots = cfg.music_paths();
+        let scan_roots_task = music_roots.clone();
         let scan_task = Task::perform(
             async move {
-                tokio::task::spawn_blocking(move || scan_folder(&music_dir))
+                tokio::task::spawn_blocking(move || scan_roots(&scan_roots_task))
                     .await
                     .unwrap_or_default()
             },
             Message::LibraryScanned,
         );
+
+        let (watch_tx, watch_rx) = tokio::sync::mpsc::unbounded_channel();
+        let watcher = if cfg.watch_library {
+            crate::library::watcher::LibraryWatcher::spawn(music_roots.clone(), watch_tx.clone())
+        } else {
+            None
+        };
 
         let cached_tracks = crate::library::load_cache().unwrap_or_default();
         let initial_all_tracks = Arc::new(cached_tracks);
@@ -928,7 +988,11 @@ impl AppState {
             duration: Duration::ZERO,
             volume: cfg.volume.clamp(0.0, 1.0),
             shuffle: cfg.playback_defaults.album.shuffle,
-            repeat: cfg.playback_defaults.album.repeat,
+            repeat: if cfg.playback_defaults.album.repeat {
+                RepeatMode::All
+            } else {
+                RepeatMode::Off
+            },
             folders: if initial_folders.is_empty() {
                 folders
             } else {
@@ -1046,6 +1110,9 @@ impl AppState {
             spectrum_bands: [0.0; crate::audio::spectrum::NUM_BANDS],
             spectrum_analyzer,
             audio,
+            watch_rx,
+            watch_tx,
+            watcher,
             mpris_cmd_rx,
             mpris_update_tx,
             cover_cache_version: 0,
@@ -1511,13 +1578,10 @@ impl AppState {
             }
 
             Message::ToggleRepeat => {
-                self.repeat = !self.repeat;
-                let loop_status = if self.repeat {
-                    LoopStatus::Playlist
-                } else {
-                    LoopStatus::None
-                };
-                self.send_mpris(MprisUpdate::Loop(loop_status));
+                self.repeat = self.repeat.cycle();
+                self.send_mpris(MprisUpdate::Loop(self.repeat.mpris()));
+                self.preloaded_path = None;
+                self.preload_next();
                 self.write_current_liked_status();
                 Task::none()
             }
@@ -1590,6 +1654,26 @@ impl AppState {
                 }
 
                 let mut tasks = Vec::new();
+
+                // Filesystem watcher: one debounced signal per burst of
+                // changes. Rescans are incremental, so this is cheap.
+                let mut library_changed = false;
+                while self.watch_rx.try_recv().is_ok() {
+                    library_changed = true;
+                }
+                if library_changed && !self.is_scanning {
+                    self.is_scanning = true;
+                    let roots = crate::config::get().music_paths();
+                    tasks.push(Task::perform(
+                        async move {
+                            tokio::task::spawn_blocking(move || scan_roots(&roots))
+                                .await
+                                .unwrap_or_default()
+                        },
+                        Message::LibraryScanned,
+                    ));
+                }
+
                 while let Ok(event) = self.audio.event_rx.try_recv() {
                     match event {
                         AudioEvent::Progress { position, duration } => {
@@ -1876,7 +1960,12 @@ impl AppState {
                                     eprintln!("Flushed pending liked for {}", p.display());
                                 }
                             }
-                            if self.repeat {
+                            if self.repeat == RepeatMode::One {
+                                // Replay the same track: restart it in place.
+                                if let Some(track) = self.current_track.clone() {
+                                    tasks.push(self.play_track_internal(track));
+                                }
+                            } else if self.repeat == RepeatMode::All {
                                 tasks.push(self.advance_track(1));
                             } else {
                                 let current_idx = self
@@ -2240,6 +2329,7 @@ impl AppState {
                     || name == "Recently Played"
                     || name == "Most Played"
                     || name == "New Music"
+                    || name == "Duplicates"
                 {
                     self.playlist_tab = PlaylistTab::Autoplaylists;
                 } else if crate::db::get(|db| db.smart_playlists.contains_key(&name)) {
@@ -3462,10 +3552,10 @@ impl AppState {
 
             Message::RescanLibrary => {
                 self.is_scanning = true;
-                let music_dir = crate::config::get().music_path();
+                let roots = crate::config::get().music_paths();
                 Task::perform(
                     async move {
-                        tokio::task::spawn_blocking(move || scan_folder(&music_dir))
+                        tokio::task::spawn_blocking(move || scan_roots(&roots))
                             .await
                             .unwrap_or_default()
                     },
@@ -4214,7 +4304,13 @@ impl AppState {
             Message::OpenShortcuts => {
                 let cfg = crate::config::get();
                 self.show_settings = Some(SettingsState {
-                    music_dir: cfg.music_dir.clone(),
+                    music_dir: String::new(),
+                    music_dirs: cfg
+                        .music_paths()
+                        .iter()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .collect(),
+                    watch_library: cfg.watch_library,
                     language: cfg.language.clone(),
                     seek_step: cfg.seek_step.to_string(),
                     volume_step: cfg.volume_step,
@@ -4584,7 +4680,11 @@ impl AppState {
                 self.playing_context = Some(PlayingContext::Album(album_name.clone()));
                 let album_defaults = &crate::config::get().playback_defaults.album;
                 self.shuffle = album_defaults.shuffle;
-                self.repeat = album_defaults.repeat;
+                self.repeat = if album_defaults.repeat {
+                    RepeatMode::All
+                } else {
+                    RepeatMode::Off
+                };
 
                 // Sort by track number ascending
                 Arc::make_mut(&mut self.tracks).sort_by_key(|t| t.track_number.unwrap_or(u32::MAX));
@@ -4610,20 +4710,33 @@ impl AppState {
                     || playlist_name == "Recently Played"
                     || playlist_name == "Most Played"
                     || playlist_name == "New Music"
+                    || playlist_name == "Duplicates"
                 {
                     self.playing_context =
                         Some(PlayingContext::Autoplaylist(playlist_name.clone()));
                     self.shuffle = pd.artist.shuffle;
-                    self.repeat = pd.artist.repeat;
+                    self.repeat = if pd.artist.repeat {
+                        RepeatMode::All
+                    } else {
+                        RepeatMode::Off
+                    };
                 } else if crate::db::get(|db| db.smart_playlists.contains_key(&playlist_name)) {
                     self.playing_context =
                         Some(PlayingContext::SmartPlaylist(playlist_name.clone()));
                     self.shuffle = pd.smart_playlist.shuffle;
-                    self.repeat = pd.smart_playlist.repeat;
+                    self.repeat = if pd.smart_playlist.repeat {
+                        RepeatMode::All
+                    } else {
+                        RepeatMode::Off
+                    };
                 } else {
                     self.playing_context = Some(PlayingContext::Playlist(playlist_name.clone()));
                     self.shuffle = pd.user_playlist.shuffle;
-                    self.repeat = pd.user_playlist.repeat;
+                    self.repeat = if pd.user_playlist.repeat {
+                        RepeatMode::All
+                    } else {
+                        RepeatMode::Off
+                    };
                 }
                 self.queue = (*self.tracks).clone();
                 if !self.queue.is_empty() {
@@ -5284,7 +5397,13 @@ impl AppState {
             Message::OpenSettings => {
                 let cfg = crate::config::get();
                 self.show_settings = Some(SettingsState {
-                    music_dir: cfg.music_dir.clone(),
+                    music_dir: String::new(),
+                    music_dirs: cfg
+                        .music_paths()
+                        .iter()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .collect(),
+                    watch_library: cfg.watch_library,
                     language: cfg.language.clone(),
                     seek_step: cfg.seek_step.to_string(),
                     volume_step: cfg.volume_step,
@@ -5398,9 +5517,10 @@ impl AppState {
                     }
 
                     let mut cfg = crate::config::get();
-                    let old_music_path = cfg.music_path();
+                    let old_roots = cfg.music_paths();
 
-                    cfg.music_dir = state.music_dir.clone();
+                    cfg.set_music_paths(state.music_dirs.clone());
+                    cfg.watch_library = state.watch_library;
                     cfg.language = state.language.clone();
                     if let Ok(seek) = state.seek_step.trim().parse::<u64>() {
                         cfg.seek_step = seek;
@@ -5457,12 +5577,22 @@ impl AppState {
 
                     self.show_settings = None;
 
-                    if cfg.music_path() != old_music_path {
+                    // Rebuild the watcher so it tracks the new root list.
+                    self.watcher = if cfg.watch_library {
+                        crate::library::watcher::LibraryWatcher::spawn(
+                            cfg.music_paths(),
+                            self.watch_tx.clone(),
+                        )
+                    } else {
+                        None
+                    };
+
+                    if cfg.music_paths() != old_roots {
                         self.is_scanning = true;
-                        let new_music_dir = cfg.music_path();
+                        let new_roots = cfg.music_paths();
                         return Task::perform(
                             async move {
-                                tokio::task::spawn_blocking(move || scan_folder(&new_music_dir))
+                                tokio::task::spawn_blocking(move || scan_roots(&new_roots))
                                     .await
                                     .unwrap_or_default()
                             },
@@ -5919,9 +6049,40 @@ impl AppState {
 
             Message::MusicFolderPicked(opt) => {
                 if let Some(path) = opt {
+                    let root = path.to_string_lossy().to_string();
                     if let Some(ref mut state) = self.show_settings {
-                        state.music_dir = path.to_string_lossy().to_string();
+                        if !state.music_dirs.iter().any(|r| r == &root) {
+                            state.music_dirs.push(root);
+                        }
                     }
+                }
+                Task::none()
+            }
+
+            Message::SettingsMusicRootAdded => {
+                if let Some(ref mut state) = self.show_settings {
+                    let root = state.music_dir.trim().to_string();
+                    if !root.is_empty() && !state.music_dirs.iter().any(|r| r == &root) {
+                        state.music_dirs.push(root);
+                        state.music_dir.clear();
+                    }
+                }
+                Task::none()
+            }
+
+            Message::SettingsMusicRootRemoved(idx) => {
+                if let Some(ref mut state) = self.show_settings {
+                    // Never leave an empty list: the app always needs one root.
+                    if state.music_dirs.len() > 1 && idx < state.music_dirs.len() {
+                        state.music_dirs.remove(idx);
+                    }
+                }
+                Task::none()
+            }
+
+            Message::SettingsWatchLibraryChanged(value) => {
+                if let Some(ref mut state) = self.show_settings {
+                    state.watch_library = value;
                 }
                 Task::none()
             }
@@ -6792,7 +6953,10 @@ impl AppState {
 
                         let mut show_reset_order = false;
                         if let Some(name) = &self.selected_playlist {
-                            if name != "Recently Played" && name != "Most Played" {
+                            if name != "Recently Played"
+                                && name != "Most Played"
+                                && name != "Duplicates"
+                            {
                                 let has_smart = crate::db::get(|db| {
                                     db.smart_playlist_song_order.contains_key(name)
                                 });

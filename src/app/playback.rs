@@ -64,11 +64,7 @@ impl AppState {
         }
         self.send_mpris(MprisUpdate::Status(status));
         self.send_mpris(MprisUpdate::Shuffle(self.shuffle));
-        self.send_mpris(MprisUpdate::Loop(if self.repeat {
-            mpris_server::LoopStatus::Track
-        } else {
-            mpris_server::LoopStatus::None
-        }));
+        self.send_mpris(MprisUpdate::Loop(self.repeat.mpris()));
         self.write_current_liked_status();
     }
 
@@ -97,7 +93,9 @@ impl AppState {
         }
         let json = format!(
             "{{\"liked\":{},\"shuffle\":{},\"repeat\":{}}}",
-            status, self.shuffle, self.repeat
+            status,
+            self.shuffle,
+            self.repeat.is_on()
         );
         let state_tmp = state_path.with_extension("tmp.json");
         // Use .tmp.json to keep json extension for atomicity check, fallback to .tmp
@@ -168,7 +166,7 @@ impl AppState {
         }
         match self.current_queue_index() {
             Some(idx) if idx + 1 < self.queue.len() => Some(self.queue[idx + 1].path.clone()),
-            Some(_) if self.repeat => Some(self.queue[0].path.clone()),
+            Some(_) if self.repeat == RepeatMode::All => Some(self.queue[0].path.clone()),
             // Not playing from the queue at all: start it from the top.
             None => Some(self.queue[0].path.clone()),
             _ => None,
@@ -296,6 +294,7 @@ impl AppState {
                 || name == "Recently Played"
                 || name == "Most Played"
                 || name == "New Music"
+                || name == "Duplicates"
             {
                 self.playing_context = Some(PlayingContext::Autoplaylist(name.clone()));
             } else if crate::db::get(|db| db.smart_playlists.contains_key(name)) {

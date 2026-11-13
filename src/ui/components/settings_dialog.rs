@@ -163,14 +163,54 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
     // ── Right panel content ───────────────────────────────────────────────────
     let content: Element<'a, Message> = match state.selected_tab {
         SettingsTab::Library => {
-            let music_input = text_input("e.g. ~/Music", &state.music_dir)
+            let music_input = text_input("Add a folder, e.g. ~/Music", &state.music_dir)
                 .on_input(Message::SettingsMusicDirChanged)
+                .on_submit(Message::SettingsMusicRootAdded)
                 .padding(8);
+
+            let add_btn = button(text("Add").color(theme::text()))
+                .on_press(Message::SettingsMusicRootAdded)
+                .padding([8, 14])
+                .style(theme::secondary_button);
 
             let browse_btn = button(text("Browse").color(theme::text()))
                 .on_press(Message::PickMusicFolder)
                 .padding([8, 14])
                 .style(theme::secondary_button);
+
+            let mut roots_list = column![].spacing(4).width(Length::Fill);
+            for (idx, root) in state.music_dirs.iter().enumerate() {
+                let remove_btn = button(
+                    text(ICON_TIMES)
+                        .font(NERD_FONT_MONO)
+                        .size(12)
+                        .color(theme::overlay0()),
+                )
+                .on_press(Message::SettingsMusicRootRemoved(idx))
+                .padding([2, 6])
+                .style(iced::widget::button::text);
+
+                roots_list = roots_list.push(
+                    row![
+                        text(ICON_FOLDER)
+                            .font(NERD_FONT_MONO)
+                            .size(12)
+                            .color(theme::overlay0()),
+                        Space::with_width(8),
+                        text(root.clone())
+                            .size(12)
+                            .color(theme::text())
+                            .width(Length::Fill),
+                        remove_btn,
+                    ]
+                    .align_y(Alignment::Center)
+                    .padding([2, 0]),
+                );
+            }
+
+            let watch_cb = checkbox("Watch folders for changes", state.watch_library)
+                .on_toggle(Message::SettingsWatchLibraryChanged)
+                .size(16);
 
             let interval_input =
                 text_input("e.g. 15", &state.auto_scan.interval_minutes.to_string())
@@ -186,16 +226,22 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                         .size(14)
                         .color(theme::overlay0()),
                     Space::with_width(6),
-                    field_label("Music Library Path"),
+                    field_label("Music Library Folders"),
                 ]
                 .align_y(Alignment::Center),
-                Space::with_height(6),
+                Space::with_height(8),
+                roots_list,
+                Space::with_height(8),
                 row![
                     music_input.width(Length::Fill),
+                    Space::with_width(8),
+                    add_btn,
                     Space::with_width(8),
                     browse_btn,
                 ]
                 .align_y(Alignment::Center),
+                Space::with_height(10),
+                watch_cb,
                 Space::with_height(16),
                 row![
                     text(ICON_AUTO_SCAN)

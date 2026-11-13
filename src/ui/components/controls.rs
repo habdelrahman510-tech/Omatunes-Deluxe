@@ -9,7 +9,7 @@ use crate::ui::{icons, theme};
 pub fn playback_controls<'a>(
     state: &PlaybackState,
     shuffle: bool,
-    repeat: bool,
+    repeat: crate::app::RepeatMode,
     liked: Option<bool>,
     current_track: Option<&crate::library::models::Track>,
 ) -> Element<'a, Message> {
@@ -58,10 +58,15 @@ pub fn playback_controls<'a>(
     } else {
         theme::overlay0()
     };
-    let repeat_color = if repeat {
+    let repeat_color = if repeat.is_on() {
         theme::accent()
     } else {
         theme::overlay0()
+    };
+    let repeat_icon = if repeat == crate::app::RepeatMode::One {
+        icons::ICON_REPEAT_ONE
+    } else {
+        icons::ICON_REPEAT
     };
 
     let mut row_children = vec![
@@ -108,7 +113,7 @@ pub fn playback_controls<'a>(
         // Repeat
         tooltip(
             button(
-                text(icons::ICON_REPEAT)
+                text(repeat_icon)
                     .font(icons::NERD_FONT_MONO)
                     .color(repeat_color)
                     .size(32),
@@ -116,7 +121,7 @@ pub fn playback_controls<'a>(
             .on_press(Message::ToggleRepeat)
             .style(iced::widget::button::text)
             .padding([8, 16]),
-            tip("Repeat"),
+            tip(repeat.label()),
             iced::widget::tooltip::Position::Bottom,
         )
         .into(),

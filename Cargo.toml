@@ -37,6 +37,9 @@ rustfft = "6.2"
 walkdir = "2"
 rayon = "1.10"
 
+# Filesystem watching for live library updates
+notify = "6"
+
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

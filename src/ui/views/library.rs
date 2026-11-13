@@ -603,6 +603,8 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
             crate::ui::icons::ICON_PODIUM
         } else if name == "Recently Played" {
             "\u{f017}"
+        } else if name == "Duplicates" {
+            "\u{f0c5}"
         } else {
             crate::ui::icons::ICON_MUSIC
         };
@@ -981,6 +983,8 @@ fn folder_sidebar(state: &AppState) -> Element<'_, Message> {
             auto_playlists_col.push(render_playlist_item("Most Played".to_string(), true));
         auto_playlists_col =
             auto_playlists_col.push(render_playlist_item("New Music".to_string(), true));
+        auto_playlists_col =
+            auto_playlists_col.push(render_playlist_item("Duplicates".to_string(), true));
 
         playlists_area_col = playlists_area_col.push(
             container(scrollable(auto_playlists_col).width(Length::Fill))

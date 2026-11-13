@@ -109,7 +109,13 @@ impl Default for AutoScanConfig {
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct Config {
+    /// Legacy single root. Kept so old config files keep loading; new code
+    /// reads [`Config::music_paths`].
+    #[serde(default = "default_music_dir")]
     pub music_dir: String,
+    /// Every library root. Empty means "just `music_dir`".
+    #[serde(default)]
+    pub music_dirs: Vec<String>,
     pub volume: f32,
     pub language: String,
     pub seek_step: u64,
@@ -153,12 +159,16 @@ pub struct Config {
     pub crossfade_secs: f32,
     #[serde(default)]
     pub replaygain: crate::audio::ReplayGainMode,
+    /// Watch the roots and rescan when files appear, change or vanish.
+    #[serde(default = "default_watch_library")]
+    pub watch_library: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Config {
             music_dir: "~/Music".into(),
+            music_dirs: Vec::new(),
             volume: 0.8,
             language: "auto".into(),
             seek_step: 5,
@@ -184,6 +194,7 @@ impl Default for Config {
             kaleidoscope_axes: 8,
             crossfade_secs: 0.0,
             replaygain: crate::audio::ReplayGainMode::Off,
+            watch_library: true,
         }
     }
 }
@@ -195,6 +206,32 @@ impl Config {
     /// Returns `music_dir` with `~` expanded to `$HOME`.
     pub fn music_path(&self) -> PathBuf {
         expand_tilde(&self.music_dir)
+    }
+
+    /// Every configured root, expanded, deduplicated and in order. Falls back
+    /// to the legacy single `music_dir`.
+    pub fn music_paths(&self) -> Vec<PathBuf> {
+        let mut roots: Vec<PathBuf> = self
+            .music_dirs
+            .iter()
+            .map(|s| expand_tilde(s.trim()))
+            .filter(|p| !p.as_os_str().is_empty())
+            .collect();
+        if roots.is_empty() {
+            roots.push(expand_tilde(&self.music_dir));
+        }
+        let mut seen = std::collections::HashSet::new();
+        roots.retain(|p| seen.insert(p.clone()));
+        roots
+    }
+
+    /// Write the effective root list back into both representations, so the
+    /// legacy `music_dir` never drifts from `music_dirs`.
+    pub fn set_music_paths(&mut self, roots: Vec<String>) {
+        self.music_dirs = roots;
+        if let Some(first) = self.music_dirs.first() {
+            self.music_dir = first.clone();
+        }
     }
 }
 
@@ -251,7 +288,14 @@ fn read_or_default() -> Config {
     };
 
     match toml::from_str::<Config>(&content) {
-        Ok(c) => c,
+        Ok(mut c) => {
+            // Migrate a pre-2.0 single-root config in memory; the next save
+            // writes the list form.
+            if c.music_dirs.is_empty() {
+                c.music_dirs.push(c.music_dir.clone());
+            }
+            c
+        }
         Err(e) => {
             eprintln!("omatunes: invalid config ({e}), using defaults");
             Config::default()
@@ -279,7 +323,9 @@ const DEFAULT_CONFIG: &str = r#"# omatunes — configuration file
 #
 # All fields are optional. Missing fields use the defaults shown here.
 
-# Path to your music library. Subdirectories are shown as folders in the sidebar.
+# Library roots. Subdirectories are shown as folders in the sidebar.
+# Add as many as you like:
+# music_dirs = ["~/Music", "/mnt/archive/music"]
 music_dir = "~/Music"
 
 # Initial volume (0.0 = mute, 1.0 = 100%)
@@ -304,6 +350,14 @@ theme_source = "System"
 # Theme preset (used when theme_source = "Preset")
 theme_preset = "Nord"
 "#;
+
+fn default_music_dir() -> String {
+    "~/Music".to_string()
+}
+
+fn default_watch_library() -> bool {
+    true
+}
 
 fn default_show_achievements_in_ui() -> bool {
     true
