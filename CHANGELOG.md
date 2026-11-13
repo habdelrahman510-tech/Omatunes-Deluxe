@@ -4,6 +4,76 @@ All notable changes to this build of Omatunes. This fork is maintained by
 [prof.dog](https://github.com/habdelrahman510-tech); the projects it descends from are
 credited in [README.md](README.md).
 
+## [2.0.0] — 2026-11-13
+
+The playback engine, the library and the editing tools were rebuilt. Nothing
+about how your files are stored changes: the same JSON state, the same folders,
+the same tags. What changes is how they are read, played and written.
+
+### Added
+
+- **Gapless playback.** The engine now runs two decks. When a track is within a
+  few seconds of ending, the next one is preloaded into an idle deck and
+  spliced in at the sample the previous one stops — no silence, no click, no
+  second `Play`. Applies to normal advance, shuffle and repeat alike.
+- **Crossfade.** Settings > Playback gains a 0–12 s slider. Above zero, the
+  engine equal-power crossfades the outgoing and incoming decks instead of
+  splicing. Zero keeps playback bit-exact gapless.
+- **ReplayGain.** Off / Track / Album, read from the file's ReplayGain tags when
+  they exist. Files without tags are measured once with a hand-rolled EBU R128
+  (BS.1770-4) analyser, cached in `~/.config/omatunes/loudness.json`, and
+  played at unity gain until the measurement lands.
+- **Repeat this song only.** The repeat button is now three-state:
+  off → repeat queue → repeat track. Repeat-track feeds the same file into the
+  idle deck, so it is as gapless as everything else. MPRIS reports
+  `None`/`Playlist`/`Track` accordingly.
+- **Several library folders.** Settings > Library edits a list of roots instead
+  of one path: add, browse, remove. Existing installs migrate the old single
+  `music_dir` into the list automatically, and nested roots are de-duplicated.
+- **Incremental rescans.** A rescan now reuses cached tags whenever a file's
+  mtime and size are unchanged, so a 233-track library costs a stat per track
+  instead of an open+parse. The cache is versioned and written atomically.
+- **Folder watching.** With watching on, adding, removing or renaming files
+  refreshes the library by itself. Bursts are debounced for 750 ms and turn
+  into one incremental rescan.
+- **Duplicates playlist.** A new auto-playlist groups tracks with the same
+  normalised artist and title when their durations are within two seconds, so
+  the same recording in FLAC and MP3 lands in one place.
+- **Drag and drop.** Drop audio files on the window and they replace the queue
+  and start playing; drop a folder and it is walked off the UI thread first;
+  drop an image while the tag editor is open and it becomes the cover. A
+  full-window scrim explains what the drop will do before you let go.
+- **Playlist import.** Dropping an `.m3u`/`.m3u8` file creates a user playlist.
+  Relative entries resolve against the playlist's own folder, `file://` URIs and
+  percent-encoding are understood, and a duplicate name is suffixed instead of
+  overwriting the playlist you already had.
+- **Cover art tools.** "Save cover art to folder" writes the embedded picture
+  next to the track (never clobbering an existing file), and "Embed folder
+  artwork" pushes a `cover.jpg` back into the tags. The tag editor gained a
+  button that pulls the folder's artwork into the cover field.
+
+### Changed
+
+- **Saving tags only rewrites what changed.** The tag editor diffs the values
+  you are saving against the track on disk and skips files that already match,
+  so saving an unchanged selection no longer bumps mtimes and wakes the watcher.
+  A toast reports how many files were written and how many were skipped.
+- **The app is split into modules.** The 8,000-line `app.rs` became
+  `src/app/` with playback, browse, overlays, achievements, tag editor, smart
+  playlists and drag-and-drop in their own files. Behaviour is unchanged; the
+  diff is much easier to read from here on.
+- **CI exists.** GitHub Actions now runs `cargo fmt --check`, an advisory
+  clippy pass and the unit tests on every push and pull request, so a broken
+  build is caught before it becomes a release.
+
+### Fixed
+
+- Seeking no longer restores the old position on the next track.
+- Writing tags while a track plays pauses the decoder for the write and seeks
+  back to the same sample afterwards, instead of racing the truncate.
+- Sidecar `cover.jpg` files are no longer overwritten by a single-track tag
+  save; the sidecar is only created when the folder has no artwork yet.
+
 ## [1.2.2] — 2026-11-07
 
 ### Added

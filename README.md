@@ -13,12 +13,15 @@ lyrics fixes described below. The original MIT notices are retained in [LICENSE]
 
 ## Why "Deluxe"
 
-This build carries upstream omaTUNES 1.2.1 and adds four things:
+This build carries upstream omaTUNES 1.2.1 and adds these things:
 
 - **A real DSP equalizer** — ten ISO bands of RBJ peaking biquads running inside the audio callback, sixteen presets, automatic headroom, and click-free bit-exact bypass.
 - **Proper Arabic and right-to-left support** — Noto Sans Arabic bundled, advanced shaping so letters join correctly, and a per-line direction guard, so Arabic metadata and lyrics read properly instead of scrambling.
 - **Lyrics fixes** — unsynchronized lyrics wrap at the panel width, and every RTL line keeps the correct margin, not just the first.
 - **Open with omaTUNES** — double-click a song in your file manager and *that* song plays. The old behaviour resumed whatever was last playing, which made picking a track from outside the player useless. Ships `omatunes-open` as the `audio/*` handler, plays files from outside your library too, and adds a `play <path>` verb to the local control socket.
+- **A rebuilt playback engine** — two decks, so the next track is preloaded and spliced in at the exact sample: gapless by default, with an optional 0–12 s equal-power crossfade. ReplayGain follows your tags, or measures untagged files with a built-in EBU R128 analyser, and the repeat button now has a *repeat this song only* state.
+- **A library that keeps up** — several music folders instead of one, incremental rescans that only re-open changed files, and an optional watcher that picks up new or removed tracks within a second. A **Duplicates** auto-playlist groups the same recording across formats.
+- **Drag and drop** — drop songs or a folder on the window and they play; drop an `.m3u`/`.m3u8` and it becomes a playlist; drop an image on the tag editor and it becomes the cover. Cover art can be extracted to the album folder or embedded from it.
 
 
 <p align="center">
@@ -40,7 +43,10 @@ This build carries upstream omaTUNES 1.2.1 and adds four things:
 - **10-Band Parametric Equalizer.** A real DSP engine inside the playback callback — ten ISO bands (31.5 Hz – 16 kHz, one octave each) built from RBJ peaking biquads with independent per-channel state. Gains ramp over 20 ms and bypass crossfades dry/wet, so nothing clicks; bypass is bit-exact when the EQ is off or flat. Includes 16 built-in presets (Flat, Loudness, Bass boost, Vocal, Rock, Jazz, Night and more), a −12…0 dB preamp with automatic headroom, a soft-clip knee so boosts stay clean, and a live frequency-response curve. Runs *before* the volume slider, and the visualizer taps what you actually hear.
 - **Arabic & Full RTL Support.** Arabic, Hebrew, Syriac and other right-to-left scripts are shaped correctly everywhere in the UI — artist, album, title, genre and playlist names, not just lyrics. Ships Noto Sans Arabic (regular + bold), shapes with `Shaping::Advanced` so letters join properly, and applies a per-line direction guard so mixed Arabic/English text keeps the correct margin and reading order.
 - **Theming System.** Follow your Omarchy system theme live, pick from built-in presets (Nord, Catppuccin, Dracula, Gruvbox, Everforest, Monokai), or build your own — omaTUNES derives the supporting shades automatically using proper WCAG contrast math, so your custom theme never ends up with unreadable text.
-- **Bulk Metadata Editing.** Select a stack of tracks, check only the fields you want to change, and apply edits across an entire album in one go — with autocomplete pulled straight from your existing library tags.
+- **Bulk Metadata Editing.** Select a stack of tracks, check only the fields you want to change, and apply edits across an entire album in one go — with autocomplete pulled straight from your existing library tags. Saving diffs the values against the file and only rewrites tracks that actually changed.
+- **Gapless Playback & Crossfade.** Two decks run in the same callback; the next track is preloaded and spliced in sample-exact, or equal-power crossfaded over 0–12 s. Repeat can loop the queue or a single track.
+- **ReplayGain.** Track or album gain from your tags, with an EBU R128 fallback that measures untagged files once and caches the result.
+- **Multiple Library Folders.** Point omaTUNES at as many folders as you like, with incremental rescans, an optional live folder watcher, and a Duplicates auto-playlist.
 - **Desktop & Quickshell Integration.** Full MPRIS2 D-Bus support, a ready-to-go Waybar module, and a native **Quickshell Player Module** featuring an interactive mini-player pop-up window with live timeline scrubbing, volume controls, liked status tracking, and active shuffle/repeat highlights.
 - **Non-Destructive Library Handling.** No forced re-organization, no renaming your folders, no importing into some walled-off library format. omaTUNES reads your music exactly where it already lives.
 - **It Opens What You Clicked.** Install `omatunes-open` as your `audio/*` handler and a double-click in your file manager starts *that* track — not the one that was last playing. Files from outside your library work too (their tags are read on the spot), `omatunes /path/to/song.mp3` does the same from a terminal, and the local control socket gained a `play <path>` verb for scripts and widgets.

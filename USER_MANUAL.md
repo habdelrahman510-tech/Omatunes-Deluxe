@@ -2,7 +2,7 @@
 
 This is the full reference for OmaTUNES — where everything lives, how to do the things you'll want to do day-to-day, and the technical details for when you want to dig deeper (database layout, theming internals, Waybar styling).
 
-If you just want to get playing, the short version is: point `music_dir` in your config at your music folder, launch the app, and everything else in here is here when you need it.
+If you just want to get playing, the short version is: launch the app, add your music folder under **Settings → Library → Music folders**, and everything else in here is here when you need it.
 
 **Contents**
 1. [Player Controls & Album Art](#player-controls--album-art)
@@ -39,7 +39,7 @@ The player sits across the top of the window and handles everything about what's
 - **Previous / Next track** — `p` / `n`
 - **Seek** — click anywhere on the progress bar to jump there, or use `←`/`→` to nudge by the configured seek step (5 seconds by default)
 - **Volume** — drag the slider, scroll anywhere over the player panel, or use `+`/`=` and `-` (5% steps by default)
-- **Shuffle** (`s`) and **Repeat** (`r`) — both light up in your theme's accent color when active
+- **Shuffle** (`s`) and **Repeat** (`r`) — both light up in your theme's accent color when active. Repeat cycles through three states: off, repeat the whole queue, and repeat the current track only. The button changes to a "1" glyph in track mode, and MPRIS reports the matching `LoopStatus`.
 
 **Add to Playlist button** — next to the Like heart, this button opens the [Song Menu](#the-song-menu) for whatever's currently playing, so you can add it to a playlist, create a new playlist from it, or remove it from the playlist you're viewing — all without leaving the player.
 
@@ -168,6 +168,8 @@ Right-click any track — in the Library, in a playlist, wherever — to bring u
 - **Like / Unlike this song**
 - **Edit ID3 tag** — opens the [tag editor](#id3-tag-editor) for this track
 - **Open local file folder** — opens your file manager at the track's location
+- **Save cover art to folder** — writes the track's embedded picture beside it as `cover.jpg`/`cover.png`. It never overwrites an existing file; a second extraction is saved as `cover (2).jpg`
+- **Embed folder artwork** — only appears when there is a `cover.jpg`/`cover.png` next to the track; writes that image into the file's tags
 - **Add to Playlist** — click to expand a dropdown listing your playlists (with a `+` next to each), plus a "Create playlist with this song" option at the bottom — collapsed by default so this doesn't turn into a wall of playlist names as your collection grows
 - **Remove from current playlist** — only shows up when you're viewing a User Playlist and the track is actually in it, so you'll never see this option somewhere it wouldn't make sense (Smart Playlists and Auto Playlists don't have a manual membership to remove from — see [Playlists & Smart Playlists](#playlists--smart-playlists) for why)
 
@@ -191,6 +193,10 @@ Edit metadata one track at a time, or in bulk across a whole selection.
 Every field (Title, Artist, Album, Genre, Track #, Disc #, Year, Cover Path, Lyrics) has its own checkbox — start typing in a field and its box checks itself automatically. Only checked fields get written when you save, so bulk-editing a stack of tracks won't accidentally overwrite something like the Title field across all of them.
 
 Typing in Artist, Album, or Genre brings up autocomplete suggestions pulled from your existing library — click one to fill the field and check its box in one motion. There's also an "Apply to Entire Album" option that grabs every track in the current album and applies your checked changes across all of them.
+
+The cover row has a folder button beside the browse/paste/search buttons: it pulls `cover.jpg`/`cover.png` from the album folder into the cover field, which is quicker than picking the file by hand. Dragging an image onto the open tag editor does the same thing.
+
+Saving diffs what you are writing against what is already in the file. Tracks whose tags already match are skipped entirely — no rewrite, no bumped mtime, no library rescan — and a toast tells you how many files were written and how many were left alone.
 
 ---
 
@@ -236,6 +242,7 @@ These populate themselves — no manual curation needed:
 - **Liked Songs** — everything you've hearted. Songs can be dragged into a custom order here, same as a User Playlist.
 - **Recently Played** — your listening history, most recent first. Since the whole point of this list is showing recency, it isn't manually reorderable — dragging it around would fight its own purpose the moment you played something new.
 - **Most Played** — sorted by play count, for the same reason as above: also not manually reorderable.
+- **Duplicates** — every track whose artist and title match another track (punctuation and case ignored) within two seconds of duration. That is how the same recording in FLAC and MP3 shows up side by side.
 
 ### Smart Playlists
 
@@ -248,6 +255,35 @@ These work like iTunes smart playlists: define rules, and OmaTUNES keeps the lis
 - **Live Updating**, when enabled, re-checks the rules automatically as your library and listening habits change.
 - **Songs can be dragged into a manual order** here too — when a new track starts matching the rules, it's added to the end of your manual order rather than wherever the sort criteria would normally place it, so your arrangement doesn't get shuffled around every time the underlying set changes.
 - Right-click a Smart Playlist in the sidebar to edit its rules or delete it.
+
+---
+
+## Drag and Drop
+
+Drag files from your file manager onto the omaTUNES window. A scrim covers the window while you hover and tells you what letting go will do.
+
+- **Audio files** — replace the queue and start playing the first one. Files from outside your library work too: their tags are read on the spot.
+- **A folder** — walked recursively into a queue, with the first track playing. Big folders are scanned in the background so the window never freezes.
+- **An `.m3u`/`.m3u8` playlist** — imported as a user playlist under the file's name. Relative entries resolve against the playlist's own folder, `file://` URIs and percent-encoding are handled, and a name collision becomes `Name (2)` rather than overwriting what you already had.
+- **An image** — while the tag editor is open, the image becomes the cover. Ticking the Cover box and saving embeds it.
+
+---
+
+## Playback & Library Settings
+
+Settings has two sections worth knowing about.
+
+**Playback**
+
+- **Crossfade** — 0 to 12 seconds. At 0 the engine splices the next track in at the exact sample, so gapless albums stay seamless. Above 0 it equal-power crossfades between two running decks. Crossfade applies when a track advances by itself; skipping with Next still cuts over immediately.
+- **ReplayGain** — `Off`, `Track`, or `Album`. With it on, omaTUNES reads the ReplayGain tags in the file. Files without tags are measured once with a built-in EBU R128 analyser, cached in `~/.config/omatunes/loudness.json`, and played at normal volume until that measurement is ready.
+
+**Library**
+
+- **Music folders** — a list, not a single path. Add as many folders as you like; nested folders are de-duplicated automatically. Existing installs carry their old single folder over on first launch.
+- **Watch folders for changes** — when on, adding, removing or renaming files refreshes the library within a second or so. Changes are debounced, and rescans are incremental: only files whose size or modification time changed are re-read.
+
+The watcher and the Rescan button both use the same incremental path, so a full library is cheap to refresh.
 
 ---
 

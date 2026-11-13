@@ -1,6 +1,6 @@
 [package]
 name = "omatunes"
-version = "1.2.2"
+version = "2.0.0"
 edition = "2021"
 authors = ["prof.dog"]
 description = "Native Wayland music player and library manager for Hyprland and Omarchy, with a 10-band parametric equalizer and Arabic/RTL support"

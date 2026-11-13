@@ -1,6 +1,6 @@
 # Maintainer: prof.dog <prof.dog@users.noreply.github.com>
 pkgname=omatunes-deluxe-bin
-pkgver=1.2.2
+pkgver=2.0.0
 pkgrel=1
 pkgdesc="Native Wayland music player for Omarchy, with a 10-band parametric equalizer and Arabic/RTL support (prebuilt)"
 arch=('x86_64')
