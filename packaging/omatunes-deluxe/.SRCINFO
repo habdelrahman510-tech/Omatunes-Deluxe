@@ -19,6 +19,6 @@ pkgbase = omatunes-deluxe
 	depends = vulkan-icd-loader
 	depends = hicolor-icon-theme
 	source = omatunes-deluxe-2.0.0.tar.gz::https://github.com/habdelrahman510-tech/Omatunes-Deluxe/archive/v2.0.0.tar.gz
-	sha256sums = 52d076da6a5d98ccd1cff68b2ded56623960a6cf6fbca3d19e76367df1bb0fc3
+	sha256sums = 10aa7d68407f8cf1e4033ebc193a41222c4a99c947f7706da9570f89ca69b4e2
 
 pkgname = omatunes-deluxe
