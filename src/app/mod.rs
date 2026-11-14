@@ -3173,6 +3173,23 @@ impl AppState {
                                     t.cover_data = load_cover(&t.path);
                                 }
                             }
+
+                            // The queue is a snapshot of the track list taken
+                            // when playback started. Without this, advancing to
+                            // a track you just edited (lyrics especially) hands
+                            // the player the version from before the edit.
+                            if let Some(fresh) = self
+                                .all_tracks
+                                .iter()
+                                .find(|t| t.path == track.path)
+                                .cloned()
+                            {
+                                for queued in self.queue.iter_mut() {
+                                    if queued.path == fresh.path {
+                                        queued.refresh_tags_from(&fresh);
+                                    }
+                                }
+                            }
                         }
                     }
                     if is_playing_in_update {
@@ -3626,6 +3643,10 @@ impl AppState {
                     }
                     self.write_current_liked_status();
                 }
+
+                // The scan is the freshest view of every file on disk. Carry it
+                // into the queue and the selection, not just the library list.
+                self.sync_snapshots_with_library();
 
                 crate::stats::backfill_album_data(&self.all_tracks);
                 crate::stats::backfill_achievements(&self.all_tracks);

@@ -152,25 +152,10 @@ impl AppState {
         crate::db::write(|db| db.last_queue_paths = queue_paths);
     }
 
-    /// Index of the playing track inside the queue, if it is still there.
-    fn current_queue_index(&self) -> Option<usize> {
-        let id = self.current_track.as_ref()?.id;
-        self.queue.iter().position(|t| t.id == id)
-    }
-
     /// The track an automatic advance will land on. Shuffle is already baked
     /// into the queue order, so this is a pure lookup.
     fn next_automatic_path(&self) -> Option<PathBuf> {
-        if self.queue.is_empty() {
-            return None;
-        }
-        match self.current_queue_index() {
-            Some(idx) if idx + 1 < self.queue.len() => Some(self.queue[idx + 1].path.clone()),
-            Some(_) if self.repeat == RepeatMode::All => Some(self.queue[0].path.clone()),
-            // Not playing from the queue at all: start it from the top.
-            None => Some(self.queue[0].path.clone()),
-            _ => None,
-        }
+        next_automatic_path(&self.queue, self.current_track.as_ref(), self.repeat)
     }
 
     /// Hand the next track to the engine's idle deck. Cheap and idempotent:
@@ -184,12 +169,55 @@ impl AppState {
         self.audio.send(AudioCommand::Preload(next));
     }
 
+    /// Pull freshly scanned metadata into the snapshots that hold track copies
+    /// (queue, now-playing, selection). Without this, a rescan — including the
+    /// one our own tag write triggers — leaves the queue showing the old tags.
+    pub(super) fn sync_snapshots_with_library(&mut self) {
+        let all = self.all_tracks.clone();
+        for queued in self.queue.iter_mut() {
+            if let Some(fresh) = all.iter().find(|t| t.path == queued.path) {
+                queued.refresh_tags_from(fresh);
+            }
+        }
+        if let Some(current) = self.current_track.as_mut() {
+            if let Some(fresh) = all.iter().find(|t| t.path == current.path) {
+                current.refresh_tags_from(fresh);
+            }
+        }
+        if let Some(selected) = self.selected_track.as_mut() {
+            if let Some(fresh) = all.iter().find(|t| t.path == selected.path) {
+                selected.refresh_tags_from(fresh);
+            }
+        }
+        for selected in Arc::make_mut(&mut self.selected_tracks).iter_mut() {
+            if let Some(fresh) = all.iter().find(|t| t.path == selected.path) {
+                selected.refresh_tags_from(fresh);
+            }
+        }
+    }
+
+    /// Move the list's focus onto the track that is now playing, so the
+    /// highlight follows the music instead of freezing on whatever was last
+    /// clicked. A deliberate multi-selection is left alone: playback must not
+    /// wipe a selection the operator is about to act on.
+    fn focus_playing_track(&mut self, track: &Track) {
+        self.selected_track = Some(track.clone());
+        if self.selected_tracks.len() <= 1 {
+            self.selected_tracks = std::sync::Arc::new(vec![track.clone()]);
+            self.last_clicked_track = Some(track.clone());
+        }
+    }
+
     /// The engine spliced into the next deck on its own. Take ownership of the
     /// change: the UI, MPRIS, stats and the preload chain all have to follow.
     pub(super) fn on_spliced(&mut self, path: PathBuf) -> Task<Message> {
+        // Repeat-one splices into the same file, so "the track we just left"
+        // is the one we are now playing again.
+        let repeating = self.current_track.as_ref().is_some_and(|t| t.path == path);
+
         // Write out any pending like for the track we just left.
         if let Some(prev) = self.current_track.as_ref() {
-            if prev.path != path {
+            if !repeating {
                 let p = prev.path.clone();
                 if crate::library::pending::flush_one(&p) {
                     eprintln!("Flushed pending liked on splice for {}", p.display());
@@ -214,9 +242,17 @@ impl AppState {
             return Task::none();
         };
 
-        track.cover_data = load_cover(&track.path);
+        // Re-reading the cover on every repeat is wasted work: it is the same
+        // file with the same art.
+        track.cover_data = if repeating {
+            self.current_track
+                .as_ref()
+                .and_then(|t| t.cover_data.clone())
+        } else {
+            load_cover(&track.path)
+        };
         self.current_track = Some(track.clone());
-        self.selected_track = Some(track.clone());
+        self.focus_playing_track(&track);
         self.playback_state = PlaybackState::Playing;
         self.position = Duration::ZERO;
         self.duration = Duration::ZERO;
@@ -233,7 +269,9 @@ impl AppState {
             db.last_queue_paths = queue_paths;
             db.last_position_secs = 0;
         });
-        crate::db::add_to_recently_played(track.path.clone());
+        if !repeating {
+            crate::db::add_to_recently_played(track.path.clone());
+        }
         if self.selected_playlist.as_deref() == Some("Recently Played") {
             self.update_filtered_tracks();
         }
@@ -314,8 +352,13 @@ impl AppState {
     }
 
     pub(super) fn play_track_internal(&mut self, mut track: Track) -> Task<Message> {
-        if let Some(t) = self.all_tracks.iter().find(|t| t.path == track.path) {
-            track.liked = t.liked;
+        // The queue holds snapshots taken when playback started. Tag edits and
+        // library rescans update `all_tracks` only, so a stale queue entry
+        // would resurrect the old lyrics the moment you switch back to a
+        // track. The canonical copy wins; the caller's runtime data (cover
+        // bytes) is reloaded below anyway.
+        if let Some(canonical) = self.all_tracks.iter().find(|t| t.path == track.path) {
+            track = canonical.clone();
         }
         let cover_data = load_cover(&track.path);
         let track = Track {
@@ -326,7 +369,7 @@ impl AppState {
         self.audio.send(AudioCommand::SetVolume(self.volume));
         self.preloaded_path = None;
         self.current_track = Some(track.clone());
-        self.selected_track = Some(track.clone());
+        self.focus_playing_track(&track);
         self.update_live_smart_playlists();
         self.playback_state = PlaybackState::Playing;
         self.position = Duration::ZERO;
@@ -367,5 +410,107 @@ impl AppState {
         } else {
             Task::none()
         }
+    }
+}
+
+/// What the engine's idle deck should hold once the current track runs out.
+///
+/// The engine advances by splicing into whatever was preloaded, so this decides
+/// the next track for every automatic transition. Repeat-one must therefore
+/// return the *current* file: preloading the queue's next track lets the engine
+/// splice into it before `TrackEnded` ever reaches the app, which is exactly
+/// how repeat-one used to escape after a few loops.
+fn next_automatic_path(
+    queue: &[Track],
+    current: Option<&Track>,
+    repeat: RepeatMode,
+) -> Option<PathBuf> {
+    if repeat == RepeatMode::One {
+        return current.map(|t| t.path.clone());
+    }
+    if queue.is_empty() {
+        return None;
+    }
+    let index = current.and_then(|t| queue.iter().position(|q| q.id == t.id));
+    match index {
+        Some(idx) if idx + 1 < queue.len() => Some(queue[idx + 1].path.clone()),
+        Some(_) if repeat == RepeatMode::All => Some(queue[0].path.clone()),
+        // Not playing from the queue at all: start it from the top.
+        None => Some(queue[0].path.clone()),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::library::models::Track;
+
+    fn track(id: i64, name: &str) -> Track {
+        Track {
+            id,
+            path: PathBuf::from(format!("/music/{name}.mp3")),
+            title: name.to_string(),
+            artist: "artist".to_string(),
+            album: "album".to_string(),
+            album_id: 0,
+            track_number: Some(id as u32),
+            disc_number: None,
+            duration: Duration::from_secs(60),
+            cover_data: None,
+            genre: "genre".to_string(),
+            year: None,
+            play_count: 0,
+            liked: false,
+            date_played: None,
+            lyrics: String::new(),
+        }
+    }
+
+    #[test]
+    fn repeat_one_always_preloads_the_current_track() {
+        let queue = vec![track(1, "a"), track(2, "b"), track(3, "c")];
+        // First track of three: the old code preloaded "b" and the engine
+        // spliced into it, so repeat-one never repeated.
+        assert_eq!(
+            next_automatic_path(&queue, Some(&queue[0]), RepeatMode::One),
+            Some(PathBuf::from("/music/a.mp3"))
+        );
+        assert_eq!(
+            next_automatic_path(&queue, Some(&queue[1]), RepeatMode::One),
+            Some(PathBuf::from("/music/b.mp3"))
+        );
+    }
+
+    #[test]
+    fn repeat_one_still_repeats_when_the_track_left_the_queue() {
+        let queue = vec![track(1, "a")];
+        let current = track(9, "gone");
+        assert_eq!(
+            next_automatic_path(&queue, Some(&current), RepeatMode::One),
+            Some(PathBuf::from("/music/gone.mp3"))
+        );
+    }
+
+    #[test]
+    fn repeat_off_stops_at_the_end() {
+        let queue = vec![track(1, "a"), track(2, "b")];
+        assert_eq!(
+            next_automatic_path(&queue, Some(&queue[0]), RepeatMode::Off),
+            Some(PathBuf::from("/music/b.mp3"))
+        );
+        assert_eq!(
+            next_automatic_path(&queue, Some(&queue[1]), RepeatMode::Off),
+            None
+        );
+    }
+
+    #[test]
+    fn repeat_all_wraps_to_the_top() {
+        let queue = vec![track(1, "a"), track(2, "b")];
+        assert_eq!(
+            next_automatic_path(&queue, Some(&queue[1]), RepeatMode::All),
+            Some(PathBuf::from("/music/a.mp3"))
+        );
     }
 }

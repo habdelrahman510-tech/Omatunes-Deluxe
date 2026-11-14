@@ -24,6 +24,23 @@ pub struct Track {
 }
 
 impl Track {
+    /// Copy the tag-derived fields from `other`, leaving runtime-only state
+    /// (cover bytes, play counts, play dates) alone. Used to pull edits and
+    /// rescans into snapshots such as the play queue.
+    pub fn refresh_tags_from(&mut self, other: &Track) {
+        self.title = other.title.clone();
+        self.artist = other.artist.clone();
+        self.album = other.album.clone();
+        self.album_id = other.album_id;
+        self.track_number = other.track_number;
+        self.disc_number = other.disc_number;
+        self.duration = other.duration;
+        self.genre = other.genre.clone();
+        self.year = other.year;
+        self.liked = other.liked;
+        self.lyrics = other.lyrics.clone();
+    }
+
     pub fn duration_str(&self) -> String {
         let secs = self.duration.as_secs();
         let m = secs / 60;
