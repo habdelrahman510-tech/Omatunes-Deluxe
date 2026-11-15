@@ -22,7 +22,7 @@ jobs:
     # than one built on the current Ubuntu runner.
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.tag || github.ref }}
 
@@ -94,7 +94,7 @@ jobs:
             "dist/$BINARY-${{ steps.pkg.outputs.version }}-x86_64-linux.tar.gz" \
             dist/SHA256SUMS
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: omatunes-${{ steps.pkg.outputs.version }}-x86_64-linux
           path: dist/
