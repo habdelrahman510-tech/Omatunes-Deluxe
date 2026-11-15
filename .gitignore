@@ -5,6 +5,10 @@ target/
 *.tar.gz
 *.sha256
 
+# Python bytecode from the Waybar helpers — never commit it
+__pycache__/
+*.pyc
+
 # Private development docs — keep local only, not on public GitHub
 AGENTS.md
 ARCHITECTURE.md

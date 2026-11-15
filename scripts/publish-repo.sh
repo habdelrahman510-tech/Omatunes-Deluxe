@@ -85,6 +85,10 @@ rm -f "$dest/$PKGBASE.db" "$dest/$PKGBASE.files"
 cp "$dest/$PKGBASE.db.tar.gz" "$dest/$PKGBASE.db"
 cp "$dest/$PKGBASE.files.tar.gz" "$dest/$PKGBASE.files"
 
+# repo-add keeps a .old copy of every database it rewrites. They are served but
+# never read, so committing them only makes the repository's history noisier.
+rm -f "$dest"/*.old
+
 ver=$(sed -n 's/^pkgver=//p' "$REPO_ROOT/packaging/$PKGBASE/PKGBUILD")
 rel=$(sed -n 's/^pkgrel=//p' "$REPO_ROOT/packaging/$PKGBASE/PKGBUILD")
 

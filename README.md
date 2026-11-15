@@ -118,7 +118,7 @@ chmod +x ~/.local/bin/omatunes
 **Prefer to build it yourself?**
 ```bash
 git clone https://github.com/habdelrahman510-tech/Omatunes-Deluxe
-cd omatunes
+cd Omatunes-Deluxe
 cargo build --release
 mkdir -p ~/.local/bin
 cp target/release/omatunes ~/.local/bin/omatunes
