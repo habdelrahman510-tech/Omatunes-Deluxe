@@ -17,7 +17,7 @@ source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/omatunes-$pkgv
         "omatunes-open::$url/raw/v$pkgver/scripts/omatunes-open"
         "omatunes.png::$url/raw/v$pkgver/assets/omatunes.png"
         "LICENSE::$url/raw/v$pkgver/LICENSE")
-sha256sums=('c60cce6db1336dd2ad33b5279e44c54a003cae01aa93e5839dbf1badf08238a9'
+sha256sums=('850940aa1b8d4ef2a0ae74af7d13784ede27e0a4c690944573d861360d996f54'
             'ec04e7fb7cf903c9709959a36d536438633bf8e938c6ded39aa0d4e3627e6b12'
             'ec2fafe27cac0cd5eab92c99f72c725aa5df818437c800cf7509d0504e83ec88'
             '8964207f19cfafe91f3efbbc8ce03d52134f0c0852769828c3596fdde5e71e7c'

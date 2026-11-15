@@ -10,7 +10,7 @@ depends=('glibc' 'gcc-libs' 'alsa-lib' 'opus' 'wayland' 'libxkbcommon' 'fontconf
 makedepends=('cargo' 'rust' 'pkgconf')
 conflicts=('omatunes-bin')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('10aa7d68407f8cf1e4033ebc193a41222c4a99c947f7706da9570f89ca69b4e2')
+sha256sums=('b6a55fa381fe527a30cd31645da995a55d0da774c040adc3b55457a168dc3475')
 
 build() {
   cd "Omatunes-Deluxe-$pkgver"
