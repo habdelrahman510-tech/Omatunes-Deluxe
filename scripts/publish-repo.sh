@@ -35,11 +35,21 @@ if [ -z "$pkg_path" ]; then
   trap 'rm -rf "$build_dir"' EXIT
   cp "$REPO_ROOT/packaging/$PKGBASE/PKGBUILD" "$build_dir/PKGBUILD"
   # Keep downloaded sources between builds: every publish would otherwise pull
-  # the same 12 MB release tarball again for no reason.
+  # the same 12 MB release tarball again for no reason. The cache is only safe
+  # while the PKGBUILD is unchanged: the release tarball carries its version in
+  # its name, but omatunes.desktop, omatunes-open and LICENSE do not, so a
+  # stale copy of those makes makepkg fail its checksum check instead of
+  # re-downloading. Drop everything except the tarballs when the PKGBUILD moves.
   src_cache="${OMATUNES_SRC_CACHE:-$HOME/.cache/omatunes-src}"
   mkdir -p "$src_cache"
+  stamp="$src_cache/.pkgbuild.sha256"
+  pkgbuild_sum=$(sha256sum "$REPO_ROOT/packaging/$PKGBASE/PKGBUILD" | cut -d' ' -f1)
+  if [ ! -f "$stamp" ] || [ "$(cat "$stamp")" != "$pkgbuild_sum" ]; then
+    find "$src_cache" -maxdepth 1 -type f ! -name '*.tar.gz' ! -name '.pkgbuild.sha256' -delete
+  fi
   echo "==> building $PKGBASE"
   ( cd "$build_dir" && SRCDEST="$src_cache" makepkg -f >/dev/null )
+  printf '%s\n' "$pkgbuild_sum" >"$stamp"
   pkg_path=$(find "$build_dir" -maxdepth 1 -name '*.pkg.tar.zst' -print -quit)
 fi
 
