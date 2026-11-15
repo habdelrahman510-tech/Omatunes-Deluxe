@@ -489,7 +489,7 @@ pub fn view<'a>(state: &'a SettingsState) -> Element<'a, Message> {
                     ]
                     .spacing(4),
                     Space::with_height(6),
-                    text("Uses ReplayGain tags when present, otherwise omaTUNES measures the file once and caches the result.")
+                    text("Uses ReplayGain tags when present, otherwise Omatunes measures the file once and caches the result.")
                         .size(11)
                         .color(theme::overlay0()),
                     Space::with_height(16),

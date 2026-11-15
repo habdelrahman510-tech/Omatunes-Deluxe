@@ -21,10 +21,10 @@ BarWidget {
     }
 
     function focusOmatunes() {
-        runCmd("hyprctl dispatch focuswindow class:^omatunes$ || hyprctl dispatch focuswindow title:OmaTUNES || omarchy-launch-or-focus omatunes");
+        runCmd("hyprctl dispatch focuswindow class:^omatunes$ || hyprctl dispatch focuswindow title:Omatunes || omarchy-launch-or-focus omatunes");
     }
 
-    // STRICT OmaTUNES matching ONLY - Never fall back to other media players!
+    // STRICT Omatunes matching ONLY - Never fall back to other media players!
     readonly property var activePlayer: {
         var players = Mpris.players ? Mpris.players.values : [];
         for (var i = 0; i < players.length; i++) {
@@ -37,7 +37,7 @@ BarWidget {
                 return p;
             }
         }
-        return null; // Return null if OmaTUNES is not running
+        return null; // Return null if Omatunes is not running
     }
 
     readonly property string playIcon: (activePlayer && activePlayer.playbackState === MprisPlaybackState.Playing) ? "󰏤" : "󰐊"
@@ -185,7 +185,7 @@ BarWidget {
                 anchors.fill: parent
                 spacing: 14
 
-                // Album Artwork (75% width of card, 1:1 square) -> Clickable to focus OmaTUNES
+                // Album Artwork (75% width of card, 1:1 square) -> Clickable to focus Omatunes
                 Rectangle {
                     Layout.alignment: Qt.AlignHCenter
                     implicitWidth: parent.width * 0.75

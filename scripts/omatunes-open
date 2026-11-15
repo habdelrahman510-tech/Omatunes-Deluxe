@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# omatunes-open <file...> — hand a file to omaTUNES and play *that* file.
+# omatunes-open <file...> — hand a file to Omatunes and play *that* file.
 #
-# A file manager launching omaTUNES directly cannot say which track it meant:
+# A file manager launching Omatunes directly cannot say which track it meant:
 # the player is single-instance and resumes whatever was last playing
 # (`db.last_track_path`). So this is installed as the `audio/*` handler instead.
 #

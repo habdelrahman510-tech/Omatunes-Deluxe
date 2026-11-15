@@ -1,7 +1,7 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=omaTUNES
+Name=Omatunes
 GenericName=Music Player
 Comment=Native Wayland music player and library manager
 # %F (local files) rather than %U: the control socket wants filesystem paths.

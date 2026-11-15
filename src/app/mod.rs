@@ -8098,7 +8098,7 @@ fn merge_song_order(manual_order: &[PathBuf], live_set: &[PathBuf]) -> Vec<PathB
 // ── Ponto de entrada iced ─────────────────────────────────────────────────────
 
 pub fn run() -> iced::Result {
-    iced::application("omatunes", AppState::update, AppState::view)
+    iced::application("Omatunes", AppState::update, AppState::view)
         .subscription(AppState::subscription)
         .font(include_bytes!(
             "../../assets/JetBrainsMonoNerdFontMono-Regular.ttf"

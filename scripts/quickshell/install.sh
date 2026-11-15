@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# OmaTUNES Quickshell Module Installer
+# Omatunes Quickshell Module Installer
 
 set -e
 
 DEST_DIR="$HOME/.config/quickshell/modules/omatunes"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Installing OmaTUNES Quickshell Player module..."
+echo "Installing Omatunes Quickshell Player module..."
 mkdir -p "$DEST_DIR"
 
 cp "$SCRIPT_DIR/OmatunesWidget.qml" "$DEST_DIR/"

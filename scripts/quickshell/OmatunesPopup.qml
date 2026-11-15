@@ -24,7 +24,7 @@ PopupWindow {
     }
 
     function focusOmatunes() {
-        runCmd("hyprctl dispatch focuswindow class:^omatunes$ || hyprctl dispatch focuswindow title:OmaTUNES || omarchy-launch-or-focus omatunes");
+        runCmd("hyprctl dispatch focuswindow class:^omatunes$ || hyprctl dispatch focuswindow title:Omatunes || omarchy-launch-or-focus omatunes");
     }
 
     property bool isLiked: false
@@ -110,7 +110,7 @@ PopupWindow {
             anchors.margins: 16
             spacing: 14
 
-            // Artwork (75% width of window, 1:1 square) -> Clickable to focus OmaTUNES
+            // Artwork (75% width of window, 1:1 square) -> Clickable to focus Omatunes
             Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 implicitWidth: parent.width * 0.75

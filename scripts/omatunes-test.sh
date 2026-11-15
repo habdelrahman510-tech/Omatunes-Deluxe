@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# omatunes-test — run omaTUNES against throwaway state, never your real library.
+# omatunes-test — run Omatunes against throwaway state, never your real library.
 #
 # The point is to exercise a build without touching ~/.config/omatunes,
 # ~/.local/share/omatunes or your real database: HOME, XDG_CONFIG_HOME,

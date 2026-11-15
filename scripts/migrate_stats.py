@@ -69,7 +69,7 @@ def migrate():
     # Merge session structures
     session = {}
     if session_spotify and session_omatunes:
-        print("Both Spotify and omaTUNES session pickle files found. Merging histories...")
+        print("Both Spotify and Omatunes session pickle files found. Merging histories...")
         session["total_tracks"] = session_spotify.get("total_tracks", 0) + session_omatunes.get("total_tracks", 0)
         session["total_minutes"] = session_spotify.get("total_minutes", 0.0) + session_omatunes.get("total_minutes", 0.0)
         session["daily_history"] = merge_histories(session_spotify.get("daily_history", {}), session_omatunes.get("daily_history", {}))
@@ -78,7 +78,7 @@ def migrate():
         print("Found legacy Spotify session file.")
         session = session_spotify
     else:
-        print("Found legacy omaTUNES session file.")
+        print("Found legacy Omatunes session file.")
         session = session_omatunes
 
     daily_buckets = {}

@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="assets/OmaTUNES Logo Transparent.png" alt="OmaTUNES Logo" width="400">
+  <img src="assets/Omatunes Logo Transparent.png" alt="Omatunes Logo" width="400">
 </p>
 
-# omaTUNES
+# Omatunes
 
-omaTUNES is a native Wayland music player and library manager built in Rust for Hyprland and Omarchy systems. omaTUNES is built to be as lightweight as possible while matching Omarchy's opinionated UI style — it picks up your system theme automatically, so your player always matches the rest of your desktop. omaTUNES is 100% offline, has wide support for most popular music codecs, and is designed to manage very large libraries with robust playlist and library management tools.
+Omatunes is a native Wayland music player and library manager built in Rust for Hyprland and Omarchy systems. Omatunes is built to be as lightweight as possible while matching Omarchy's opinionated UI style — it picks up your system theme automatically, so your player always matches the rest of your desktop. Omatunes is 100% offline, has wide support for most popular music codecs, and is designed to manage very large libraries with robust playlist and library management tools.
 
 Built and maintained by [prof.dog](https://github.com/habdelrahman510-tech). `omatunes` is a fork of
 [sheep-farm/lavanda](https://github.com/sheep-farm/lavanda) by Flavio de Vasconcellos, carried forward by
@@ -13,19 +13,19 @@ lyrics fixes described below. The original MIT notices are retained in [LICENSE]
 
 ## Why "Deluxe"
 
-This build carries upstream omaTUNES 1.2.1 and adds these things:
+This build carries upstream Omatunes 1.2.1 and adds these things:
 
 - **A real DSP equalizer** — ten ISO bands of RBJ peaking biquads running inside the audio callback, sixteen presets, automatic headroom, and click-free bit-exact bypass.
 - **Proper Arabic and right-to-left support** — Noto Sans Arabic bundled, advanced shaping so letters join correctly, and a per-line direction guard, so Arabic metadata and lyrics read properly instead of scrambling.
 - **Lyrics fixes** — unsynchronized lyrics wrap at the panel width, and every RTL line keeps the correct margin, not just the first.
-- **Open with omaTUNES** — double-click a song in your file manager and *that* song plays. The old behaviour resumed whatever was last playing, which made picking a track from outside the player useless. Ships `omatunes-open` as the `audio/*` handler, plays files from outside your library too, and adds a `play <path>` verb to the local control socket.
+- **Open with Omatunes** — double-click a song in your file manager and *that* song plays. The old behaviour resumed whatever was last playing, which made picking a track from outside the player useless. Ships `omatunes-open` as the `audio/*` handler, plays files from outside your library too, and adds a `play <path>` verb to the local control socket.
 - **A rebuilt playback engine** — two decks, so the next track is preloaded and spliced in at the exact sample: gapless by default, with an optional 0–12 s equal-power crossfade. ReplayGain follows your tags, or measures untagged files with a built-in EBU R128 analyser, and the repeat button now has a *repeat this song only* state.
 - **A library that keeps up** — several music folders instead of one, incremental rescans that only re-open changed files, and an optional watcher that picks up new or removed tracks within a second. A **Duplicates** auto-playlist groups the same recording across formats.
 - **Drag and drop** — drop songs or a folder on the window and they play; drop an `.m3u`/`.m3u8` and it becomes a playlist; drop an image on the tag editor and it becomes the cover. Cover art can be extracted to the album folder or embedded from it.
 
 
 <p align="center">
-  <img src="assets/Main UI.png" alt="OmaTUNES Main UI Screenshot" width="800">
+  <img src="assets/Main UI.png" alt="Omatunes Main UI Screenshot" width="800">
 </p>
 
 ---
@@ -42,13 +42,13 @@ This build carries upstream omaTUNES 1.2.1 and adds these things:
 - **Audio Visualizer 2.0 & Motion Trails.** Real-time FFT spectrum analysis with 9 visually distinct canvas rendering modes (Mirrored Spectrograph with gravity-bouncing peak limiters, Radial Pulse, Liquid Ribbon, Particle Constellation web, Hyperdrive Depth Tunnel flight, Rolling Plains, Kaleidoscope Mirror, Cosmic Aurora plasma curtains, and Retro Synthwave Horizon). Features customizable visualizer background modes (Theme Default, Custom RGB with interactive sliders, Muted Reactive Pulse), mode-specific customization settings, random mode dice selector button (`\ue270`), decaying ghost motion trails, audio sensitivity, and spectrum color shifting via Settings.
 - **10-Band Parametric Equalizer.** A real DSP engine inside the playback callback — ten ISO bands (31.5 Hz – 16 kHz, one octave each) built from RBJ peaking biquads with independent per-channel state. Gains ramp over 20 ms and bypass crossfades dry/wet, so nothing clicks; bypass is bit-exact when the EQ is off or flat. Includes 16 built-in presets (Flat, Loudness, Bass boost, Vocal, Rock, Jazz, Night and more), a −12…0 dB preamp with automatic headroom, a soft-clip knee so boosts stay clean, and a live frequency-response curve. Runs *before* the volume slider, and the visualizer taps what you actually hear.
 - **Arabic & Full RTL Support.** Arabic, Hebrew, Syriac and other right-to-left scripts are shaped correctly everywhere in the UI — artist, album, title, genre and playlist names, not just lyrics. Ships Noto Sans Arabic (regular + bold), shapes with `Shaping::Advanced` so letters join properly, and applies a per-line direction guard so mixed Arabic/English text keeps the correct margin and reading order.
-- **Theming System.** Follow your Omarchy system theme live, pick from built-in presets (Nord, Catppuccin, Dracula, Gruvbox, Everforest, Monokai), or build your own — omaTUNES derives the supporting shades automatically using proper WCAG contrast math, so your custom theme never ends up with unreadable text.
+- **Theming System.** Follow your Omarchy system theme live, pick from built-in presets (Nord, Catppuccin, Dracula, Gruvbox, Everforest, Monokai), or build your own — Omatunes derives the supporting shades automatically using proper WCAG contrast math, so your custom theme never ends up with unreadable text.
 - **Bulk Metadata Editing.** Select a stack of tracks, check only the fields you want to change, and apply edits across an entire album in one go — with autocomplete pulled straight from your existing library tags. Saving diffs the values against the file and only rewrites tracks that actually changed.
 - **Gapless Playback & Crossfade.** Two decks run in the same callback; the next track is preloaded and spliced in sample-exact, or equal-power crossfaded over 0–12 s. Repeat can loop the queue or a single track.
 - **ReplayGain.** Track or album gain from your tags, with an EBU R128 fallback that measures untagged files once and caches the result.
-- **Multiple Library Folders.** Point omaTUNES at as many folders as you like, with incremental rescans, an optional live folder watcher, and a Duplicates auto-playlist.
+- **Multiple Library Folders.** Point Omatunes at as many folders as you like, with incremental rescans, an optional live folder watcher, and a Duplicates auto-playlist.
 - **Desktop & Quickshell Integration.** Full MPRIS2 D-Bus support, a ready-to-go Waybar module, and a native **Quickshell Player Module** featuring an interactive mini-player pop-up window with live timeline scrubbing, volume controls, liked status tracking, and active shuffle/repeat highlights.
-- **Non-Destructive Library Handling.** No forced re-organization, no renaming your folders, no importing into some walled-off library format. omaTUNES reads your music exactly where it already lives.
+- **Non-Destructive Library Handling.** No forced re-organization, no renaming your folders, no importing into some walled-off library format. Omatunes reads your music exactly where it already lives.
 - **It Opens What You Clicked.** Install `omatunes-open` as your `audio/*` handler and a double-click in your file manager starts *that* track — not the one that was last playing. Files from outside your library work too (their tags are read on the spot), `omatunes /path/to/song.mp3` does the same from a terminal, and the local control socket gained a `play <path>` verb for scripts and widgets.
 
 ---
@@ -158,9 +158,9 @@ bash scripts/quickshell/install.sh
 
 For full details on enabling the plugin in Omarchy's `shell.json` or standalone Quickshell's `shell.qml`, see the [Quickshell Player Module section](#quickshell-player-module--omarchy-v4-bar-plugin) below.
 
-### 4. Add omaTUNES to your app launcher (optional)
+### 4. Add Omatunes to your app launcher (optional)
 
-Drop in a desktop entry and its icon, and omaTUNES shows up in your launcher — `Super + Space` on Omarchy, or the app grid on GNOME/KDE:
+Drop in a desktop entry and its icon, and Omatunes shows up in your launcher — `Super + Space` on Omarchy, or the app grid on GNOME/KDE:
 
 ```bash
 mkdir -p ~/.local/share/applications ~/.local/share/icons/hicolor/256x256/apps
@@ -217,7 +217,7 @@ For CSS styling, see the [Waybar Integration section](USER_MANUAL.md#waybar-inte
 
 ## Quickshell Player Module & Omarchy v4 Bar Plugin
 
-omaTUNES includes a native **Quickshell Player Module** and an **Omarchy v4 Bar Plugin** with an interactive pop-up control card.
+Omatunes includes a native **Quickshell Player Module** and an **Omarchy v4 Bar Plugin** with an interactive pop-up control card.
 
 > **FYI for Omarchy v4 Users**: `install.sh` automatically copies the required `BarWidget.qml` & `manifest.json` files directly into `~/.config/omarchy/plugins/omatunes/`.
 
@@ -263,7 +263,7 @@ OmatunesWidget {}
 ### Module Features & Mouse Controls
 
 - **Bar Widget Display**:
-  - **Offline (OmaTUNES closed)**: Automatically hides from your bar (`visible: false`) to keep your panel clean.
+  - **Offline (Omatunes closed)**: Automatically hides from your bar (`visible: false`) to keep your panel clean.
   - **Playing / Open**: Appears on your bar with play state (`󰐊`/`󰏤`), `Artist - Song Title`, and a red heart icon (``) if liked.
   - **Left Click**: Play / Pause track.
   - **Right Click**: Toggle interactive mini-player pop-up window.
@@ -271,7 +271,7 @@ OmatunesWidget {}
   - **Scroll Wheel Up / Down**: Adjust volume smoothly.
 
 - **Pop-up Mini-Player**:
-  - **Album Cover**: High-res album art (75% width). Click artwork or title to bring the main omaTUNES window to the foreground.
+  - **Album Cover**: High-res album art (75% width). Click artwork or title to bring the main Omatunes window to the foreground.
   - **Transport Controls**: Shuffle (``), Previous (``), Play/Pause (``/``), Next (``), and Repeat (``). Active mode buttons illuminate in your system accent color.
   - **Volume Slider**: Interactive volume control bar.
 
@@ -279,7 +279,7 @@ OmatunesWidget {}
 
 ## Keybindings
 
-These fire whenever the omaTUNES window has focus:
+These fire whenever the Omatunes window has focus:
 
 | Key | Action |
 |---|---|
@@ -301,5 +301,5 @@ The full list — including focus navigation and dialog shortcuts — is in the 
 MIT — see [LICENSE](LICENSE).
 
 Copyright (c) 2026 prof.dog
-Copyright (c) 2026 Balthazzahr and omaTUNES contributors
+Copyright (c) 2026 Balthazzahr and Omatunes contributors
 Copyright (c) 2026 Flavio de Vasconcellos

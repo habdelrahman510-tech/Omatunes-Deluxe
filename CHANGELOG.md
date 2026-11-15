@@ -4,6 +4,34 @@ All notable changes to this build of Omatunes. This fork is maintained by
 [prof.dog](https://github.com/habdelrahman510-tech); the projects it descends from are
 credited in [README.md](README.md).
 
+## [2.0.2] — 2026-11-15
+
+The product is written **Omatunes** now — capital O, everything else lowercase.
+The change is cosmetic on purpose.
+
+### Changed
+
+- The displayed name is `Omatunes` everywhere it appears: the launcher entry
+  (`Name=Omatunes`), the window title, the MPRIS identity, the ReplayGain
+  explainer in Settings, the docs and the bundled Quickshell module.
+- The logo and note assets are renamed to match (`assets/Omatunes …`), so the
+  repository no longer mixes two spellings of the same product.
+
+### Unchanged, deliberately
+
+The binary (`omatunes`), the package names (`omatunes`, `omatunes-bin`), the
+Wayland app id, the MPRIS bus name, the `~/.config/omatunes` and
+`~/.local/share/omatunes` directories, the control socket on port 18888 and the
+`omatunes-open` helper all keep their lowercase names. Renaming any of them
+would orphan existing libraries, break saved state, and stop every script,
+bar widget and MPRIS client that talks to the player.
+
+### Packaging
+
+- `omatunes-bin` packages now record their packager instead of the
+  `Unknown Packager` placeholder — `scripts/publish-repo.sh` was building with
+  no `$PACKAGER` set. Shipped as `omatunes-bin 2.0.1-2`.
+
 ## [2.0.1] — 2026-11-15
 
 Three bugs from 2.0.0, all of them the same mistake in different clothes: state
@@ -103,7 +131,7 @@ the same tags. What changes is how they are read, played and written.
 
 ### Added
 
-- **Open with omaTUNES.** Double-clicking a song in a file manager now plays
+- **Open with Omatunes.** Double-clicking a song in a file manager now plays
   *that* song instead of resuming whatever was last playing.
   - New `play <absolute path>` verb on the local control socket
     (UDP `127.0.0.1:18888`).

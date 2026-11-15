@@ -1,6 +1,6 @@
-# OmaTUNES User Manual
+# Omatunes User Manual
 
-This is the full reference for OmaTUNES — where everything lives, how to do the things you'll want to do day-to-day, and the technical details for when you want to dig deeper (database layout, theming internals, Waybar styling).
+This is the full reference for Omatunes — where everything lives, how to do the things you'll want to do day-to-day, and the technical details for when you want to dig deeper (database layout, theming internals, Waybar styling).
 
 If you just want to get playing, the short version is: launch the app, add your music folder under **Settings → Library → Music folders**, and everything else in here is here when you need it.
 
@@ -100,7 +100,7 @@ The same drawer also shows lyrics, synced or plain:
 
 ## Listening Statistics & Leaderboards
 
-OmaTUNES tracks your detailed listening history and provides a comprehensive statistics dashboard and leaderboard system within a dedicated breakdown modal.
+Omatunes tracks your detailed listening history and provides a comprehensive statistics dashboard and leaderboard system within a dedicated breakdown modal.
 
 **Accessing Statistics**
 - Click the **Listening Statistics** icon (the bar-chart icon) located in the top-right toolbar. This opens a modal overlay displaying the **Leaderboards** panel.
@@ -246,7 +246,7 @@ These populate themselves — no manual curation needed:
 
 ### Smart Playlists
 
-These work like iTunes smart playlists: define rules, and OmaTUNES keeps the list current automatically.
+These work like iTunes smart playlists: define rules, and Omatunes keeps the list current automatically.
 
 - **Create one** from the Smart Playlists tab — this opens the Rule Builder.
 - **Build rules** by picking a field (Title, Artist, Album, Genre, Year, Play Count, Duration, Disc Number, Liked, Has Lyrics, Last Played), an operator (Contains, Is, Greater Than, Less Than, Within Last, Between), and a value. Artist/Album/Genre fields get autocomplete chips.
@@ -260,7 +260,7 @@ These work like iTunes smart playlists: define rules, and OmaTUNES keeps the lis
 
 ## Drag and Drop
 
-Drag files from your file manager onto the omaTUNES window. A scrim covers the window while you hover and tells you what letting go will do.
+Drag files from your file manager onto the Omatunes window. A scrim covers the window while you hover and tells you what letting go will do.
 
 - **Audio files** — replace the queue and start playing the first one. Files from outside your library work too: their tags are read on the spot.
 - **A folder** — walked recursively into a queue, with the first track playing. Big folders are scanned in the background so the window never freezes.
@@ -276,7 +276,7 @@ Settings has two sections worth knowing about.
 **Playback**
 
 - **Crossfade** — 0 to 12 seconds. At 0 the engine splices the next track in at the exact sample, so gapless albums stay seamless. Above 0 it equal-power crossfades between two running decks. Crossfade applies when a track advances by itself; skipping with Next still cuts over immediately.
-- **ReplayGain** — `Off`, `Track`, or `Album`. With it on, omaTUNES reads the ReplayGain tags in the file. Files without tags are measured once with a built-in EBU R128 analyser, cached in `~/.config/omatunes/loudness.json`, and played at normal volume until that measurement is ready.
+- **ReplayGain** — `Off`, `Track`, or `Album`. With it on, Omatunes reads the ReplayGain tags in the file. Files without tags are measured once with a built-in EBU R128 analyser, cached in `~/.config/omatunes/loudness.json`, and played at normal volume until that measurement is ready.
 
 **Library**
 
@@ -293,13 +293,13 @@ Open Settings (the gear icon at the far right of the library tab row) to get to 
 
 - **System** — follows your active Omarchy theme live.
 - **Presets** — Nord, Catppuccin Mocha, Catppuccin Latte, Dracula, Gruvbox (Dark), Everforest (Dark), Monokai.
-- **Custom** — you edit 7 base colors (Background, Primary Text, Accent, Green, Red, Yellow, Blue), and OmaTUNES derives the remaining 4 supporting shades for you — a deeper background variant, a panel background, muted/secondary text — automatically calculated to hit proper WCAG contrast ratios against your base colors. That means a custom theme you build here won't quietly end up with text you can't read; the math handles it for you.
+- **Custom** — you edit 7 base colors (Background, Primary Text, Accent, Green, Red, Yellow, Blue), and Omatunes derives the remaining 4 supporting shades for you — a deeper background variant, a panel background, muted/secondary text — automatically calculated to hit proper WCAG contrast ratios against your base colors. That means a custom theme you build here won't quietly end up with text you can't read; the math handles it for you.
 
 ---
 
 ## Quickshell Player Module & Omarchy v4 Bar Plugin
 
-OmaTUNES includes both a standalone **Quickshell Player Module** and a native **Omarchy v4 Bar Plugin** with interactive pop-up control cards.
+Omatunes includes both a standalone **Quickshell Player Module** and a native **Omarchy v4 Bar Plugin** with interactive pop-up control cards.
 
 ### Installation
 
@@ -320,8 +320,8 @@ Running `install.sh` automatically detects your environment and copies the neces
 
 ### Module Features & Mouse Controls
 
-- **Offline Auto-Hide**: When OmaTUNES is closed, the bar widget dynamically hides (`visible: false`), leaving `0` empty space on your status bar.
-- **Active Player Display**: When OmaTUNES is open, the bar widget appears displaying playback status (`󰐊`/`󰏤`), `Artist - Title`, and a heart icon (``) if liked.
+- **Offline Auto-Hide**: When Omatunes is closed, the bar widget dynamically hides (`visible: false`), leaving `0` empty space on your status bar.
+- **Active Player Display**: When Omatunes is open, the bar widget appears displaying playback status (`󰐊`/`󰏤`), `Artist - Title`, and a heart icon (``) if liked.
 - **Mouse Controls**:
   - **Left Click**: Toggle Play / Pause.
   - **Right Click**: Toggle the pop-up mini-player control card.
@@ -332,11 +332,11 @@ Running `install.sh` automatically detects your environment and copies the neces
 
 ## Waybar Integration
 
-OmaTUNES listens on UDP port `18888` for commands, which the Waybar script talks to.
+Omatunes listens on UDP port `18888` for commands, which the Waybar script talks to.
 
 ### CSS
 
-Drop this into `~/.config/waybar/style.css` for a clean rounded pill that collapses when omaTUNES
+Drop this into `~/.config/waybar/style.css` for a clean rounded pill that collapses when Omatunes
 isn't running:
 
 ```css
@@ -372,9 +372,9 @@ isn't running:
 
 ## Quickshell Player Module
 
-OmaTUNES includes a native **Quickshell** player module (`OmatunesWidget.qml` & `OmatunesPopup.qml`) as an interactive alternative to Waybar.
+Omatunes includes a native **Quickshell** player module (`OmatunesWidget.qml` & `OmatunesPopup.qml`) as an interactive alternative to Waybar.
 
-> **Note for Omarchy Users**: The Quickshell module is prepared and tested for **Omarchy v4**. Minor adjustments may be published once Omarchy v4 is finalized. OmaTUNES remains 100% independent and works standard on any Linux / Wayland desktop with Quickshell.
+> **Note for Omarchy Users**: The Quickshell module is prepared and tested for **Omarchy v4**. Minor adjustments may be published once Omarchy v4 is finalized. Omatunes remains 100% independent and works standard on any Linux / Wayland desktop with Quickshell.
 
 ### Mouse Controls
 
@@ -384,7 +384,7 @@ OmaTUNES includes a native **Quickshell** player module (`OmatunesWidget.qml` & 
 | Right click | Bar Widget | Open interactive mini-player pop-up window |
 | Middle click | Bar Widget | Toggle Like (``) for the current track |
 | Scroll up / down | Bar Widget | Adjust volume (+5% / −5%) |
-| Click artwork / title | Pop-up Card | Focus and bring main omaTUNES window to foreground |
+| Click artwork / title | Pop-up Card | Focus and bring main Omatunes window to foreground |
 | Drag & Release slider | Pop-up Card | Live track timeline scrubbing / seeking |
 | Click Shuffle (``) / Repeat (``) | Pop-up Card | Toggle Shuffle / Repeat with live accent highlight |
 
@@ -440,14 +440,14 @@ OmatunesWidget {}
 
 ## Opening Files from a File Manager
 
-Double-clicking a song should play that song, and nothing else. omaTUNES ships a
+Double-clicking a song should play that song, and nothing else. Omatunes ships a
 small helper, `omatunes-open`, to make that true. Point your file manager's
 `audio/*` handler at `omatunes.desktop` (the package installs it with
 `Exec=omatunes-open %F`, so usually there is nothing to do) and:
 
-- if omaTUNES is running, the helper sends `play <absolute path>` to its local
+- if Omatunes is running, the helper sends `play <absolute path>` to its local
   control socket and the clicked track starts;
-- if it is not running, the helper starts omaTUNES with the path as an argument,
+- if it is not running, the helper starts Omatunes with the path as an argument,
   and the player starts that file once its library scan finishes.
 
 Either way the file you clicked wins over whatever was playing last, including

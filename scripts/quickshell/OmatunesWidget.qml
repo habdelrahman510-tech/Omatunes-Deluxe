@@ -26,10 +26,10 @@ Rectangle {
     }
 
     function focusOmatunes() {
-        runCmd("hyprctl dispatch focuswindow class:^omatunes$ || hyprctl dispatch focuswindow title:OmaTUNES || omarchy-launch-or-focus omatunes");
+        runCmd("hyprctl dispatch focuswindow class:^omatunes$ || hyprctl dispatch focuswindow title:Omatunes || omarchy-launch-or-focus omatunes");
     }
 
-    // STRICT OmaTUNES matching ONLY
+    // STRICT Omatunes matching ONLY
     property var activePlayer: {
         var players = Mpris.players ? Mpris.players.values : [];
         for (var i = 0; i < players.length; i++) {

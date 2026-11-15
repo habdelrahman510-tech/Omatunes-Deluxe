@@ -66,7 +66,7 @@ SESSION_FILE = CACHE_DIR / "waybar_omatunes_session.pkl"
 # 1. STATISTICS FEATURE: The session data accumulated here (daily_history,
 #    weekly_history, monthly_history, total_tracks, total_minutes, artist data,
 #    records) is intentionally retained for a planned in-app Statistics feature
-#    inside the Rust omaTUNES application. Do NOT remove or restructure these
+#    inside the Rust Omatunes application. Do NOT remove or restructure these
 #    fields without first verifying whether that feature depends on the current
 #    field layout.
 #
@@ -260,7 +260,7 @@ if len(sys.argv) > 1:
             s.close()
         except:
             pass
-        # --click focus: focus the omaTUNES window via hyprctl.
+        # --click focus: focus the Omatunes window via hyprctl.
         # Not wired to any Waybar action currently (on-click-backward requires
         # Waybar >= a later release). Kept here for potential future use.
         if button == "focus":

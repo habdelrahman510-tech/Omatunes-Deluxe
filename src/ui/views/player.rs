@@ -135,7 +135,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             .content_fit(iced::ContentFit::Cover)
             .into()
     } else {
-        let note_bytes = include_bytes!("../../../assets/OmaTUNES NOTE.png");
+        let note_bytes = include_bytes!("../../../assets/Omatunes NOTE.png");
         let handle = iced::widget::image::Handle::from_bytes(note_bytes.to_vec());
         container(
             image(handle)
@@ -1764,7 +1764,7 @@ fn achievements_tab_view(state: &crate::app::AppState) -> Element<'_, Message> {
                     let handle = if let Some(data) = cover_data {
                         iced::widget::image::Handle::from_bytes(data)
                     } else {
-                        let note_bytes = include_bytes!("../../../assets/OmaTUNES NOTE.png");
+                        let note_bytes = include_bytes!("../../../assets/Omatunes NOTE.png");
                         iced::widget::image::Handle::from_bytes(note_bytes.to_vec())
                     };
                     cache.insert(cache_key, handle.clone());
