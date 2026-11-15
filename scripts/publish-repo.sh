@@ -64,7 +64,10 @@ fi
 cp "$pkg_path" "$dest/"
 
 # Pages has a 1 GB soft limit and every release is ~12 MB. Keep the newest
-# three packages so an upgrade can still roll back a version.
+# three packages so a bad release can still be rolled back by URL:
+#   sudo pacman -U https://…/x86_64/omatunes-bin-2.0.0-1-x86_64.pkg.tar.zst
+# Only the newest version is indexed in the database; pacman keeps one entry
+# per package name.
 mapfile -t old < <(ls -1t "$dest"/"$PKGBASE"-*.pkg.tar.zst | tail -n +4)
 if [ ${#old[@]} -gt 0 ]; then
   echo "==> pruning ${#old[@]} old package(s)"
