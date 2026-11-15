@@ -20,12 +20,26 @@ SITE="https://habdelrahman510-tech.github.io/omatunes-repo"
 
 pkg_path="${1:-}"
 
+# makepkg stamps .PKGINFO with $PACKAGER and falls back to "Unknown Packager",
+# which then shows up in every user's `pacman -Qi`. Borrow the git identity.
+if [ -z "${PACKAGER:-}" ]; then
+  name=$(git -C "$REPO_ROOT" config user.name || true)
+  mail=$(git -C "$REPO_ROOT" config user.email || true)
+  if [ -n "$name" ] && [ -n "$mail" ]; then
+    export PACKAGER="$name <$mail>"
+  fi
+fi
+
 if [ -z "$pkg_path" ]; then
   build_dir=$(mktemp -d "${TMPDIR:-/tmp}/omatunes-pkg.XXXXXX")
   trap 'rm -rf "$build_dir"' EXIT
   cp "$REPO_ROOT/packaging/$PKGBASE/PKGBUILD" "$build_dir/PKGBUILD"
+  # Keep downloaded sources between builds: every publish would otherwise pull
+  # the same 12 MB release tarball again for no reason.
+  src_cache="${OMATUNES_SRC_CACHE:-$HOME/.cache/omatunes-src}"
+  mkdir -p "$src_cache"
   echo "==> building $PKGBASE"
-  ( cd "$build_dir" && makepkg -f >/dev/null )
+  ( cd "$build_dir" && SRCDEST="$src_cache" makepkg -f >/dev/null )
   pkg_path=$(find "$build_dir" -maxdepth 1 -name '*.pkg.tar.zst' -print -quit)
 fi
 
