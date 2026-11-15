@@ -4,6 +4,31 @@ All notable changes to this build of Omatunes. This fork is maintained by
 [prof.dog](https://github.com/habdelrahman510-tech); the projects it descends from are
 credited in [README.md](README.md).
 
+## [2.0.1] — 2026-11-15
+
+Three bugs from 2.0.0, all of them the same mistake in different clothes: state
+that was copied once and never refreshed.
+
+### Fixed
+
+- **Repeat-one no longer advances to the next track.** The app decided the
+  repeat mode, but the engine is what actually advances — it spliced in
+  whatever had been preloaded, and in `RepeatMode::One` that was still the
+  queue's next track. Repeat-one now preloads the *current* file, so it is a
+  true gapless loop and the engine has no path left to escape through. A
+  same-path splice is recognised and does not count as a new play or re-read
+  the cover.
+- **Edited lyrics no longer revert when the track changes.** The play queue
+  held track snapshots taken when playback started, and saving tags updated
+  the library but not the queue, so the next advance handed the player the
+  pre-edit copy. Playback now takes the canonical track, saving tags syncs the
+  queue, and any library scan — including the rescan our own write triggers —
+  refreshes the queue, the now-playing track and the selection in place.
+- **The library list follows the playing track again.** The row highlight is
+  driven by the selection, which only changed when you clicked. Playback now
+  moves a single-row selection onto the playing track; a deliberate
+  multi-track selection is left alone.
+
 ## [2.0.0] — 2026-11-13
 
 The playback engine, the library and the editing tools were rebuilt. Nothing
