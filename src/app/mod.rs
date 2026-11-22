@@ -11,6 +11,7 @@ use mpris_server::{LoopStatus, PlaybackStatus};
 
 mod achievements;
 mod browse;
+mod companion;
 mod dnd;
 mod overlays;
 mod playback;
@@ -244,6 +245,14 @@ pub enum Message {
     /// Resolved against the library; if it is not in the library the file's own
     /// tags are read so any audio file can be played on click.
     PlayPath(std::path::PathBuf),
+    /// Bring the (possibly hidden) window back on screen. Sent by the companion
+    /// when the bar's album art is clicked: a `--background` instance owns a
+    /// window that was never mapped, so `focuswindow` has nothing to focus.
+    ShowWindow,
+    /// The player window went away. A daemon does not stop when its last window
+    /// closes, so the process has to say so itself — closing the window still
+    /// quits, exactly as it did before the window became optional.
+    WindowClosed,
     PlayAlbum(String),
     ToggleAlbumPlayPause(String),
     PlayPause,
@@ -258,6 +267,7 @@ pub enum Message {
     TracklistScrolled(iced::widget::scrollable::Viewport),
     ToggleShuffle,
     ToggleRepeat,
+    SetRepeat(RepeatMode),
     SeekRelative(i64),
     VolumeStep(f32),
 
@@ -792,6 +802,10 @@ pub struct AppState {
     pub playlist_tab: PlaylistTab,
     pub right_panel_tab: Option<RightPanelTab>,
     pub equalizer: crate::audio::eq::EqSettings,
+    /// Last companion snapshot body written; avoids redundant disk writes.
+    companion_last_body: Option<String>,
+    /// Monotonic companion snapshot revision.
+    companion_revision: u64,
     pub crossfade_secs: f32,
     pub replaygain: crate::audio::ReplayGainMode,
     /// Path already handed to the engine as the next deck, so we don't
@@ -912,7 +926,7 @@ impl GroupByControlState {
 }
 
 impl AppState {
-    fn new() -> (Self, Task<Message>) {
+    fn new(background: bool) -> (Self, Task<Message>) {
         let audio = AudioPlayer::spawn();
         let spectrum_analyzer = SpectrumAnalyzer::new(audio.sample_buffer.clone());
 
@@ -1106,6 +1120,8 @@ impl AppState {
                 }
             }),
             equalizer: db_equalizer,
+            companion_last_body: None,
+            companion_revision: 0,
             crossfade_secs: cfg.crossfade_secs,
             replaygain: cfg.replaygain,
             preloaded_path: None,
@@ -1299,7 +1315,18 @@ impl AppState {
             state.next_notification_id += 1;
         }
 
-        (state, scan_task)
+        // Publish the companion snapshot once at start-up so a widget opened
+        // before anything has changed still sees the restored queue.
+        state.publish_companion();
+
+        // A daemon starts with no window at all; a normal start opens the one.
+        let window_task = if background {
+            Task::none()
+        } else {
+            show_player_window()
+        };
+
+        (state, Task::batch([scan_task, window_task]))
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -1357,6 +1384,10 @@ impl AppState {
                     self.play_dropped_queue(tracks)
                 }
             }
+
+            Message::ShowWindow => show_player_window(),
+
+            Message::WindowClosed => iced::exit(),
 
             Message::PlayPath(path) => {
                 // Prefer the library copy: it carries the persisted like state and
@@ -1632,6 +1663,7 @@ impl AppState {
                     });
                 }
                 self.write_current_liked_status();
+                self.publish_companion();
                 Task::none()
             }
 
@@ -1641,6 +1673,22 @@ impl AppState {
                 self.preloaded_path = None;
                 self.preload_next();
                 self.write_current_liked_status();
+                self.publish_companion();
+                Task::none()
+            }
+
+            Message::SetRepeat(mode) => {
+                // Idempotent: the companion re-asserts the mode it read, so a
+                // write that asks for the state we are already in must not
+                // disturb preloading or bump the companion revision.
+                if self.repeat != mode {
+                    self.repeat = mode;
+                    self.send_mpris(MprisUpdate::Loop(self.repeat.mpris()));
+                    self.preloaded_path = None;
+                    self.preload_next();
+                    self.write_current_liked_status();
+                    self.publish_companion();
+                }
                 Task::none()
             }
 
@@ -2118,7 +2166,7 @@ impl AppState {
                             self.audio.send(AudioCommand::Seek(dur));
                             self.position = dur;
                             self.last_accumulated_position = dur;
-                            self.send_mpris(MprisUpdate::Position(dur));
+                            self.send_mpris(MprisUpdate::Seeked(dur));
                         }
                         MprisCommand::SeekRelative(offset_micros) => {
                             let new_pos = if offset_micros >= 0 {
@@ -2136,7 +2184,7 @@ impl AppState {
                             self.audio.send(AudioCommand::Seek(new_pos));
                             self.position = new_pos;
                             self.last_accumulated_position = new_pos;
-                            self.send_mpris(MprisUpdate::Position(new_pos));
+                            self.send_mpris(MprisUpdate::Seeked(new_pos));
                         }
                     }
                 }
@@ -6478,6 +6526,7 @@ impl AppState {
                         return self.play_track_internal(first);
                     }
                 }
+                self.publish_companion();
                 Task::none()
             }
 
@@ -6546,6 +6595,7 @@ impl AppState {
                         db.last_queue_paths = queue_paths;
                     });
                 }
+                self.publish_companion();
                 Task::none()
             }
 
@@ -6558,6 +6608,7 @@ impl AppState {
                         db.last_queue_paths = queue_paths;
                     });
                 }
+                self.publish_companion();
                 Task::none()
             }
 
@@ -6570,6 +6621,7 @@ impl AppState {
                         db.last_queue_paths = queue_paths;
                     });
                 }
+                self.publish_companion();
                 Task::none()
             }
 
@@ -6579,6 +6631,7 @@ impl AppState {
                 crate::db::write(|db| {
                     db.last_queue_paths = queue_paths;
                 });
+                self.publish_companion();
                 Task::none()
             }
 
@@ -6603,6 +6656,7 @@ impl AppState {
                         });
                     }
                 }
+                self.publish_companion();
                 Task::none()
             }
 
@@ -7776,6 +7830,9 @@ impl AppState {
                 iced::Event::Window(iced::window::Event::Resized(size)) => Some(
                     Message::WindowResized(size.width as f32, size.height as f32),
                 ),
+                iced::Event::Window(iced::window::Event::Closed) => {
+                    Some(Message::WindowClosed)
+                }
                 iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
                     Some(Message::GlobalCursorMoved(position))
                 }
@@ -7902,12 +7959,24 @@ impl AppState {
                             let msg = String::from_utf8_lossy(&buf[..len]);
                             let msg_str = msg.trim();
                             if msg_str.starts_with("seek ") {
-                                if let Ok(secs) = msg_str[5..].trim().parse::<u64>() {
-                                    return Some((
-                                        Message::Seek(std::time::Duration::from_secs(secs)),
-                                        Some(s),
-                                    ));
+                                // omatunes-ctl sends fractional seconds
+                                // ("seek 12.500"); parsing as u64 silently
+                                // dropped every seek from the bar's timeline.
+                                if let Ok(secs) = msg_str[5..].trim().parse::<f64>() {
+                                    if secs.is_finite() && secs >= 0.0 {
+                                        return Some((
+                                            Message::Seek(std::time::Duration::from_secs_f64(secs)),
+                                            Some(s),
+                                        ));
+                                    }
                                 }
+                            }
+                            // `show` — the companion's album art, or a second
+                            // launch, asking the hidden instance to put its
+                            // window on screen. Omarchy's launcher cannot do
+                            // this: it looks for a mapped window to focus.
+                            if msg_str.eq_ignore_ascii_case("show") {
+                                return Some((Message::ShowWindow, Some(s)));
                             }
                             // `play <absolute path>` — used by omatunes-open so a file
                             // picked in the file manager plays *that* file rather than
@@ -7919,6 +7988,43 @@ impl AppState {
                                         Message::PlayPath(std::path::PathBuf::from(p)),
                                         Some(s),
                                     ));
+                                }
+                            }
+                            // `repeat off|queue|track` — absolute, so the
+                            // companion can re-assert the mode it read without
+                            // toggling past it. Bare `repeat` still cycles.
+                            if let Some(rest) = msg_str.strip_prefix("repeat ") {
+                                let mode = match rest.trim().to_ascii_lowercase().as_str() {
+                                    "off" | "none" => Some(RepeatMode::Off),
+                                    "queue" | "all" | "playlist" => Some(RepeatMode::All),
+                                    "track" | "one" => Some(RepeatMode::One),
+                                    _ => None,
+                                };
+                                if let Some(mode) = mode {
+                                    return Some((Message::SetRepeat(mode), Some(s)));
+                                }
+                            }
+                            // `eq on|off` and `eq preset <Name>` drive the real
+                            // DSP; unknown names are ignored rather than faked.
+                            if let Some(rest) = msg_str.strip_prefix("eq ") {
+                                let rest = rest.trim();
+                                if rest.eq_ignore_ascii_case("on") {
+                                    return Some((Message::EqToggled(true), Some(s)));
+                                }
+                                if rest.eq_ignore_ascii_case("off") {
+                                    return Some((Message::EqToggled(false), Some(s)));
+                                }
+                                if let Some(name) = rest.strip_prefix("preset ") {
+                                    let name = name.trim();
+                                    if crate::audio::eq::BUILTIN_PRESETS
+                                        .iter()
+                                        .any(|preset| preset.name == name)
+                                    {
+                                        return Some((
+                                            Message::EqPresetSelected(name.to_string()),
+                                            Some(s),
+                                        ));
+                                    }
                                 }
                             }
                             match msg_str {
@@ -8097,30 +8203,56 @@ fn merge_song_order(manual_order: &[PathBuf], live_set: &[PathBuf]) -> Vec<PathB
 
 // ── Ponto de entrada iced ─────────────────────────────────────────────────────
 
-pub fn run() -> iced::Result {
-    iced::application("Omatunes", AppState::update, AppState::view)
-        .subscription(AppState::subscription)
-        .font(include_bytes!(
-            "../../assets/JetBrainsMonoNerdFontMono-Regular.ttf"
-        ))
-        .font(include_bytes!("../../assets/NotoSansArabic-Regular.ttf"))
-        .font(include_bytes!("../../assets/NotoSansArabic-Bold.ttf"))
-        .default_font(iced::Font {
-            family: iced::font::Family::Name("JetBrainsMono Nerd Font Mono"),
-            weight: iced::font::Weight::Normal,
-            stretch: iced::font::Stretch::Normal,
-            style: iced::font::Style::Normal,
-        })
-        .theme(|state: &AppState| state.iced_theme.clone())
-        .scale_factor(|state: &AppState| state.font_scale as f64)
-        .window(iced::window::Settings {
-            size: iced::Size::new(960.0, 640.0),
-            min_size: Some(iced::Size::new(700.0, 480.0)),
-            platform_specific: iced::window::settings::PlatformSpecific {
-                application_id: "omatunes".to_string(),
-                ..Default::default()
-            },
+/// The player's one window: its size, its floor and its Wayland app id.
+fn player_window() -> iced::window::Settings {
+    iced::window::Settings {
+        size: iced::Size::new(960.0, 640.0),
+        min_size: Some(iced::Size::new(700.0, 480.0)),
+        platform_specific: iced::window::settings::PlatformSpecific {
+            application_id: "omatunes".to_string(),
             ..Default::default()
-        })
-        .run_with(AppState::new)
+        },
+        ..Default::default()
+    }
+}
+
+/// Ask for the player window: focus it when it already exists, open it when it
+/// does not. The engine outlives the window, so `show` has to be able to build
+/// one again after the user closed the last one.
+fn show_player_window() -> Task<Message> {
+    iced::window::get_latest().then(|latest| match latest {
+        Some(id) => iced::window::gain_focus(id),
+        None => {
+            let (_id, opened) = iced::window::open(player_window());
+            opened.then(|id| iced::window::gain_focus(id))
+        }
+    })
+}
+
+/// The daemon asks for a view per window; the player has exactly one shape.
+fn view_for_window<'a>(state: &'a AppState, _window: iced::window::Id) -> Element<'a, Message> {
+    state.view()
+}
+
+pub fn run(background: bool) -> iced::Result {
+    // A daemon, not an application: wayland has no way to hide a window
+    // (`winit::Window::set_visible` is a no-op there), so the only honest
+    // hidden start is a process with *no* window at all. `--background` skips
+    // the window; the bar's album art asks for one later over `show`.
+    iced::daemon("Omatunes", AppState::update, view_for_window)
+    .subscription(AppState::subscription)
+    .font(include_bytes!(
+        "../../assets/JetBrainsMonoNerdFontMono-Regular.ttf"
+    ))
+    .font(include_bytes!("../../assets/NotoSansArabic-Regular.ttf"))
+    .font(include_bytes!("../../assets/NotoSansArabic-Bold.ttf"))
+    .default_font(iced::Font {
+        family: iced::font::Family::Name("JetBrainsMono Nerd Font Mono"),
+        weight: iced::font::Weight::Normal,
+        stretch: iced::font::Stretch::Normal,
+        style: iced::font::Style::Normal,
+    })
+    .theme(|state: &AppState, _window| state.iced_theme.clone())
+    .scale_factor(|state: &AppState, _window| state.font_scale as f64)
+    .run_with(move || AppState::new(background))
 }

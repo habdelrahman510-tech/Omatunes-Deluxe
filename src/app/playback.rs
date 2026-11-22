@@ -8,50 +8,7 @@ impl AppState {
 
     pub(super) fn notify_mpris_track(&self, status: PlaybackStatus) {
         if let Some(track) = &self.current_track {
-            let art_url = if let Some(parent) = track.path.parent() {
-                let mut found = None;
-                for name in &[
-                    "cover.jpg",
-                    "Cover.jpg",
-                    "cover.png",
-                    "Cover.png",
-                    "cover.webp",
-                    "Cover.webp",
-                    "folder.jpg",
-                    "Folder.jpg",
-                ] {
-                    let p = parent.join(name);
-                    if p.exists() {
-                        found = Some(format!("file://{}", p.to_string_lossy()));
-                        break;
-                    }
-                }
-                if let Some(url) = found {
-                    url
-                } else if let Some(cover_bytes) = crate::library::scanner::load_cover(&track.path) {
-                    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-                    let cache_art = PathBuf::from(home).join(".cache/omatunes_current_art.jpg");
-                    if std::fs::write(&cache_art, cover_bytes).is_ok() {
-                        // Cache-bust with track id + timestamp so QML Image (cache:true) reloads per track
-                        let ts = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis();
-                        format!(
-                            "file://{}?t={}_{}",
-                            cache_art.to_string_lossy(),
-                            track.id,
-                            ts
-                        )
-                    } else {
-                        String::new()
-                    }
-                } else {
-                    String::new()
-                }
-            } else {
-                String::new()
-            };
+            let art_url = Self::publish_current_art(track);
 
             self.send_mpris(MprisUpdate::Metadata {
                 title: track.title.clone(),
@@ -60,12 +17,46 @@ impl AppState {
                 duration_us: track.duration.as_micros() as i64,
                 url: track.path.to_string_lossy().to_string(),
                 art_url,
+                liked: track.liked,
             });
         }
+        // A new track is a nonlinear jump to zero. MPRIS clients keep their own
+        // running clock from Rate + last Seeked, so Metadata alone would leave
+        // every bar and popup showing the previous track's position.
+        self.send_mpris(MprisUpdate::Seeked(std::time::Duration::ZERO));
         self.send_mpris(MprisUpdate::Status(status));
         self.send_mpris(MprisUpdate::Shuffle(self.shuffle));
         self.send_mpris(MprisUpdate::Loop(self.repeat.mpris()));
         self.write_current_liked_status();
+    }
+
+    /// Advertise the artwork the player itself draws.
+    ///
+    /// The library's own cover loader decides what a track's art is: the
+    /// embedded picture first, the album folder's cover only when the file has
+    /// none. Preferring a folder file here — as this used to — advertised the
+    /// album's shared `cover.jpg` for every track in the folder, so MPRIS
+    /// consumers showed the wrong sleeve while Omatunes showed the right one.
+    ///
+    /// The bytes go to one stable cache file so nothing accumulates; the URL
+    /// carries the track id as its query, which gives QML's image cache a new
+    /// key per track. Keying it on the track and not on the clock means repeated
+    /// notifications for the same track reuse the same URL instead of forcing a
+    /// reload.
+    fn publish_current_art(track: &Track) -> String {
+        let bytes = track
+            .cover_data
+            .clone()
+            .or_else(|| crate::library::scanner::load_cover(&track.path));
+        let Some(bytes) = bytes else {
+            return String::new();
+        };
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let cache_art = PathBuf::from(home).join(".cache/omatunes_current_art.jpg");
+        if std::fs::write(&cache_art, bytes).is_err() {
+            return String::new();
+        }
+        format!("file://{}?t={}", cache_art.to_string_lossy(), track.id)
     }
 
     pub(super) fn write_current_liked_status(&self) {
@@ -107,6 +98,10 @@ impl AppState {
         } else {
             let _ = std::fs::write(&state_path, json.clone());
         }
+        // Publish the rating over MPRIS so external clients do not have to
+        // read the cache file to know whether the current track is liked.
+        self.send_mpris(MprisUpdate::Rating(status));
+
         // Dual-write to REAL_HOME for test isolation so live QuickShell (real HOME) sees TEST's state
         if let Ok(real_home) = std::env::var("REAL_HOME") {
             if real_home != home {
@@ -129,6 +124,7 @@ impl AppState {
     pub(super) fn commit_equalizer(&mut self) {
         self.audio.eq.update(self.equalizer);
         crate::db::write(|db| db.equalizer = self.equalizer);
+        self.publish_companion();
     }
 
     pub(super) fn maybe_shuffle_queue(&mut self, anchor: Option<i64>) {
@@ -144,12 +140,14 @@ impl AppState {
                 self.queue.insert(0, item);
                 let queue_paths: Vec<PathBuf> = self.queue.iter().map(|t| t.path.clone()).collect();
                 crate::db::write(|db| db.last_queue_paths = queue_paths);
+                self.publish_companion();
                 return;
             }
         }
         self.queue.shuffle(&mut rng);
         let queue_paths: Vec<PathBuf> = self.queue.iter().map(|t| t.path.clone()).collect();
         crate::db::write(|db| db.last_queue_paths = queue_paths);
+        self.publish_companion();
     }
 
     /// The track an automatic advance will land on. Shuffle is already baked
@@ -276,6 +274,8 @@ impl AppState {
             self.update_filtered_tracks();
         }
 
+        self.publish_companion();
+
         // Keep the list in step with the playing track when it is visible.
         if let Some(y) = self.calculate_scroll_offset(track.id) {
             let target_y = (y - 120.0).max(0.0);
@@ -397,6 +397,7 @@ impl AppState {
             self.update_filtered_tracks();
         }
         self.preload_next();
+        self.publish_companion();
 
         if let Some(y) = self.calculate_scroll_offset(track.id) {
             let target_y = (y - 120.0).max(0.0);

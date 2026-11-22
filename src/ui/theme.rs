@@ -152,7 +152,11 @@ pub fn color_to_hex(c: Color) -> String {
 }
 
 fn palette_mutex() -> &'static Mutex<Palette> {
-    PALETTE.get_or_init(|| Mutex::new(load_palette_from_config()))
+    PALETTE.get_or_init(|| {
+        let palette = load_palette_from_config();
+        publish_theme_export(&palette);
+        Mutex::new(palette)
+    })
 }
 
 pub fn load_palette_from_config() -> Palette {
@@ -212,11 +216,98 @@ pub fn load_system_theme() {
 
 pub fn apply_palette(new_palette: Palette) {
     *palette_mutex().lock().unwrap() = new_palette;
+    publish_theme_export(&new_palette);
 }
 
 /// Re-read the Omarchy theme from disk and update the palette without restarting.
 pub fn reload_system_theme() {
-    *palette_mutex().lock().unwrap() = load_palette_from_config();
+    apply_palette(load_palette_from_config());
+}
+
+// ── Companion theme export ───────────────────────────────────────────────────
+//
+// Desktop companion clients (the Omarchy/Quickshell plugin) must paint with the
+// same semantic palette this application resolved, including the two theme
+// sources that live in Omatunes' own configuration (`Preset`, `Custom`) and the
+// roles this module derives from an Omarchy `colors.toml` (`mantle`, `surface`,
+// `overlay`, `subtext`). Re-deriving those outside the app would mean a second,
+// drifting copy of the design system, so the resolved palette is published
+// read-only to `~/.cache/omatunes_theme.json` instead.
+//
+// The format is versioned (`schema`), echoes this module's own role names, and
+// is replaced atomically — the same contract style already used for
+// `omatunes_current_state.json`. It is written only when a palette is installed,
+// never on a timer, and failing to write it is never fatal.
+
+const THEME_EXPORT_SCHEMA: u32 = 1;
+
+fn export_theme_name() -> String {
+    let cfg = crate::config::get();
+    match cfg.theme_source.as_str() {
+        "Preset" => cfg.theme_preset.clone(),
+        "Custom" => "custom".to_string(),
+        _ => read_current_theme_name(),
+    }
+}
+
+fn json_escape(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+fn publish_theme_export(palette: &Palette) {
+    let home = match home_dir() {
+        Some(home) => home,
+        None => return,
+    };
+    let path = home.join(".cache/omatunes_theme.json");
+    if let Some(parent) = path.parent() {
+        if std::fs::create_dir_all(parent).is_err() {
+            return;
+        }
+    }
+
+    let cfg = crate::config::get();
+    let json = format!(
+        concat!(
+            "{{\"schema\":{},\"product\":\"omatunes\",\"source\":\"{}\",\"name\":\"{}\",",
+            "\"palette\":{{\"base\":\"{}\",\"mantle\":\"{}\",\"surface\":\"{}\",",
+            "\"overlay\":\"{}\",\"text\":\"{}\",\"subtext\":\"{}\",\"accent\":\"{}\",",
+            "\"green\":\"{}\",\"red\":\"{}\",\"yellow\":\"{}\",\"blue\":\"{}\"}}}}"
+        ),
+        THEME_EXPORT_SCHEMA,
+        json_escape(&cfg.theme_source),
+        json_escape(&export_theme_name()),
+        color_to_hex(palette.base),
+        color_to_hex(palette.mantle),
+        color_to_hex(palette.surface0),
+        color_to_hex(palette.overlay0),
+        color_to_hex(palette.text),
+        color_to_hex(palette.subtext),
+        color_to_hex(palette.accent),
+        color_to_hex(palette.green),
+        color_to_hex(palette.red),
+        color_to_hex(palette.yellow),
+        color_to_hex(palette.blue),
+    );
+
+    let tmp = path.with_extension("tmp.json");
+    if std::fs::write(&tmp, &json).is_ok() && std::fs::rename(&tmp, &path).is_ok() {
+        return;
+    }
+    // Non-atomic fallback: a direct write still beats no contract at all.
+    let _ = std::fs::write(&path, json);
 }
 
 /// Return the name of the currently configured Omarchy theme (for change detection).

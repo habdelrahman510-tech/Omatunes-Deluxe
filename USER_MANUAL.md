@@ -475,7 +475,7 @@ at `127.0.0.1:18888`. Scripts, widgets and keybinds can speak it directly:
 | `next` / `prev` | Next / previous track |
 | `like` | Toggle like on the current track |
 | `shuffle` / `repeat` | Toggle shuffle / repeat |
-| `seek <seconds>` | Seek to an absolute position |
+| `seek <seconds>` | Seek to an absolute position; fractional seconds (e.g. `12.500`) are accepted |
 
 Messages are single datagrams, so keep them under 1024 bytes — a path longer
 than that is rejected by `omatunes-open` rather than silently truncated.

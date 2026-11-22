@@ -23,12 +23,18 @@ pub enum MprisUpdate {
         duration_us: i64,
         url: String,
         art_url: String,
+        liked: bool,
     },
     Status(PlaybackStatus),
+    Rating(bool),
     Volume(f64),
     Shuffle(bool),
     Loop(LoopStatus),
     Position(std::time::Duration),
+    /// A nonlinear jump. MPRIS clients derive the running clock from Rate and
+    /// the last Seeked signal; publishing Position alone leaves their clock
+    /// anchored to the previous track or the pre-seek position.
+    Seeked(std::time::Duration),
 }
 
 pub fn launch(
@@ -123,13 +129,15 @@ pub fn launch(
                         duration_us,
                         url,
                         art_url,
+                        liked,
                     } => {
                         let mut builder = Metadata::builder()
                             .title(title)
                             .artist([artist])
                             .album(album)
                             .length(Time::from_micros(duration_us))
-                            .url(url);
+                            .url(url)
+                            .user_rating(if liked { 1.0 } else { 0.0 });
                         if !art_url.is_empty() {
                             builder = builder.art_url(art_url);
                         }
@@ -138,6 +146,12 @@ pub fn launch(
                     }
                     MprisUpdate::Status(s) => {
                         player.set_playback_status(s).await.ok();
+                    }
+                    MprisUpdate::Rating(liked) => {
+                        // Keep the rest of the metadata; only the rating changes.
+                        let mut metadata = (*player.metadata()).clone();
+                        metadata.set_user_rating(Some(if liked { 1.0 } else { 0.0 }));
+                        player.set_metadata(metadata).await.ok();
                     }
                     MprisUpdate::Volume(v) => {
                         player.set_volume(v).await.ok();
@@ -150,6 +164,13 @@ pub fn launch(
                     }
                     MprisUpdate::Position(d) => {
                         player.set_position(Time::from_micros(d.as_micros() as i64));
+                    }
+                    MprisUpdate::Seeked(d) => {
+                        let time = Time::from_micros(d.as_micros() as i64);
+                        player.set_position(time);
+                        if let Err(err) = player.seeked(time).await {
+                            eprintln!("mpris: failed to emit Seeked: {err}");
+                        }
                     }
                 }
             }
