@@ -124,6 +124,18 @@ mkdir -p ~/.local/bin
 cp target/release/omatunes ~/.local/bin/omatunes
 ```
 
+**On Omarchy, keep a local build permanently in front of the package.**
+`pacman -Syu` overwrites `/usr/bin/omatunes` with the packaged build, which can be older than this
+checkout and lose the MPRIS progress/seek fixes. Omarchy's PATH puts `/usr/local/bin` first, so:
+
+```bash
+./scripts/install-shadow.sh
+```
+
+rebuilds this checkout and installs it as `/usr/local/bin/omatunes`. The plugin, the launcher and
+the keybinding all resolve `omatunes` through PATH, so they pick up the shadow automatically. It
+asks for privileges through `pkexec` when you are not root. Re-run it after pulling new fixes here.
+
 ### 2. Install the Waybar module (optional)
 
 If you want the Waybar integration — playback controls, track info, and listening stats right in your bar — copy the scripts over and make them executable:
