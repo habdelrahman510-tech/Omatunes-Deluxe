@@ -1,6 +1,6 @@
 pkgbase = omatunes
 	pkgdesc = Native Wayland music player for Omarchy, with a 10-band parametric equalizer and Arabic/RTL support
-	pkgver = 2.0.0
+	pkgver = 2.0.2
 	pkgrel = 1
 	url = https://github.com/habdelrahman510-tech/Omatunes-Deluxe
 	arch = x86_64
@@ -19,7 +19,7 @@ pkgbase = omatunes
 	depends = vulkan-icd-loader
 	depends = hicolor-icon-theme
 	conflicts = omatunes-bin
-	source = omatunes-2.0.0.tar.gz::https://github.com/habdelrahman510-tech/Omatunes-Deluxe/archive/v2.0.0.tar.gz
-	sha256sums = 10aa7d68407f8cf1e4033ebc193a41222c4a99c947f7706da9570f89ca69b4e2
+	source = omatunes-2.0.2.tar.gz::https://github.com/habdelrahman510-tech/Omatunes-Deluxe/archive/v2.0.2.tar.gz
+	sha256sums = 54935092dd51f4d5f87b35610bf1029cfac4c2071de4a33e7236127694be7e8d
 
 pkgname = omatunes
