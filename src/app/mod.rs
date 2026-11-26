@@ -713,9 +713,9 @@ pub struct CoverCache {
 pub struct AppState {
     pub playback_state: PlaybackState,
     pub current_track: Option<Track>,
-    /// A second Next inside this window restores `track_before_last_next`.
-    last_next_at: Option<std::time::Instant>,
-    track_before_last_next: Option<Track>,
+    /// A second Next inside this window jumps to the track before this anchor.
+    next_double_tap_at: Option<std::time::Instant>,
+    track_before_next_double_tap: Option<Track>,
     pub queue: Vec<Track>,
     pub position: Duration,
     pub duration: Duration,
@@ -1023,8 +1023,8 @@ impl AppState {
             playback_state: PlaybackState::Stopped,
 
             current_track: None,
-            last_next_at: None,
-            track_before_last_next: None,
+            next_double_tap_at: None,
+            track_before_next_double_tap: None,
             queue: Vec::new(),
             position: Duration::ZERO,
             duration: Duration::ZERO,
@@ -1584,7 +1584,7 @@ impl AppState {
 
             Message::NextTrack => self.press_next(),
             Message::PreviousTrack => {
-                self.clear_next_undo();
+                self.clear_next_double_tap();
                 self.advance_track(-1)
             }
 

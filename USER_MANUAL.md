@@ -37,7 +37,7 @@ The player sits across the top of the window and handles everything about what's
 **Playback**
 - **Play/Pause** — `Space`
 - **Previous / Next track** — `p` / `n`
-- **Undo Next** — press Next again within 2 seconds to return to the track you were on before the first press. It works from the player button, `n`, the control socket, and the Omasleeve/global keybind. Previous, selecting another track, or an automatic track change clears the undo window; after an undo, the next press starts a fresh window.
+- **Double-tap Next** — press Next again within 2 seconds to jump one track back from where the pair started. It works from the player button, `n`, the control socket, and the Omasleeve/global keybind. Previous, selecting another track, or an automatic track change clears the window; after a double-tap, the next press starts a fresh window.
 - **Seek** — click anywhere on the progress bar to jump there, or use `←`/`→` to nudge by the configured seek step (5 seconds by default)
 - **Volume** — drag the slider, scroll anywhere over the player panel, or use `+`/`=` and `-` (5% steps by default)
 - **Shuffle** (`s`) and **Repeat** (`r`) — both light up in your theme's accent color when active. Repeat cycles through three states: off, repeat the whole queue, and repeat the current track only. The button changes to a "1" glyph in track mode, and MPRIS reports the matching `LoopStatus`.
@@ -473,7 +473,7 @@ at `127.0.0.1:18888`. Scripts, widgets and keybinds can speak it directly:
 |---|---|
 | `play <absolute path>` | Play that file, replacing the current track |
 | `play-pause` | Toggle play/pause |
-| `next` / `prev` | Next / previous track. A second `next` within 2 s restores the previous track |
+| `next` / `prev` | Next / previous track. A second `next` within 2 s jumps back one track from where the pair started |
 | `like` | Toggle like on the current track |
 | `shuffle` / `repeat` | Toggle shuffle / repeat |
 | `seek <seconds>` | Seek to an absolute position; fractional seconds (e.g. `12.500`) are accepted |
@@ -491,7 +491,7 @@ than that is rejected by `omatunes-open` rather than silently truncated.
 | `→` | Player | Seek forward (default 5s) |
 | `←` | Player | Seek backward (default 5s) |
 | `↑` / `↓` | Track List | Move track focus up/down |
-| `n` / `N` | Player | Next track; press again within 2 s to undo that Next |
+| `n` / `N` | Player | Next track; double-tap within 2 s to jump back one track |
 | `p` / `P` | Player | Previous track |
 | `s` / `S` | Player | Toggle Shuffle |
 | `r` / `R` | Player | Toggle Repeat |
