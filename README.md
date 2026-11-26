@@ -19,7 +19,7 @@ This build carries upstream Omatunes 1.2.1 and adds these things:
 - **Proper Arabic and right-to-left support** — Noto Sans Arabic bundled, advanced shaping so letters join correctly, and a per-line direction guard, so Arabic metadata and lyrics read properly instead of scrambling.
 - **Lyrics fixes** — unsynchronized lyrics wrap at the panel width, and every RTL line keeps the correct margin, not just the first.
 - **Open with Omatunes** — double-click a song in your file manager and *that* song plays. The old behaviour resumed whatever was last playing, which made picking a track from outside the player useless. Ships `omatunes-open` as the `audio/*` handler, plays files from outside your library too, and adds a `play <path>` verb to the local control socket.
-- **A rebuilt playback engine** — two decks, so the next track is preloaded and spliced in at the exact sample: gapless by default, with an optional 0–12 s equal-power crossfade. ReplayGain follows your tags, or measures untagged files with a built-in EBU R128 analyser, and the repeat button now has a *repeat this song only* state.
+- **A rebuilt playback engine** — two decks, so the next track is preloaded and spliced in at the exact sample: gapless by default, with an optional 0–12 s equal-power crossfade. ReplayGain follows your tags, or measures untagged files with a built-in EBU R128 analyser, and the repeat button now has a *repeat this song only* state. Next is undoable: press it again within two seconds to return to the track you just left.
 - **A library that keeps up** — several music folders instead of one, incremental rescans that only re-open changed files, and an optional watcher that picks up new or removed tracks within a second. A **Duplicates** auto-playlist groups the same recording across formats.
 - **Drag and drop** — drop songs or a folder on the window and they play; drop an `.m3u`/`.m3u8` and it becomes a playlist; drop an image on the tag editor and it becomes the cover. Cover art can be extracted to the album folder or embedded from it.
 
@@ -309,7 +309,7 @@ These fire whenever the Omatunes window has focus:
 |---|---|
 | `Space` | Play / Pause |
 | `→` / `←` | Seek +5s / −5s |
-| `n` / `p` | Next / Previous track |
+| `n` / `p` | Next / Previous track. Press `n` again within 2 s to undo that Next |
 | `s` | Toggle Shuffle |
 | `r` | Toggle Repeat |
 | `+` or `=` | Volume +5% |
