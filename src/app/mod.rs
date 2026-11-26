@@ -249,10 +249,12 @@ pub enum Message {
     /// when the bar's album art is clicked: a `--background` instance owns a
     /// window that was never mapped, so `focuswindow` has nothing to focus.
     ShowWindow,
-    /// The player window went away. A daemon does not stop when its last window
-    /// closes, so the process has to say so itself — closing the window still
-    /// quits, exactly as it did before the window became optional.
+    /// The player window went away. The daemon stays alive without it so the
+    /// bar companion keeps working; `quit` is the verb that ends the process.
     WindowClosed,
+    /// Clean shutdown from the control socket. Unlike a window close, this
+    /// ends the engine and lets `main` flush state before returning.
+    Quit,
     PlayAlbum(String),
     ToggleAlbumPlayPause(String),
     PlayPause,
@@ -1387,7 +1389,11 @@ impl AppState {
 
             Message::ShowWindow => show_player_window(),
 
-            Message::WindowClosed => iced::exit(),
+            // Wayland cannot hide a mapped window, so closing it simply leaves
+            // the daemon with no window. The bar still owns MPRIS and the socket.
+            Message::WindowClosed => Task::none(),
+
+            Message::Quit => iced::exit(),
 
             Message::PlayPath(path) => {
                 // Prefer the library copy: it carries the persisted like state and
@@ -8034,6 +8040,7 @@ impl AppState {
                                 "prev" => return Some((Message::PreviousTrack, Some(s))),
                                 "shuffle" => return Some((Message::ToggleShuffle, Some(s))),
                                 "repeat" => return Some((Message::ToggleRepeat, Some(s))),
+                                "quit" => return Some((Message::Quit, Some(s))),
                                 _ => {}
                             }
                         }

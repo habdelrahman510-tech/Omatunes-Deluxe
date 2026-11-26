@@ -136,6 +136,18 @@ rebuilds this checkout and installs it as `/usr/local/bin/omatunes`. The plugin,
 the keybinding all resolve `omatunes` through PATH, so they pick up the shadow automatically. It
 asks for privileges through `pkexec` when you are not root. Re-run it after pulling new fixes here.
 
+**Closing the window does not kill the player.** Omatunes is a daemon, so the bar companion keeps
+playing with no window on screen. Stop it cleanly when you actually want the engine gone:
+
+```bash
+# with the Omarchy companion installed
+omatunes-ctl quit
+# or, without the companion
+printf quit > /dev/udp/127.0.0.1/18888
+```
+
+That flushes state and removes the pid file; no `kill -9` required.
+
 ### 2. Install the Waybar module (optional)
 
 If you want the Waybar integration — playback controls, track info, and listening stats right in your bar — copy the scripts over and make them executable:
