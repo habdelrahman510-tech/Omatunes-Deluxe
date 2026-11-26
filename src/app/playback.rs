@@ -209,9 +209,9 @@ impl AppState {
     /// The engine spliced into the next deck on its own. Take ownership of the
     /// change: the UI, MPRIS, stats and the preload chain all have to follow.
     pub(super) fn on_spliced(&mut self, path: PathBuf) -> Task<Message> {
-        // An automatic splice is not a double-tap candidate; a pending tap
-        // would now anchor to a track the operator never asked to leave.
-        self.clear_next_double_tap();
+        // An automatic splice is not a pending double-click; that timer would
+        // now anchor to a track the operator never asked to leave.
+        self.clear_pending_next();
 
         // Repeat-one splices into the same file, so "the track we just left"
         // is the one we are now playing again.
@@ -295,41 +295,36 @@ impl AppState {
         }
     }
 
-    /// First Next advances immediately. A second Next inside two seconds means
-    /// Previous from the track where the pair started, not undo back to it.
+    /// Hold the first Next for a quarter second. A second press in that window
+    /// means Previous from where the pair started, with no audible detour.
     pub(super) fn press_next(&mut self) -> Task<Message> {
-        let now = std::time::Instant::now();
         if self.queue.is_empty() {
-            self.clear_next_double_tap();
+            self.clear_pending_next();
             return Task::none();
         }
 
-        if let (Some(at), Some(anchor)) = (
-            self.next_double_tap_at,
-            self.track_before_next_double_tap.take(),
-        ) {
-            if now.duration_since(at) <= std::time::Duration::from_secs(2) {
-                self.clear_next_double_tap();
-                let previous = self.previous_from(&anchor).or_else(|| {
-                    self.current_track
-                        .as_ref()
-                        .and_then(|t| self.previous_from(t))
-                });
-                return match previous {
-                    Some(track) => self.play_track_internal(track),
-                    None => self.advance_track(-1),
-                };
-            }
+        if let Some(anchor) = self.pending_next_anchor.take() {
+            self.clear_pending_next();
+            let previous = self.previous_from(&anchor).or_else(|| {
+                self.current_track
+                    .as_ref()
+                    .and_then(|t| self.previous_from(t))
+            });
+            return match previous {
+                Some(track) => self.play_track_internal(track),
+                None => self.advance_track(-1),
+            };
         }
 
-        self.clear_next_double_tap();
-        let anchor = self.current_track.clone();
-        let task = self.advance_track(1);
-        // advance_track -> play_track_internal clears the old tap state, so
-        // re-arm with the track as it stood before this first press.
-        self.next_double_tap_at = Some(now);
-        self.track_before_next_double_tap = anchor;
-        task
+        self.clear_pending_next();
+        let token = self.pending_next_token;
+        self.pending_next_anchor = self.current_track.clone();
+        Task::perform(
+            async {
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            },
+            move |_| Message::CommitPendingNext(token),
+        )
     }
 
     fn previous_from(&self, track: &Track) -> Option<Track> {
@@ -341,9 +336,10 @@ impl AppState {
         self.queue.get(previous).cloned()
     }
 
-    pub(super) fn clear_next_double_tap(&mut self) {
-        self.next_double_tap_at = None;
-        self.track_before_next_double_tap = None;
+    /// Bumping the token makes any outstanding commit task harmless.
+    pub(super) fn clear_pending_next(&mut self) {
+        self.pending_next_token = self.pending_next_token.wrapping_add(1);
+        self.pending_next_anchor = None;
     }
 
     pub(super) fn advance_track(&mut self, delta: i32) -> Task<Message> {
@@ -407,9 +403,9 @@ impl AppState {
     }
 
     pub(super) fn play_track_internal(&mut self, mut track: Track) -> Task<Message> {
-        // Any explicit play is a fresh context; an old double-tap must not
+        // Any explicit play is a fresh context; a stale pending Next must not
         // survive it and jump from a forgotten anchor.
-        self.clear_next_double_tap();
+        self.clear_pending_next();
 
         // The queue holds snapshots taken when playback started. Tag edits and
         // library rescans update `all_tracks` only, so a stale queue entry

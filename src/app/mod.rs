@@ -260,6 +260,7 @@ pub enum Message {
     PlayPause,
     ToggleLikeCurrent,
     NextTrack,
+    CommitPendingNext(u64),
     PreviousTrack,
     Seek(Duration),
     VolumeChanged(f32),
@@ -713,9 +714,9 @@ pub struct CoverCache {
 pub struct AppState {
     pub playback_state: PlaybackState,
     pub current_track: Option<Track>,
-    /// A second Next inside this window jumps to the track before this anchor.
-    next_double_tap_at: Option<std::time::Instant>,
-    track_before_next_double_tap: Option<Track>,
+    /// Next waits briefly for a second press before it touches the audio.
+    pending_next_token: u64,
+    pending_next_anchor: Option<Track>,
     pub queue: Vec<Track>,
     pub position: Duration,
     pub duration: Duration,
@@ -1023,8 +1024,8 @@ impl AppState {
             playback_state: PlaybackState::Stopped,
 
             current_track: None,
-            next_double_tap_at: None,
-            track_before_next_double_tap: None,
+            pending_next_token: 0,
+            pending_next_anchor: None,
             queue: Vec::new(),
             position: Duration::ZERO,
             duration: Duration::ZERO,
@@ -1583,8 +1584,16 @@ impl AppState {
             },
 
             Message::NextTrack => self.press_next(),
+            Message::CommitPendingNext(token) => {
+                if token == self.pending_next_token {
+                    self.pending_next_anchor = None;
+                    self.advance_track(1)
+                } else {
+                    Task::none()
+                }
+            }
             Message::PreviousTrack => {
-                self.clear_next_double_tap();
+                self.clear_pending_next();
                 self.advance_track(-1)
             }
 
