@@ -2305,7 +2305,8 @@ impl AppState {
                 let mut task = Task::none();
 
                 if let Some(started) = self.lyric_transition_started {
-                    let raw = now.duration_since(started).as_secs_f32() / 0.30;
+                    let raw = now.duration_since(started).as_secs_f32()
+                        / crate::ui::views::player::LYRIC_HANDOFF_SECS;
                     self.lyric_transition_t = 1.0 - (1.0 - raw.min(1.0)).powi(3);
                     if raw >= 1.0 {
                         self.lyric_transition_from = None;
@@ -2316,7 +2317,8 @@ impl AppState {
                 }
 
                 if let Some(started) = self.lyrics_scroll_started {
-                    let raw = now.duration_since(started).as_secs_f32() / 0.42;
+                    let raw = now.duration_since(started).as_secs_f32()
+                        / crate::ui::views::player::LYRIC_HANDOFF_SECS;
                     let eased = 1.0 - (1.0 - raw.min(1.0)).powi(3);
                     self.lyrics_scroll_fraction = self.lyrics_scroll_from
                         + (self.lyrics_scroll_target - self.lyrics_scroll_from) * eased;
@@ -7957,7 +7959,7 @@ impl AppState {
 
         if self.right_panel_tab == Some(RightPanelTab::Lyrics) {
             base_subs
-                .push(iced::time::every(Duration::from_millis(33)).map(|_| Message::AnimateLyrics));
+                .push(iced::time::every(Duration::from_millis(16)).map(|_| Message::AnimateLyrics));
         }
 
         let mut subs = vec![Subscription::batch(base_subs)];

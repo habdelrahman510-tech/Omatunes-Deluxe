@@ -16,6 +16,9 @@ use crate::ui::{icons, theme};
 /// Half-second offset so lyrics don't appear ahead of the audio
 pub const LYRICS_OFFSET: std::time::Duration = std::time::Duration::from_millis(500);
 
+/// One short budget for both the highlight handoff and the scroll glide.
+pub const LYRIC_HANDOFF_SECS: f32 = 0.22;
+
 /// How much of the active-line styling a row should carry during a handoff.
 ///
 /// The outgoing line fades from full emphasis to none while the incoming line
@@ -720,14 +723,16 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                             let emphasis = lyric_emphasis(state, i, active_idx, &track.path);
                             let line_time = line.time;
 
-                            let font_size = 17.0 + 3.0 * emphasis;
-                            let line_font = if emphasis > 0.02 {
-                                crate::ui::icons::UI_FONT_BOLD
-                            } else {
-                                crate::ui::icons::UI_FONT
-                            };
+                            let font_size = 17.0;
+                            // Keep weight and metrics fixed too. Switching to a
+                            // bold face mid-handoff changed the rendered width
+                            // of the same wrap and made rows jump.
+                            let line_font = crate::ui::icons::UI_FONT;
                             let line_color =
                                 theme::lerp_color(theme::overlay0(), theme::accent(), emphasis);
+                            // Wrap at a fixed size. Animating the font used to
+                            // change max_chars mid-handoff, reflowing a three-row
+                            // lyric into two rows while it was still moving.
                             let char_width = 0.60 * font_size;
                             let max_chars =
                                 ((available_width / char_width).floor() as usize).max(10);
@@ -759,7 +764,9 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                                      let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
                                      iced::widget::button::Style {
                                          background: if is_hovered {
-                                             Some(iced::Background::Color(theme::with_alpha(theme::accent(), 0.1)))
+                                             Some(iced::Background::Color(theme::with_alpha(theme::accent(), 0.12)))
+                                         } else if emphasis > 0.01 {
+                                             Some(iced::Background::Color(theme::with_alpha(theme::accent(), 0.055 * emphasis)))
                                          } else {
                                              None
                                          },
@@ -769,10 +776,19 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                                              line_color
                                          },
                                          border: iced::Border {
-                                             radius: 4.0.into(),
-                                             ..Default::default()
+                                             color: theme::with_alpha(theme::accent(), 0.70 * emphasis),
+                                             width: emphasis,
+                                             radius: 6.0.into(),
                                          },
-                                         ..Default::default()
+                                         shadow: if is_hovered {
+                                             iced::Shadow::default()
+                                         } else {
+                                             iced::Shadow {
+                                                 color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.55 * emphasis),
+                                                 offset: [0.0, 1.0 + 3.0 * emphasis].into(),
+                                                 blur_radius: 3.0 + 9.0 * emphasis,
+                                             }
+                                         },
                                      }
                                  });
 
