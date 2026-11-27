@@ -289,6 +289,7 @@ pub enum Message {
     SeekToLyric(Duration),
 
     PollAudio,
+    AnimateLyrics,
     PollSpectrum,
     CheckTheme,
 
@@ -836,6 +837,14 @@ pub struct AppState {
     pub cursor_position: iced::Point,
     pub lyrics_scroll_id: scrollable::Id,
     pub last_active_lyric_idx: Option<usize>,
+    pub lyric_transition_from: Option<usize>,
+    pub lyric_transition_track: Option<std::path::PathBuf>,
+    pub lyric_transition_t: f32,
+    pub lyric_transition_started: Option<std::time::Instant>,
+    pub lyrics_scroll_fraction: f32,
+    pub lyrics_scroll_from: f32,
+    pub lyrics_scroll_target: f32,
+    pub lyrics_scroll_started: Option<std::time::Instant>,
     pub spectrum_bands: [f32; crate::audio::spectrum::NUM_BANDS],
     spectrum_analyzer: SpectrumAnalyzer,
     audio: AudioPlayer,
@@ -1152,6 +1161,14 @@ impl AppState {
             cursor_position: iced::Point::ORIGIN,
             lyrics_scroll_id: scrollable::Id::unique(),
             last_active_lyric_idx: None,
+            lyric_transition_from: None,
+            lyric_transition_track: None,
+            lyric_transition_t: 1.0,
+            lyric_transition_started: None,
+            lyrics_scroll_fraction: 0.0,
+            lyrics_scroll_from: 0.0,
+            lyrics_scroll_target: 0.0,
+            lyrics_scroll_started: None,
             spectrum_bands: [0.0; crate::audio::spectrum::NUM_BANDS],
             spectrum_analyzer,
             audio,
@@ -2228,21 +2245,36 @@ impl AppState {
                                     .unwrap_or_else(|| lrc_lines.len() - 1);
 
                                 if self.last_active_lyric_idx != Some(active_idx) {
+                                    let previous = self.last_active_lyric_idx;
                                     self.last_active_lyric_idx = Some(active_idx);
-                                    // Compute relative scroll position to center active line
+
                                     let total = lrc_lines.len();
-                                    let fraction = if total <= 1 {
+                                    let target_fraction = if total <= 1 {
                                         0.0
                                     } else {
                                         (active_idx as f32 + 0.5) / total as f32
                                     };
-                                    tasks.push(scrollable::snap_to(
-                                        self.lyrics_scroll_id.clone(),
-                                        scrollable::RelativeOffset {
-                                            x: 0.0,
-                                            y: fraction,
-                                        },
-                                    ));
+
+                                    if let Some(from) = previous {
+                                        self.lyric_transition_from = Some(from);
+                                        self.lyric_transition_track = Some(track.path.clone());
+                                        self.lyric_transition_t = 0.0;
+                                        self.lyric_transition_started =
+                                            Some(std::time::Instant::now());
+                                        self.lyrics_scroll_from = self.lyrics_scroll_fraction;
+                                        self.lyrics_scroll_target = target_fraction;
+                                        self.lyrics_scroll_started =
+                                            Some(std::time::Instant::now());
+                                    } else {
+                                        self.lyrics_scroll_fraction = target_fraction;
+                                        tasks.push(scrollable::snap_to(
+                                            self.lyrics_scroll_id.clone(),
+                                            scrollable::RelativeOffset {
+                                                x: 0.0,
+                                                y: target_fraction,
+                                            },
+                                        ));
+                                    }
                                 }
                             }
                         }
@@ -2266,6 +2298,41 @@ impl AppState {
                 } else {
                     Task::batch(tasks)
                 }
+            }
+
+            Message::AnimateLyrics => {
+                let now = std::time::Instant::now();
+                let mut task = Task::none();
+
+                if let Some(started) = self.lyric_transition_started {
+                    let raw = now.duration_since(started).as_secs_f32() / 0.30;
+                    self.lyric_transition_t = 1.0 - (1.0 - raw.min(1.0)).powi(3);
+                    if raw >= 1.0 {
+                        self.lyric_transition_from = None;
+                        self.lyric_transition_track = None;
+                        self.lyric_transition_started = None;
+                        self.lyric_transition_t = 1.0;
+                    }
+                }
+
+                if let Some(started) = self.lyrics_scroll_started {
+                    let raw = now.duration_since(started).as_secs_f32() / 0.42;
+                    let eased = 1.0 - (1.0 - raw.min(1.0)).powi(3);
+                    self.lyrics_scroll_fraction = self.lyrics_scroll_from
+                        + (self.lyrics_scroll_target - self.lyrics_scroll_from) * eased;
+                    task = scrollable::snap_to(
+                        self.lyrics_scroll_id.clone(),
+                        scrollable::RelativeOffset {
+                            x: 0.0,
+                            y: self.lyrics_scroll_fraction,
+                        },
+                    );
+                    if raw >= 1.0 {
+                        self.lyrics_scroll_started = None;
+                    }
+                }
+
+                task
             }
 
             Message::PollSpectrum => {
@@ -5344,6 +5411,7 @@ impl AppState {
                 } else {
                     self.right_panel_tab = Some(tab);
                 }
+                self.reset_lyrics_animation();
                 crate::db::write(|db| db.right_panel_tab = self.right_panel_tab);
                 Task::none()
             }
@@ -7885,6 +7953,11 @@ impl AppState {
         {
             base_subs
                 .push(iced::time::every(Duration::from_millis(33)).map(|_| Message::PollSpectrum));
+        }
+
+        if self.right_panel_tab == Some(RightPanelTab::Lyrics) {
+            base_subs
+                .push(iced::time::every(Duration::from_millis(33)).map(|_| Message::AnimateLyrics));
         }
 
         let mut subs = vec![Subscription::batch(base_subs)];

@@ -342,6 +342,18 @@ impl AppState {
         self.pending_next_anchor = None;
     }
 
+    pub(super) fn reset_lyrics_animation(&mut self) {
+        self.last_active_lyric_idx = None;
+        self.lyric_transition_from = None;
+        self.lyric_transition_track = None;
+        self.lyric_transition_t = 1.0;
+        self.lyric_transition_started = None;
+        self.lyrics_scroll_fraction = 0.0;
+        self.lyrics_scroll_from = 0.0;
+        self.lyrics_scroll_target = 0.0;
+        self.lyrics_scroll_started = None;
+    }
+
     pub(super) fn advance_track(&mut self, delta: i32) -> Task<Message> {
         // Flush pending liked tag for the track we're leaving (fd will be cancelled before next Play)
         if let Some(ref ct) = self.current_track {
@@ -406,6 +418,7 @@ impl AppState {
         // Any explicit play is a fresh context; a stale pending Next must not
         // survive it and jump from a forgotten anchor.
         self.clear_pending_next();
+        self.reset_lyrics_animation();
 
         // The queue holds snapshots taken when playback started. Tag edits and
         // library rescans update `all_tracks` only, so a stale queue entry

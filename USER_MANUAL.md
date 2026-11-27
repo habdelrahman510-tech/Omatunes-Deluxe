@@ -92,10 +92,10 @@ Click the waveform tab on the right edge of the window to open it, click it agai
 
 The same drawer also shows lyrics, synced or plain:
 
-- **Synced (LRC) lyrics** scroll and highlight automatically as the track plays — the current line is bold and in your accent color, the lines just before and after are a soft blend color, and everything else dims into the background.
+- **Synced (LRC) lyrics** glide and highlight automatically as the track plays — the outgoing line fades down while the incoming line swells into bold accent color, so the focus hands over instead of jumping.
 - **Plain lyrics** (no timestamps) just show up as scrollable text.
 - **Click any synced line** to jump playback straight to that moment.
-- Scroll around freely to read ahead — the view snaps back to center on the active line the next time the song reaches a new timestamp.
+- Scroll around freely to read ahead — the view eases back to center on the active line the next time the song reaches a new timestamp.
 
 ---
 

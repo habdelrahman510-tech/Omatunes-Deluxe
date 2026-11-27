@@ -16,6 +16,42 @@ use crate::ui::{icons, theme};
 /// Half-second offset so lyrics don't appear ahead of the audio
 pub const LYRICS_OFFSET: std::time::Duration = std::time::Duration::from_millis(500);
 
+/// How much of the active-line styling a row should carry during a handoff.
+///
+/// The outgoing line fades from full emphasis to none while the incoming line
+/// does the reverse. Rows outside the handoff stay dormant, so the highlight
+/// glides between neighbours instead of blinking out of existence.
+fn lyric_emphasis(
+    state: &AppState,
+    idx: usize,
+    active_idx: usize,
+    track_path: &std::path::Path,
+) -> f32 {
+    let t = state.lyric_transition_t.clamp(0.0, 1.0);
+
+    if state.lyric_transition_track.as_deref() != Some(track_path) {
+        return if idx == active_idx { 1.0 } else { 0.0 };
+    }
+
+    if let Some(from) = state.lyric_transition_from {
+        if from != active_idx {
+            if idx == from {
+                return 1.0 - t;
+            }
+            if idx == active_idx {
+                return t;
+            }
+            return 0.0;
+        }
+    }
+
+    if idx == active_idx {
+        1.0
+    } else {
+        0.0
+    }
+}
+
 pub fn view(state: &AppState) -> Element<'_, Message> {
     let is_allowed = state.window_width >= (crate::app::MIN_NON_DRAWER_WIDTH + 450.0);
     let tab_strip_height = state.player_height - 28.0;
@@ -681,13 +717,18 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
 
                         for i in 0..lrc_lines.len() {
                             let line = &lrc_lines[i];
-                            let is_active = i == active_idx;
-                            let is_interim =
-                                (active_idx > 0 && i == active_idx - 1) || (i == active_idx + 1);
+                            let emphasis = lyric_emphasis(state, i, active_idx, &track.path);
                             let line_time = line.time;
 
-                            let font_size = if is_active { 20 } else { 17 };
-                            let char_width = 0.60 * font_size as f32;
+                            let font_size = 17.0 + 3.0 * emphasis;
+                            let line_font = if emphasis > 0.02 {
+                                crate::ui::icons::UI_FONT_BOLD
+                            } else {
+                                crate::ui::icons::UI_FONT
+                            };
+                            let line_color =
+                                theme::lerp_color(theme::overlay0(), theme::accent(), emphasis);
+                            let char_width = 0.60 * font_size;
                             let max_chars =
                                 ((available_width / char_width).floor() as usize).max(10);
                             let sub_lines = wrap_text(&line.text, max_chars);
@@ -699,11 +740,7 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                             for sub_line in sub_lines {
                                 let txt = text(sub_line)
                                     .size(font_size)
-                                    .font(if is_active {
-                                        crate::ui::icons::UI_FONT_BOLD
-                                    } else {
-                                        crate::ui::icons::UI_FONT
-                                    })
+                                    .font(line_font)
                                     .width(Length::Fill)
                                     .align_x(iced::alignment::Horizontal::Center);
                                 text_col = text_col.push(txt);
@@ -726,14 +763,10 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                                          } else {
                                              None
                                          },
-                                         text_color: if is_active {
-                                             theme::accent()
-                                         } else if is_hovered {
+                                         text_color: if is_hovered {
                                              theme::text()
-                                         } else if is_interim {
-                                             theme::lerp_color(theme::accent(), theme::overlay0(), 0.5)
                                          } else {
-                                             theme::overlay0()
+                                             line_color
                                          },
                                          border: iced::Border {
                                              radius: 4.0.into(),
