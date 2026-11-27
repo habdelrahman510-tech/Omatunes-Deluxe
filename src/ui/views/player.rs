@@ -764,9 +764,7 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                                      let is_hovered = status == iced::widget::button::Status::Hovered || status == iced::widget::button::Status::Pressed;
                                      iced::widget::button::Style {
                                          background: if is_hovered {
-                                             Some(iced::Background::Color(theme::with_alpha(theme::accent(), 0.12)))
-                                         } else if emphasis > 0.01 {
-                                             Some(iced::Background::Color(theme::with_alpha(theme::accent(), 0.055 * emphasis)))
+                                             Some(iced::Background::Color(theme::with_alpha(theme::accent(), 0.1)))
                                          } else {
                                              None
                                          },
@@ -775,11 +773,7 @@ pub fn right_panel(state: &AppState) -> Option<Element<'_, Message>> {
                                          } else {
                                              line_color
                                          },
-                                         border: iced::Border {
-                                             color: theme::with_alpha(theme::accent(), 0.70 * emphasis),
-                                             width: emphasis,
-                                             radius: 6.0.into(),
-                                         },
+                                         border: iced::Border::default(),
                                          shadow: if is_hovered {
                                              iced::Shadow::default()
                                          } else {
